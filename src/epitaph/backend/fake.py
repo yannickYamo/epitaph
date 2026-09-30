@@ -1,17 +1,31 @@
 """A fake creature for tests and the simulator (BUILD_PLAN 9 A4).
 
 It streams canned first-person text at the speeds of a real machine on the injected clock,
-reacts to what changed in the last reading, degrades with precision and temperature, and
-can be told to die (OOM, crash, hang). Minimal in phase 0a; agent A extends it.
+reacts to what changed in the last reading, and degrades with precision and temperature.
+
+It models what matters about llama-server for the life loop:
+
+- **Prompt cache.** The server keeps the last prompt. A new request re-reads only what is not
+  cached: the common prefix is always kept; with cache reuse on, runs of kept turns that were
+  shifted by a front trim are reused too if they are at least `cache_reuse_min` tokens long
+  (`--cache-reuse N`). Without it, everything after the first changed message is re-read.
+  A (re)start empties the cache. The final chunk's `prompt_n` is the processed count.
+- **Faults** (`FakeFaults`): OOM kill, crash, hang (alive, silent, no progress), full context,
+  slow load, slow prompt processing, and a hang during load. Each can fire at a token count or
+  at a clock time.
 """
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
+import signal as _signal
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field
 
 from epitaph.backend.base import CreatureDied
+from epitaph.backend.errors import ContextFull
 from epitaph.clock import FakeClock
 from epitaph.costmodel import Costs
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
@@ -32,11 +46,66 @@ _MIDDLE = [
     "Each reading takes something away.",
 ]
 
+SIGKILL = int(_signal.SIGKILL)
+SIGSEGV = int(_signal.SIGSEGV)
+FAKE_PID = 4242
+
+
+@dataclass
+class FakeFaults:
+    """Faults to inject. Token counts are cumulative over the creature's life (all requests).
+
+    `*_at_token`: fire before emitting that token. `*_at_s`: fire at that clock time
+    (FakeClock.now()), checked before each token and during prompt processing.
+    """
+
+    oom_at_token: int | None = None
+    oom_at_s: float | None = None
+    crash_at_token: int | None = None
+    crash_at_s: float | None = None
+    crash_signal: int | None = SIGSEGV
+    crash_exit_code: int | None = None
+    hang_at_token: int | None = None
+    hang_at_s: float | None = None
+    hang_on_start: bool = False
+    load_extra_s: float = 0.0  # a slow (re)load
+    pp_factor: float = 1.0  # prompt processing slowdown: 4.0 = four times slower
+    tg_factor: float = 1.0  # generation slowdown
+    crash_on_start: bool = False
+
+
+@dataclass
+class RequestLog:
+    """What one request cost the creature, for tests and the rehearsal checks."""
+
+    prompt_tokens: int
+    prompt_n: int
+    predicted_n: int
+    reused: int
+    t_start: float
+    t_first_token: float | None = None
+    t_end: float | None = None
+
+
+@dataclass
+class _Cache:
+    blocks: list[tuple[str, int]] = field(default_factory=lambda: [])  # (content key, tokens)
+
 
 class FakeBackend:
     """Deterministic, clock-driven stand-in for llama-server."""
 
-    def __init__(self, clock: FakeClock, costs: Costs, seed: int = 0) -> None:
+    def __init__(
+        self,
+        clock: FakeClock,
+        costs: Costs,
+        seed: int = 0,
+        *,
+        ctx: int = 2048,
+        cache_reuse: bool | None = None,
+        cache_reuse_min: int = 256,
+        faults: FakeFaults | None = None,
+    ) -> None:
         self.clock = clock
         self.costs = costs
         self.rng = random.Random(seed)
@@ -44,43 +113,184 @@ class FakeBackend:
         self.step = 0
         self.threads = 3
         self.cpu_share = 3.0
+        self.ctx = ctx
+        self.cache_reuse = costs.cache_reuse_works if cache_reuse is None else cache_reuse
+        self.cache_reuse_min = cache_reuse_min
+        self.faults = faults or FakeFaults()
+        # Phase 0a API, kept for callers that use it.
         self.fail_after_tokens: int | None = None
-        self.fail_signal = 9
+        self.fail_signal = SIGKILL
+        self.hung = False
+        self.starts = 0
+        self.requests: list[RequestLog] = []
         self._on_death: list[Callable[[CreatureStatus], None]] = []
         self._tokens = 0
+        self._cache = _Cache()
+        self._last: CreatureStatus = CreatureStatus(alive=False)
+        self._wake = asyncio.Event()
+        self._ends = 0  # bumped by every kill or stop, to wake a hung wait with the news
+        self.truncated = False  # the last request stopped because the context was full
+
+    # -- lifecycle ---------------------------------------------------------------------------
 
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
+        self.alive = False
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
         self.cpu_share = float(threads)
-        await self.clock.sleep(self.costs.load(self.step))
+        self._cache = _Cache()
+        self._tokens = 0
+        self.hung = False
+        self._wake = asyncio.Event()
+        self.starts += 1
+        if self.faults.hang_on_start:
+            self.hung = True
+            ends = self._ends
+            while self.hung:
+                await self._wake.wait()
+            if self._ends != ends:
+                raise CreatureDied(self.status())
+        await self.clock.sleep(self.costs.load(self.step) + self.faults.load_extra_s)
+        if self.faults.crash_on_start:
+            self._last = CreatureStatus(alive=False, pid=FAKE_PID, exit_code=1)
+            raise CreatureDied(self._last)
         self.alive = True
+        self._last = CreatureStatus(alive=True, pid=FAKE_PID)
 
     async def stop(self, hard: bool = False) -> None:
+        """Deliberate stop: no on_death callback (the controller asked for it)."""
+        was = self.alive or self.hung
         self.alive = False
+        self.hung = False
+        self._ends += 1
+        self._wake.set()
+        if was:
+            self._last = CreatureStatus(
+                alive=False, pid=FAKE_PID, signal=SIGKILL if hard else int(_signal.SIGTERM)
+            )
 
     def set_cpu_share(self, share: float) -> None:
         self.cpu_share = share
 
-    def kill(self, signal: int = 9) -> None:
-        """Simulate the process dying (OOM kill, crash)."""
-        if not self.alive:
+    def kill(self, signal: int = SIGKILL, exit_code: int | None = None) -> None:
+        """Simulate the process dying (OOM kill, crash, cgroup.kill). Fires on_death."""
+        if not self.alive and not self.hung:
             return
         self.alive = False
-        status = CreatureStatus(alive=False, exit_code=None, signal=signal)
+        self.hung = False
+        self._ends += 1
+        self._wake.set()
+        sig = None if exit_code is not None else signal
+        self._last = CreatureStatus(alive=False, pid=FAKE_PID, exit_code=exit_code, signal=sig)
         for fn in self._on_death:
-            fn(status)
+            fn(self._last)
+
+    def oom(self) -> None:
+        """The kernel's OOM killer: SIGKILL (the body tells it apart via memory.events)."""
+        self.kill(SIGKILL)
+
+    def crash(self) -> None:
+        self.kill(self.faults.crash_signal or SIGSEGV, self.faults.crash_exit_code)
+
+    def hang(self) -> None:
+        """Stop making progress while staying alive (SIGSTOP)."""
+        if self.alive:
+            self.hung = True
+            self._wake = asyncio.Event()
+
+    def resume(self) -> None:
+        self.hung = False
+        self._wake.set()
 
     def on_death(self, fn: Callable[[CreatureStatus], None]) -> None:
         self._on_death.append(fn)
 
     def status(self) -> CreatureStatus:
+        tg = self.costs.tg(self.step, self.threads, self.cpu_share) / self.faults.tg_factor
+        pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
+        s = self._last
         return CreatureStatus(
-            alive=self.alive, tok_s=self.costs.tg(self.step, self.threads, self.cpu_share)
+            alive=self.alive,
+            pid=s.pid,
+            exit_code=s.exit_code,
+            signal=s.signal,
+            tok_s=tg,
+            prompt_tok_s=pp,
         )
 
+    # -- tokens and cache --------------------------------------------------------------------
+
     async def count_past_tokens(self, messages: list[Msg]) -> int:
-        return sum(len(m.content) // 4 + 4 for m in messages)
+        return sum(_msg_tokens(m) for m in messages)
+
+    def _plan(self, messages: list[Msg]) -> tuple[list[tuple[str, int]], int, int]:
+        """(blocks, tokens to process, tokens reused) for this prompt against the cache."""
+        blocks = [(_key(m.role, m.content), _msg_tokens(m)) for m in messages]
+        old = self._cache.blocks
+        prefix = 0
+        while prefix < min(len(old), len(blocks)) and old[prefix] == blocks[prefix]:
+            prefix += 1
+        reused = sum(n for _, n in blocks[:prefix])
+        todo = sum(n for _, n in blocks[prefix:])
+        if self.cache_reuse and prefix < len(blocks):
+            # Reuse runs of blocks that appear contiguously in the old cache after the prefix.
+            i = prefix
+            j0 = prefix
+            while i < len(blocks):
+                run = 0
+                j = next((x for x in range(j0, len(old)) if old[x] == blocks[i]), None)
+                start = i
+                while j is not None and i < len(blocks) and j < len(old) and old[j] == blocks[i]:
+                    run += blocks[i][1]
+                    i += 1
+                    j += 1
+                if run >= self.cache_reuse_min and j is not None:
+                    reused += run
+                    todo -= run
+                    j0 = j
+                if i == start:
+                    i += 1
+        return blocks, todo, reused
+
+    def _check_faults(self) -> None:
+        f = self.faults
+        now = self.clock.now()
+        tok = self._tokens
+        if (f.oom_at_token is not None and tok >= f.oom_at_token) or (
+            f.oom_at_s is not None and now >= f.oom_at_s
+        ):
+            self.oom()
+        elif (f.crash_at_token is not None and tok >= f.crash_at_token) or (
+            f.crash_at_s is not None and now >= f.crash_at_s
+        ):
+            self.crash()
+        elif self.fail_after_tokens is not None and tok >= self.fail_after_tokens:
+            self.kill(self.fail_signal)
+        elif self.alive and not self.hung and self._due(f.hang_at_token, f.hang_at_s):
+            f.hang_at_token = f.hang_at_s = None  # fire once
+            self.hang()
+        if not self.alive and not self.hung:
+            raise CreatureDied(self.status())
+
+    def _due(self, at_token: int | None, at_s: float | None) -> bool:
+        return (at_token is not None and self._tokens >= at_token) or (
+            at_s is not None and self.clock.now() >= at_s
+        )
+
+    async def _wait_while_hung(self) -> None:
+        ends = self._ends
+        while self.hung:
+            await self._wake.wait()
+        if self._ends != ends or not self.alive:
+            raise CreatureDied(self.status())
+
+    async def _tick(self, seconds: float) -> None:
+        await self.clock.sleep(seconds)
+        self._check_faults()
+        if self.hung:
+            await self._wait_while_hung()
+
+    # -- text --------------------------------------------------------------------------------
 
     def _text(self, reading: str, sampling: Sampling, max_tokens: int = 80) -> str:
         topic = "calm"
@@ -111,34 +321,76 @@ class FakeBackend:
     ) -> AsyncIterator[Chunk]:
         if not self.alive:
             raise CreatureDied(self.status())
-        reading = next((m.content for m in reversed(messages) if m.role == "user"), "")
-        prompt_tokens = await self.count_past_tokens(messages[-1:])
-        await self.clock.sleep(
-            prompt_tokens / self.costs.pp(self.step, self.threads, self.cpu_share)
-        )
-        pieces = re.findall(r"\S+\s*", self._text(reading, sampling, max_tokens))
-        tg = self.costs.tg(self.step, self.threads, self.cpu_share)
+        blocks, todo, reused = self._plan(messages)
+        prompt_tokens = sum(n for _, n in blocks)
+        if prompt_tokens + 1 > self.ctx:
+            raise ContextFull(prompt_tokens, self.ctx)
+        log = RequestLog(prompt_tokens, todo, 0, reused, self.clock.now())
+        self.requests.append(log)
+        pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
+        # Prompt processing in slices so a fault at a clock time lands inside it.
+        left = todo / pp
+        while left > 0:
+            dt = min(left, 5.0)
+            await self._tick(dt)
+            left -= dt
+        self._check_faults()
+        self._cache.blocks = blocks
+        room = self.ctx - prompt_tokens
+        pieces = re.findall(r"\S+\s*", self._text(_last_user(messages), sampling, max_tokens))
+        tg = self.costs.tg(self.step, self.threads, self.cpu_share) / self.faults.tg_factor
         n = 0
+        text: list[str] = []
+        self.truncated = False
         for piece in pieces:
             for tok in _split_tokens(piece):
                 if n >= max_tokens:
                     break
-                if not self.alive:
-                    raise CreatureDied(CreatureStatus(alive=False, signal=self.fail_signal))
-                if self.fail_after_tokens is not None and self._tokens >= self.fail_after_tokens:
-                    self.kill(self.fail_signal)
-                    raise CreatureDied(CreatureStatus(alive=False, signal=self.fail_signal))
-                await self.clock.sleep(1.0 / tg)
+                if n >= room:
+                    self.truncated = True
+                    break
+                self._check_faults()
+                if self.hung:
+                    await self._wait_while_hung()
+                await self._tick(1.0 / tg)
                 n += 1
                 self._tokens += 1
+                text.append(tok)
+                if log.t_first_token is None:
+                    log.t_first_token = self.clock.now()
                 yield Chunk(tok)
-        yield Chunk("", done=True, prompt_n=prompt_tokens, predicted_n=n, predicted_per_s=tg)
+        log.predicted_n = n
+        log.t_end = self.clock.now()
+        # The generated text joins the cache like a real server's slot, so the next prompt
+        # that repeats it as an assistant message keeps it cached.
+        self._cache.blocks = [*blocks, (_key("assistant", "".join(text)), n + 4)]
+        yield Chunk(
+            "",
+            done=True,
+            prompt_n=todo,
+            predicted_n=n,
+            prompt_per_s=pp,
+            predicted_per_s=tg,
+        )
 
     async def complete(
         self, prompt: str, sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:
         async for c in self.chat([Msg("user", prompt[-400:])], sampling, max_tokens):
             yield c
+
+
+def _last_user(messages: list[Msg]) -> str:
+    return next((m.content for m in reversed(messages) if m.role == "user"), "")
+
+
+def _key(role: str, content: str) -> str:
+    return f"{role}\x00{content.strip()}"
+
+
+def _msg_tokens(m: Msg) -> int:
+    """About 4 letters per token, plus the chat template's per-message overhead."""
+    return len(m.content) // 4 + 4
 
 
 def _split_tokens(piece: str) -> list[str]:
