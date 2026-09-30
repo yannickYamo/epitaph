@@ -8,8 +8,10 @@
 set -euo pipefail
 
 SPIKE="${1:?s3 | s3b | s3c}"; shift
-HOST="${PI_HOST:-pi}"
 HERE="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=tools/pi_host.sh
+. "$HERE/tools/pi_host.sh"
+HOST="$(pi_host)"  # `pi`, or the cable when mDNS fails (BUILD_PLAN F12)
 REMOTE=/tmp/epitaph-spike
 UNIT="epitaph-spike-$SPIKE"
 STAMP="$(date +%Y%m%d-%H%M%S)"

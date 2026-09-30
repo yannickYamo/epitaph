@@ -15,12 +15,17 @@ tag_from_config() {
 }
 
 if [ "${1:-}" = "--pi" ]; then
+  # Take the Pi lock first, then do everything (host probe, copy, build, poll) inside it.
+  shift; exec "$here/pi_lock.sh" run A 120 -- "$0" --pi-locked "$@"
+fi
+if [ "${1:-}" = "--pi-locked" ]; then
   TAG="${2:-$(tag_from_config)}"; TAG="${TAG:-b11277}"
-  scp -q "$0" pi:/tmp/build_llamacpp.sh
-  exec "$here/pi_lock.sh" run A 120 -- bash -c "
-    ssh pi 'sudo -n systemctl reset-failed llama-build 2>/dev/null; sudo -n systemd-run --unit=llama-build --uid=pi --gid=pi --setenv=HOME=/home/pi --working-directory=/home/pi bash /tmp/build_llamacpp.sh $TAG' &&
-    while ssh -o ConnectTimeout=10 pi 'systemctl is-active --quiet llama-build'; do sleep 30; done;
-    ssh pi 'systemctl show llama-build -p Result; tail -5 ~/llama.cpp/build.log; vcgencmd get_throttled'"
+  # shellcheck source=tools/pi_host.sh
+  . "$here/pi_host.sh"; host="$(pi_host)" || exit 3
+  scp -q "$0" "$host:/tmp/build_llamacpp.sh"
+  ssh "$host" "sudo -n systemctl reset-failed llama-build 2>/dev/null; sudo -n systemd-run --unit=llama-build --uid=pi --gid=pi --setenv=HOME=/home/pi --working-directory=/home/pi bash /tmp/build_llamacpp.sh $TAG"
+  while ssh -o ConnectTimeout=10 "$host" 'systemctl is-active --quiet llama-build'; do sleep 30; done
+  exec ssh "$host" 'systemctl show llama-build -p Result; tail -5 ~/llama.cpp/build.log; vcgencmd get_throttled'
 fi
 
 TAG="${1:-${LLAMACPP_TAG:-$(tag_from_config)}}"; TAG="${TAG:-b11277}"

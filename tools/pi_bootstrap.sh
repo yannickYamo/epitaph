@@ -12,15 +12,16 @@
 # It never handles secrets. The Wi-Fi connection and the Pi password need a person at a
 # real terminal; when they are missing it prints the command for Yannick and carries on.
 # Run it under the Pi lock: tools/pi_lock.sh run C 15 -- tools/pi_bootstrap.sh --apply
-# Every change it makes is also a row in docs/PI_CHANGES.md.
+# Every change it makes is also a row in docs/PI_CHANGES.md. Without a host it uses `pi`
+# (Wi-Fi) and falls back to `pi-eth` (the cable) when `pi` does not answer (tools/pi_host.sh).
 set -euo pipefail
 
-MODE=apply; HOST="${PI_HOST:-pi}"; REBOOT_OK=1; LOCAL=0
+MODE=apply; HOST="${PI_HOST:-}"; REBOOT_OK=1; LOCAL=0
 for a in "$@"; do
   case "$a" in
     --check) MODE=check ;; --apply) MODE=apply ;; --state) MODE=state ;;
     --no-reboot) REBOOT_OK=0 ;; --local) LOCAL=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -euo/{/^#/p}' "$0"; exit 0 ;;
     -*) echo "unknown option $a" >&2; exit 2 ;;
     *) HOST="$a" ;;
   esac
@@ -28,11 +29,19 @@ done
 
 if [ "$LOCAL" = 0 ]; then
   # ---- laptop side: ship the Pi part over SSH -----------------------------------------
+  # shellcheck source=tools/pi_host.sh
+  . "$(dirname "$0")/pi_host.sh"
+  AUTO_HOST=0
+  if [ -z "$HOST" ]; then
+    AUTO_HOST=1
+    HOST="$(pi_host)" || { echo "cannot reach the Pi with a key. Check ~/.ssh/config (docs/PI_FACTS.md)." >&2; exit 3; }
+  fi
   ssh_() { ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 "$HOST" "$@"; }
   if ! ssh_ true; then
-    echo "cannot reach $HOST with a key. Check ~/.ssh/config (pi = epitaph.local, pi-eth = 10.42.0.95)." >&2
+    echo "cannot reach $HOST with a key. Check ~/.ssh/config (docs/PI_FACTS.md)." >&2
     exit 3
   fi
+  echo "== host: $HOST"
   if ! ssh_ sudo -n true 2>/dev/null; then
     cat >&2 <<'MSG'
 sudo needs a password on the Pi, so this script cannot continue. Yannick, in your own
@@ -51,7 +60,12 @@ MSG
       echo "== rebooting $HOST for boot-time changes"
       ssh_ "sudo -n systemd-run --on-active=2 --quiet systemctl reboot" || true
       sleep 20
-      for _ in $(seq 60); do ssh_ true 2>/dev/null && break; sleep 5; done
+      for _ in $(seq 60); do
+        # Wi-Fi may come up later than the cable (or not at all): pick again when auto.
+        if [ "$AUTO_HOST" = 1 ]; then h="$(pi_host 2>/dev/null)" && { HOST="$h"; break; }
+        else ssh_ true 2>/dev/null && break; fi
+        sleep 5
+      done
       ssh_ true || { echo "$HOST did not come back within 5 minutes" >&2; exit 1; }
       echo "== verifying after reboot"
       MODE=check; set +e; remote; rc=$?; set -e
