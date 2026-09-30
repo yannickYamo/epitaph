@@ -45,6 +45,7 @@ _MIDDLE = [
     "Each reading takes something away.",
 ]
 
+
 class FakeBackendClock(Protocol):
     """The clock the fake runs on: `clock.FakeClock`, `RehearsalClock` or `VirtualClock`."""
 
