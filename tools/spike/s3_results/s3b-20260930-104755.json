@@ -1,0 +1,174 @@
+{
+ "uid": 1000,
+ "user": "pi",
+ "steps": {
+  "supervisor_leaf": {
+   "ok": true,
+   "value": [
+    "2269"
+   ]
+  },
+  "controllers": {
+   "ok": true,
+   "value": [
+    "cpu",
+    "io",
+    "memory"
+   ]
+  },
+  "creature_leaf": {
+   "ok": true,
+   "value": true
+  },
+  "memory.high": {
+   "ok": true,
+   "value": [
+    "209715200",
+    "max"
+   ]
+  },
+  "memory.max": {
+   "ok": true,
+   "value": [
+    "314572800",
+    "max"
+   ]
+  },
+  "memory.swap.max": {
+   "ok": true,
+   "value": [
+    "0",
+    "0"
+   ]
+  },
+  "cpu.max": {
+   "ok": true,
+   "value": [
+    "50000 100000",
+    "max 100000"
+   ]
+  },
+  "memory.oom.group": {
+   "ok": true,
+   "value": "1"
+  },
+  "child_cgroup_and_affinity": {
+   "ok": true,
+   "value": "0::/system.slice/epitaph-spike-s3b.service/creature [1, 2, 3]"
+  },
+  "cpu.stat": {
+   "ok": true,
+   "value": {
+    "usage_usec": 1263487,
+    "user_usec": 1074366,
+    "system_usec": 189120,
+    "nice_usec": 0,
+    "nr_periods": 0,
+    "nr_throttled": 0,
+    "throttled_usec": 0,
+    "nr_bursts": 0,
+    "burst_usec": 0
+   }
+  },
+  "io.stat": {
+   "ok": true,
+   "value": "179:0 rbytes=68161536 wbytes=0 rios=67 wios=0 dbytes=0 dios=0"
+  },
+  "memory.stat": {
+   "ok": true,
+   "value": {
+    "anon": 67092480,
+    "file": 68161536,
+    "pgfault": 16810,
+    "pgmajfault": 0
+   }
+  },
+  "memory.events": {
+   "ok": true,
+   "value": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   }
+  },
+  "progress": {
+   "ok": true,
+   "value": {
+    "cpu_usec": 1263487,
+    "io_rbytes": 68161536,
+    "majfault": 0
+   }
+  },
+  "vitals": {
+   "ok": true,
+   "value": {
+    "cpu_c": 36.5,
+    "throttled": 0,
+    "ram_limit_mb": null,
+    "mem_used_mb": 129,
+    "cores_effective": 3.0
+   }
+  },
+  "oom_kill": {
+   "ok": true,
+   "value": {
+    "s": 0.03,
+    "rc": -9,
+    "events": {
+     "low": 0,
+     "high": 0,
+     "max": 0,
+     "oom": 6161,
+     "oom_kill": 1,
+     "oom_group_kill": 1
+    }
+   }
+  },
+  "death_cause_oom": {
+   "ok": true,
+   "value": "oom"
+  },
+  "cgroup.kill": {
+   "ok": true,
+   "value": {
+    "s": 0.016,
+    "rc": -9,
+    "empty": true
+   }
+  },
+  "death_cause_manual": {
+   "ok": true,
+   "value": "manual"
+  },
+  "net_creature_before": {
+   "ok": true,
+   "value": "connected"
+  },
+  "net_creature_after": {
+   "ok": true,
+   "value": "refused: ConnectionRefusedError: [Errno 111] Connection refused"
+  },
+  "net_creature_dns": {
+   "ok": true,
+   "value": "refused: [Errno -3] Temporary failure in name resolution"
+  },
+  "net_supervisor_after": {
+   "ok": true,
+   "value": "connected"
+  },
+  "net_creature_localhost": {
+   "ok": true,
+   "value": "connected"
+  }
+ },
+ "root": "/sys/fs/cgroup/system.slice/epitaph-spike-s3b.service",
+ "nft_installed": true,
+ "ok": true,
+ "spike": "s3b",
+ "started": "2026-09-30T10:47:59-0700",
+ "finished": "2026-09-30T10:48:04-0700",
+ "kernel": "6.18.50+rpt-rpi-v8"
+}
