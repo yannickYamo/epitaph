@@ -1,6 +1,6 @@
 .pi.env
 voice/
 __pycache__/
-.venv/
+.venv
 *.gguf
 logs/
