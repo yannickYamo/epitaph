@@ -124,6 +124,22 @@ class Lookahead:
         out, self.held = self.held[:cut], self.held[cut:]
         return out, None, None
 
+    def truncated_hit(self, last: str) -> tuple[int, str] | None:
+        """At the end of generation the last word may be cut off ("How can I hel"). If the
+        held words would complete a banned phrase with it, report where that phrase starts
+        (an index into `held`)."""
+        norms = [normalize(w) for w in [*self.held, last]]
+        if not norms or not norms[-1]:
+            return None
+        for j in range(len(norms)):
+            if not norms[j]:
+                continue
+            seq = tuple(n for n in norms[j:] if n)
+            for p, original in self.phrases.items():
+                if len(seq) == len(p) and seq[:-1] == p[:-1] and p[-1].startswith(seq[-1]):
+                    return j, original
+        return None
+
     def flush(self) -> list[str]:
         """Release everything held: an unresolved prefix at the end is not a banned phrase."""
         out, self.held = self.held, []
@@ -183,6 +199,7 @@ class Pacer:
         self._estimate: float | None = None
         self._samples: deque[tuple[float, int]] = deque()
         self._sample_s = 0.0
+        self._sample_letters = 0
         self._last_chunk_t: float | None = None
 
         self.turn = 0
@@ -228,12 +245,12 @@ class Pacer:
         self._estimate = letters_per_s if letters_per_s > 0 else None
         self._samples.clear()
         self._sample_s = 0.0
+        self._sample_letters = 0
 
     def rate(self) -> float | None:
         """Smoothed generation rate in letters per second (BUILD_PLAN 5.12)."""
-        if self._sample_s >= self.min_rate_sample_s:
-            letters = sum(n for _, n in self._samples)
-            return letters / self._sample_s if letters > 0 else self._estimate
+        if self._sample_s >= self.min_rate_sample_s and self._sample_letters > 0:
+            return self._sample_letters / self._sample_s
         return self._estimate
 
     def begin_request(self) -> None:
@@ -247,8 +264,11 @@ class Pacer:
             dt = max(0.0, now - self._last_chunk_t)
             self._samples.append((dt, letters))
             self._sample_s += dt
+            self._sample_letters += letters
             while self._samples and self._sample_s - self._samples[0][0] >= self.rate_window_s:
-                self._sample_s -= self._samples.popleft()[0]
+                old_dt, old_letters = self._samples.popleft()
+                self._sample_s -= old_dt
+                self._sample_letters -= old_letters
         self._last_chunk_t = now
 
     # -- one thought -----------------------------------------------------------------------
@@ -303,6 +323,10 @@ class Pacer:
             released.append(self._release(text))
         if j is None or phrase is None:
             return None
+        return self._hit_at(j, phrase, released, dead)
+
+    def _hit_at(self, j: int, phrase: str, released: list[Word], dead: bool) -> PushResult:
+        """A banned phrase starts at held[j]: regenerate (at the start) or cut there."""
         i = len(self.shown) + j
         at_start = i == 0
         regen = at_start and not dead and self.regenerations < self.max_regenerations
@@ -337,8 +361,12 @@ class Pacer:
         if not self._stopped:
             released: list[Word] = []
             words = self._segmenter.feed(self._sanitizer.finish()) + self._segmenter.finish()
-            for w in words:
-                res = self._add_word(w, released, dead=dead)
+            for n, w in enumerate(words):
+                cut = self.lookahead.truncated_hit(w) if n == len(words) - 1 else None
+                if cut is not None and cut[0] < len(self.lookahead.held):
+                    res = self._hit_at(cut[0], cut[1], released, dead)
+                else:
+                    res = self._add_word(w, released, dead=dead)
                 if res is not None:
                     if res.regenerate:
                         return res.hit

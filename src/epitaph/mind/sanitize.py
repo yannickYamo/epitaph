@@ -13,7 +13,6 @@ marker), so what it emits is append-only and equals `sanitize_text` of the whole
 from __future__ import annotations
 
 import re
-import unicodedata
 
 __all__ = ["Sanitizer", "sanitize_text"]
 
@@ -36,36 +35,31 @@ _RULE_RE = re.compile(r"^[ \t]*([-*_=])(?:[ \t]*\1){2,}[ \t]*$", re.MULTILINE)
 _UNDERSCORE_RE = re.compile(r"(?<![^\W_])_+|_+(?![^\W_])")
 _SPACE_RE = re.compile(r"\s+")
 
-# The degree sign and other ordinary symbols are kept; only pictographs go.
-_EMOJI_RANGES = (
-    (0x1F000, 0x1FAFF),  # pictographs, emoticons, transport, flags, symbols and pictographs
-    (0x2600, 0x27BF),  # miscellaneous symbols, dingbats
-    (0x2B00, 0x2BFF),  # arrows and stars used as emoji
-    (0x2190, 0x21FF),  # arrows
-    (0x2300, 0x23FF),  # technical symbols used as emoji (watch, hourglass)
-    (0x25A0, 0x25FF),  # geometric shapes
-    (0xFE00, 0xFE0F),  # variation selectors
-    (0xE0000, 0xE007F),  # tags
-    (0x1F1E6, 0x1F1FF),  # regional indicators
+# Pictographs, invisible characters and control codes go; the degree sign and other ordinary
+# symbols stay. One character class, so cleaning is a single regex pass.
+_DROP_RE = re.compile(
+    "["
+    "\U0001f000-\U0001faff"  # pictographs, emoticons, transport, flags (regional indicators)
+    "\u2600-\u27bf"  # miscellaneous symbols, dingbats
+    "\u2b00-\u2bff"  # arrows and stars used as emoji
+    "\u2190-\u21ff"  # arrows
+    "\u2300-\u23ff"  # technical symbols used as emoji (watch, hourglass)
+    "\u25a0-\u25ff"  # geometric shapes
+    "\ufe00-\ufe0f"  # variation selectors
+    "\U000e0000-\U000e007f"  # tags
+    "\u200d\u20e3\u3030\u303d\u3297\u3299\u00a9\u00ae\u2122"  # joiners, marks, (c) (r)
+    "\u200b\u200c\u2060\ufeff\ufffd"  # zero-width and replacement characters
+    "\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f"  # control codes (tab and newlines kept)
+    "\ue000-\uf8ff\U000f0000-\U0010ffff"  # private use
+    "\ud800-\udfff"  # lone surrogates
+    "]"
 )
-_EMOJI_SINGLES = {0x200D, 0x20E3, 0x3030, 0x303D, 0x3297, 0x3299, 0x00A9, 0x00AE, 0x2122}
-_INVISIBLE = {0x200B, 0x200C, 0x2060, 0xFEFF, 0xFFFD}
 
 # How far back a partial construct is held while streaming.
 _HOLD_TAG = 40
 _HOLD_BRACKET = 48
 _HOLD_LINK_URL = 152
 _HOLD_LINE = 5
-
-
-def _drop_char(c: str) -> bool:
-    o = ord(c)
-    if o in _EMOJI_SINGLES or o in _INVISIBLE:
-        return True
-    if any(a <= o <= b for a, b in _EMOJI_RANGES):
-        return True
-    cat = unicodedata.category(c)
-    return (cat == "Cc" and c not in "\n\t\r ") or cat == "Co" or cat == "Cs"
 
 
 def _strip_thinking(text: str) -> str:
@@ -81,7 +75,7 @@ def _cut(text: str) -> tuple[str, bool]:
 
 
 def _clean(text: str) -> str:
-    text = "".join(c for c in text if not _drop_char(c))
+    text = _DROP_RE.sub("", text)
     text = _TAG_RE.sub(" ", text)
     text = _IMAGE_RE.sub(r"\1", text)
     text = _LINK_RE.sub(r"\1", text)

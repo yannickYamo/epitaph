@@ -167,16 +167,13 @@ class Memory:
             oldest = self.turns[0]
             if self.used() - oldest.tokens >= target:
                 self.turns.pop(0)
-                self._note(res, oldest)
-                res.items.append({"turn": oldest.turn, "all": True})
+                if oldest.words:  # an empty thought had nothing on screen to forget
+                    self._note(res, oldest)
+                    res.items.append({"turn": oldest.turn, "all": True})
                 continue
+            # Only a turn with words gets here: an empty one is all reading, so it went whole.
             self._trim_inside(oldest, target, res)
-            if oldest in self.turns and oldest.reading is None and not oldest.words:
-                self.turns.remove(oldest)  # an empty thought whose reading went
-                continue
             break
-        # A turn left with neither reading nor words (an empty thought) is dropped silently.
-        self.turns = [t for t in self.turns if t.reading is not None or t.words]
         res.tokens_after = self.used()
         return res
 

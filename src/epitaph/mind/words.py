@@ -13,6 +13,7 @@ shows it is not punctuation to attach. The final, possibly unfinished word comes
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 __all__ = ["WordSegmenter", "is_punct_only", "normalize", "split_words"]
@@ -27,16 +28,14 @@ def is_punct_only(token: str) -> bool:
     return bool(token) and not any(_is_wordish(c) for c in token)
 
 
+# Scripts written without spaces between words: Hiragana, Katakana, CJK ideographs.
+_SPACELESS_RE = re.compile(
+    "[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0002fa1f]"
+)
+
+
 def _is_spaceless_script(ch: str) -> bool:
-    """Characters of scripts written without spaces between words."""
-    o = ord(ch)
-    return (
-        0x3040 <= o <= 0x30FF  # Hiragana, Katakana
-        or 0x3400 <= o <= 0x4DBF  # CJK extension A
-        or 0x4E00 <= o <= 0x9FFF  # CJK unified ideographs
-        or 0xF900 <= o <= 0xFAFF  # CJK compatibility ideographs
-        or 0x20000 <= o <= 0x2FA1F  # CJK extensions B-F, compatibility supplement
-    )
+    return _SPACELESS_RE.match(ch) is not None
 
 
 def normalize(word: str) -> str:
@@ -47,7 +46,7 @@ def normalize(word: str) -> str:
 
 def _split_spaceless(token: str) -> list[str]:
     """Split a token at every spaceless-script character; punctuation stays attached left."""
-    if not any(_is_spaceless_script(c) for c in token):
+    if _SPACELESS_RE.search(token) is None:
         return [token]
     out: list[str] = []
     cur = ""
