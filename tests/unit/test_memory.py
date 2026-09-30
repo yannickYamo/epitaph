@@ -55,26 +55,21 @@ def test_hysteresis_trims_oldest_turns_first_to_recall_times_trim_to() -> None:
     assert not m.fit(50, 0.8)
 
 
-def test_reload_cut_goes_to_the_word_inside_the_oldest_kept_turn() -> None:
+def test_reload_cut_takes_whole_turns() -> None:
+    """With the slot hand-over the new server starts from the old cache, so a reload cut must
+    end on a turn boundary (a cut inside a turn forces a near-total re-read; ADR-014)."""
     m = mem_with(3)  # 30
-    f = m.cut_for_reload(29, 0.9)  # target 26 incl. marker 4 -> past turns 22
-    # turn 1 cannot go whole (30 - 10 + 4 = 24 < 26), so its reading goes, then 6 words
-    assert f.items == [{"turn": 1, "upto_i": 5}]
-    first = m.turns[0]
-    assert first.turn == 1 and first.reading is None and first.words == ["t1w6", "t1w7"]
-    assert m.used() == 26
+    f = m.cut_for_reload(29, 0.9)  # target 26 including the marker
+    assert f.items == [{"turn": 1, "all": True}]
+    assert all("upto_i" not in item for item in f.items)
+    assert m.turns[0].turn == 2 and m.turns[0].reading is not None
+    assert m.used() <= 26
     assert m.take_forgotten() == 1
-    # a later cut of the same thought continues the word indices
-    f2 = m.cut_for_reload(25, 1.0)
-    assert f2.items == [{"turn": 1, "upto_i": 6}]
-    f3 = m.cut_for_reload(24, 1.0)
-    assert f3.items == [{"turn": 1, "all": True}]
-    assert m.take_forgotten() == 0  # already counted as forgotten once
-    # no reading since the loss: the marker waits at the end for the next one
-    msgs = m.past_messages()
-    assert msgs[-1] == Msg("user", "[host] earlier memory lost", kind="marker")
-    assert m.gap_turn is None
-    assert not m.cut_for_reload(100)  # under recall: nothing to cut
+    # Only when a single remaining turn is itself over the budget does the cut go inside it.
+    f2 = m.cut_for_reload(10, 1.0)
+    inside = [item for item in f2.items if "upto_i" in item]
+    assert len(m.turns) == 1 or not inside
+    assert all(item["turn"] == m.turns[0].turn for item in inside)
 
 
 def test_live_trim_cuts_on_turn_boundaries() -> None:
@@ -228,7 +223,14 @@ def test_external_token_counts_and_proportional_word_trim() -> None:
     assert m.used() == 130
     m.cut_for_reload(100, 1.0)
     assert m.used() <= 100
-    assert m.turns[0].turn == 1 and 0 < len(m.turns[0].words) < 40
+    assert m.turns[0].turn == 2  # whole turns first (ADR-014)
+    # A single turn larger than the budget is trimmed by words, in proportion to its tokens.
+    one = Memory()
+    one.append_host("[host] reading", turn=1, tokens=10)
+    one.append_thought(words(40), tokens=100)
+    one.cut_for_reload(60, 1.0)
+    assert one.used() <= 60
+    assert one.turns[0].turn == 1 and 0 < len(one.turns[0].words) < 40
 
 
 def test_set_system_reports_change_and_order_errors() -> None:
