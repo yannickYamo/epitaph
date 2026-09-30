@@ -296,7 +296,7 @@ def test_only_changed_rows_are_repainted() -> None:
         assert d.draw(1.15)  # one more letter: its row, and the strip if the clock moved
         assert d.dirty is not None and 1 <= len(d.dirty) <= 2
         row = max(d.dirty, key=lambda r: r[1])
-        assert row[2] == 1280 and row[3] < 720 / 8
+        assert row[2] < 1280 / 4 and row[3] < 720 / 8  # the new letter and the cursor
     finally:
         d.close()
 
@@ -321,7 +321,7 @@ def test_render_bench(capsys: pytest.CaptureFixture[str]) -> None:
     from epitaph.display import bench
 
     r = bench.bench_render((640, 360), "typing", seconds=1.0)
-    assert r["frames"] == 30 and 0 < r["painted"] <= 30 and r["core_share"] > 0
+    assert 0 < r["painted"] <= r["frames"] <= 30 and r["core_share"] > 0
     f = bench.bench_render((640, 360), "fade", seconds=1.0, partial=False, layout="grid")
     assert f["partial"] is False and f["painted"] > 0
     with pytest.raises(ValueError):

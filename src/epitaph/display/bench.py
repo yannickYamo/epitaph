@@ -24,6 +24,7 @@ import os
 import time
 from typing import Any
 
+from epitaph.display.app import next_frame
 from epitaph.display.layout import ViewSettings
 
 FILLER = (
@@ -80,9 +81,10 @@ def bench_render(
 ) -> dict[str, Any]:
     """Render `seconds` of `scenario` at `fps` and measure the CPU it took.
 
-    With `partial=False` every changed frame is painted and flipped whole (the drawing
-    before dirty rectangles), for comparison. Returns the measurements as a dict; the
-    `core_share` is CPU seconds per second of screen time.
+    Frames are scheduled as `app.drive` does and only changed rows are repainted. With
+    `partial=False` the view is composed every frame and every changed frame is painted
+    and flipped whole (the drawing before D7), for comparison. Returns the measurements
+    as a dict; `core_share` is CPU seconds per second of screen time.
     """
     os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
     from epitaph.display.screen import ScreenDriver
@@ -101,12 +103,16 @@ def bench_render(
             drv.view.handle({"type": "forget", "life": 1, "items": items}, 0.0)
         elif scenario != "typing":
             raise ValueError(f"unknown scenario {scenario!r} (typing or fade)")
-        frames = max(1, int(seconds * fps))
-        painted = 0
+        frames = painted = 0
         pg = drv.pg
+        now = start
         cpu0 = time.process_time()
-        for k in range(1, frames + 1):
-            now = start + k / fps
+        while True:
+            # as `app.drive` schedules frames, or every frame at `fps` for the old drawing
+            now = next_frame(drv.view, now, fps) if partial else now + 1.0 / fps
+            if now > start + seconds:
+                break
+            frames += 1
             if partial:
                 sig = drv._sig  # pyright: ignore[reportPrivateUsage]
                 drv.render(now)
@@ -118,7 +124,6 @@ def bench_render(
         cpu = time.process_time() - cpu0
     finally:
         drv.close()
-    covered = frames / fps
     return {
         "size": f"{size[0]}x{size[1]}",
         "scenario": scenario,
@@ -129,7 +134,7 @@ def bench_render(
         "frames": frames,
         "painted": painted,
         "cpu_s": round(cpu, 4),
-        "core_share": round(cpu / covered, 4),
+        "core_share": round(cpu / seconds, 4),
         "ms_per_painted_frame": round(1000 * cpu / max(1, painted), 3),
     }
 
