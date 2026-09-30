@@ -122,3 +122,22 @@ def test_system_prompt_falls_back_to_the_estimate_without_persona_text() -> None
     none = load_config("pi4/default", "pi4-4gb", overrides=empty, validate=False)
     for c in (cfg, none):
         assert estimate(c, load_costs(c)).thoughts > 0
+
+
+def test_slot_handover_shortens_reloads_and_fits_the_4b() -> None:
+    """ADR-014 (contract A16): a reload that carries the cache is silent for the load, not the
+    re-read, and the Qwen3 4B profile only fits the hour with it."""
+    from pathlib import Path
+
+    m = "qwen3-4b-instruct-2507"
+    reports = {}
+    for handover in ("reread", "slot"):
+        cfg = load_config(
+            "pi4/default-qwen3-4b",
+            "pi4-4gb",
+            overrides={"life": {"models": [m]}, "backend": {"reload_handover": handover}},
+        )
+        reports[handover] = estimate(cfg, load_costs(cfg, m, Path("bench/measured")))
+    assert reports["slot"].thoughts > reports["reread"].thoughts
+    assert reports["slot"].ok, format_report(reports["slot"])
+    assert not reports["reread"].ok

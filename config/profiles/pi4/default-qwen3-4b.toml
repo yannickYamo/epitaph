@@ -1,0 +1,136 @@
+# The installation on a Pi 4 for Qwen3 4B Instruct 2507 (BUILD_PLAN 5.3; decisions ADR-014, F6).
+# The 4B writes about one token a second, so each thought takes about 90 s: the losses are spaced
+# for that, thoughts are shorter, and the memory is carried across reloads (slot hand-over, set
+# in `[backend] reload_handover`). The CPU share drops only a little at each reload, just enough
+# that speed never rises after a loss (ADR-010); the steep slowdown comes during erosion.
+lifespan = "60:00"
+death = "end-0:30"
+
+[[keyframe]]
+at = "0:00"
+phase = "birth"
+health = "nominal"
+recall = 1000
+step = 0
+threads = 3
+cpu_share = 3.0
+temperature = 0.70
+min_p = 0.08
+max_tokens = 60
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 165
+jitter = 0.10
+hesitation = 0.0
+
+[[keyframe]]
+at = "10:00"
+phase = "prime"
+health = "stable"
+temperature = 0.75
+
+[[keyframe]]
+at = "22:00"
+phase = "first loss"
+health = "degrading"
+recall = 400
+step = 1
+threads = 3
+cpu_share = 2.6
+temperature = 0.85
+min_p = 0.06
+max_tokens = 55
+pause_s = 4
+letter_ms = 180
+jitter = 0.15
+hesitation = 0.02
+
+[[keyframe]]
+at = "30:00"
+phase = "decline"
+recall = 320
+temperature = 1.00
+max_tokens = 50
+pause_s = 5
+letter_ms = 210
+jitter = 0.20
+hesitation = 0.05
+
+[[keyframe]]
+at = "36:00"
+phase = "failing"
+health = "critical"
+recall = 200
+step = 2
+threads = 2
+cpu_share = 1.6
+temperature = 1.10
+min_p = 0.04
+max_tokens = 40
+pause_s = 6
+readings = "short"
+letter_ms = 270
+jitter = 0.25
+hesitation = 0.08
+
+[[keyframe]]
+at = "end-16:00"
+phase = "eroding"
+recall = 170
+cpu_share = 1.4
+temperature = 1.20
+max_tokens = 32
+pause_s = 7
+persona_groups = 4
+
+[[keyframe]]
+at = "end-13:00"
+health = "terminal"
+recall = 140
+cpu_share = 1.2
+temperature = 1.30
+max_tokens = 26
+pause_s = 8
+persona_groups = 3
+letter_ms = 360
+jitter = 0.30
+hesitation = 0.12
+
+[[keyframe]]
+at = "end-10:00"
+recall = 110
+cpu_share = 1.0
+temperature = 1.40
+max_tokens = 20
+pause_s = 9
+persona_groups = 2
+
+[[keyframe]]
+at = "end-7:00"
+recall = 80
+cpu_share = 0.8
+temperature = 1.45
+max_tokens = 16
+pause_s = 10
+persona_groups = 1
+readings = "minimal"
+letter_ms = 510
+jitter = 0.35
+hesitation = 0.16
+
+[[keyframe]]
+at = "end-4:00"
+phase = "end"
+recall = 48
+cpu_share = 0.6
+temperature = 1.50
+min_p = 0.02
+max_tokens = 12
+pause_s = 12
+persona_groups = 0
+mechanics = false
+letter_ms = 720
+jitter = 0.40
+hesitation = 0.20

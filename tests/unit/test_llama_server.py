@@ -434,6 +434,10 @@ async def test_slot_handover_only_within_one_model(tmp_path: Any) -> None:
         await b.start(QWEN, "Q4_K_M", 3)
         assert plain.actions == [] and b.last_handover.mode == "reread"
         assert b.last_handover.error is None
+    finally:
+        await b.aclose()
+
+
 def test_alternate_roles_for_strict_templates() -> None:
     sys_, a, u = Msg("system", "s"), Msg("assistant", "thought"), Msg("user", "[host] r")
     # a trim left a thought at the front: the memory-gap reading goes before it
@@ -468,5 +472,17 @@ async def test_chat_learns_a_strict_template_and_retries() -> None:
         chunks = [c async for c in b.chat(msgs, SAMPLING, 5)]
         assert chunks[0].text == "Hi." and b.strict_roles
         assert seen == [["system", "assistant", "user"], ["system", "user", "assistant", "user"]]
+    finally:
+        await b.aclose()
+
+
+async def test_slot_dir_is_created_before_the_first_spawn(tmp_path: Any) -> None:
+    """Regression: llama-server exits at birth if --slot-save-path is missing (/dev/shm is
+    emptied at every boot), so the directory must exist before the first spawn."""
+    slots = tmp_path / "fresh" / "epitaph-slots"
+    b = make(SlotServer(), reload_handover="slot", slot_save_path=str(slots))
+    try:
+        await b.start(QWEN, "Q8_0", 3)
+        assert slots.is_dir()
     finally:
         await b.aclose()
