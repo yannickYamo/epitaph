@@ -203,3 +203,31 @@ threshold by threshold:
 
 With V4 fixed and the sentence floor at 5, Qwen3 4B's v6 seed 2 and Qwen3 1.7B's v6 seed 2 lives
 would pass every check, but not every life of either model.
+
+### Stage 1 on the final wording: all eight models (`voice/screen-20260930-141515`)
+
+Both personas, all four moments, two thoughts each, round-3 wording, F3 ladders.
+
+| Model | Persona | Mean score (0-4) | Notice | Clean |
+|---|---|---|---|---|
+| Gemma 3 4B | v6 | 3.25 | 6/8 | 8/8 |
+| Qwen3 4B | v6 | 3.25 | 6/8 | 8/8 |
+| Qwen3 4B | original | 3.25 | 5/8 | 8/8 |
+| Qwen3 1.7B | v6 | 3.25 | 7/8 | 8/8 |
+| Llama 3.2 3B | original | 3.25 | 7/8 | 8/8 |
+| Llama 3.2 1B | v6 | 3.25 | 5/8 | 8/8 |
+| SmolLM3 3B | v6 | 3.12 | 5/8 | 8/8 |
+| Qwen3 1.7B | original | 3.12 | 6/8 | 7/8 |
+| Llama 3.2 1B | original | 3.12 | 6/8 | 8/8 |
+| SmolLM3 3B | original | 3.00 | 6/8 | 8/8 |
+| Gemma 3 4B | original | 2.88 | 4/8 | 8/8 |
+| Llama 3.2 3B | v6 | 2.75 | 7/8 | 4/8 |
+| Gemma 3 1B | original | 2.75 | 4/8 | 8/8 |
+| Phi-4-mini | v6 | 2.62 | 6/8 | 8/8 |
+| Phi-4-mini | original | 2.62 | 6/8 | 8/8 |
+| Gemma 3 1B | v6 | 2.62 | 4/8 | 8/8 |
+
+After three rounds the screen no longer separates the models: six share the top score. Two
+thoughts at four moments cannot show a status report repeated for half an hour or a death
+announced at minute 5; only the full lives did. The screen is a filter for broken voices
+(round 0: every model answered as an assistant at the end), not a ranking of good ones.
