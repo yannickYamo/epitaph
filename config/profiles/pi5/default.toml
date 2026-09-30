@@ -17,7 +17,7 @@ pause_s = 3
 persona_groups = 5
 mechanics = true
 readings = "full"
-letter_ms = 55
+letter_ms = 165
 jitter = 0.10
 hesitation = 0.0
 
@@ -36,7 +36,7 @@ step = 1
 temperature = 0.85
 max_tokens = 100
 pause_s = 4
-letter_ms = 65
+letter_ms = 195
 jitter = 0.15
 hesitation = 0.02
 
@@ -51,7 +51,7 @@ cpu_share = 2.0
 temperature = 1.00
 max_tokens = 70
 pause_s = 5
-letter_ms = 85
+letter_ms = 255
 jitter = 0.20
 hesitation = 0.05
 
@@ -68,7 +68,7 @@ min_p = 0.04
 max_tokens = 40
 pause_s = 7
 readings = "short"
-letter_ms = 120
+letter_ms = 360
 jitter = 0.30
 hesitation = 0.10
 
@@ -81,7 +81,7 @@ temperature = 1.35
 max_tokens = 25
 pause_s = 9
 persona_groups = 4
-letter_ms = 170
+letter_ms = 510
 jitter = 0.35
 hesitation = 0.15
 
@@ -108,6 +108,6 @@ max_tokens = 12
 pause_s = 12
 persona_groups = 0
 mechanics = false
-letter_ms = 240
+letter_ms = 720
 jitter = 0.40
 hesitation = 0.20

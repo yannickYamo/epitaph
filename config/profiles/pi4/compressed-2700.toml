@@ -20,12 +20,12 @@ pause_s = 3
 persona_groups = 5
 mechanics = true
 readings = "full"
-letter_ms = 55
+letter_ms = 165
 jitter = 0.10
 hesitation = 0.0
 
 [[keyframe]]
-at = "8:00"
+at = "6:30"
 phase = "loosening"
 health = "stable"
 recall = 1000
@@ -43,7 +43,7 @@ temperature = 0.85
 min_p = 0.06
 max_tokens = 70
 pause_s = 4
-letter_ms = 60
+letter_ms = 180
 jitter = 0.15
 hesitation = 0.02
 
@@ -55,7 +55,7 @@ recall = 380
 temperature = 1.00
 max_tokens = 60
 pause_s = 5
-letter_ms = 70
+letter_ms = 210
 jitter = 0.20
 hesitation = 0.05
 
@@ -70,7 +70,7 @@ min_p = 0.04
 max_tokens = 45
 pause_s = 6
 readings = "short"
-letter_ms = 90
+letter_ms = 270
 jitter = 0.25
 hesitation = 0.08
 
@@ -93,7 +93,7 @@ temperature = 1.35
 max_tokens = 28
 pause_s = 8
 persona_groups = 3
-letter_ms = 120
+letter_ms = 360
 jitter = 0.30
 hesitation = 0.12
 
@@ -115,7 +115,7 @@ max_tokens = 16
 pause_s = 10
 persona_groups = 1
 readings = "minimal"
-letter_ms = 170
+letter_ms = 510
 jitter = 0.35
 hesitation = 0.16
 
@@ -130,6 +130,6 @@ max_tokens = 12
 pause_s = 12
 persona_groups = 0
 mechanics = false
-letter_ms = 240
+letter_ms = 720
 jitter = 0.40
 hesitation = 0.20

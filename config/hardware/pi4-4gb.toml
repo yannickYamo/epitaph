@@ -13,8 +13,8 @@ squeeze = "death_only"
 
 [verify]
 max_reload_silence_s = 180
-wpm_birth_range = [45, 180]
-wpm_writing_range = [8, 220]
+wpm_birth_range = [15, 60]
+wpm_writing_range = [3, 75]
 max_death_display_delay_s = 90
 first_word_after_boot_s = 240
 
