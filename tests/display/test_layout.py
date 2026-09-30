@@ -514,3 +514,25 @@ def test_only_visible_thoughts_are_laid_out_and_the_screen_is_the_same() -> None
         got = f.text_rows()
         # the cursor may sit on a virtual line under the text
         assert got in (want, [*want[1:], ""]), (cols, rows)
+
+
+# -- when to draw next (D7) ------------------------------------------------------------------
+
+
+def test_next_change_is_the_next_letter_then_the_cursor_blink() -> None:
+    import math
+
+    from epitaph.display.app import next_frame
+
+    v = LifeView(ViewSettings(blink_s=0.5, birth_card=False))
+    born(v)
+    v.handle(word(1, 0, "abc", 100, pause=1000), 1.0)
+    assert v.next_change(0.5) == pytest.approx(1.0)  # the first letter
+    assert v.next_change(1.05) == pytest.approx(1.1)  # the second
+    assert v.next_change(1.25) == pytest.approx(1.3)  # typing stops: the cursor starts blinking
+    assert v.next_change(1.4) == pytest.approx(1.8)  # blink: 0.5 s after the last letter
+    assert next_frame(v, 1.05, fps=30) == pytest.approx(1.1)
+    assert next_frame(v, 1.09, fps=30) == pytest.approx(1.09 + 1 / 30)  # never above fps
+    assert next_frame(v, 1.4, fps=30, max_idle_s=0.25) == pytest.approx(1.65)  # at least 4/s
+    v.handle(ev("death", cause="oom"), 5.0)
+    assert v.next_change(5.0) == math.inf  # no cursor, nothing typed: only the idle redraw

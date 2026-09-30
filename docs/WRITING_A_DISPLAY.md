@@ -8,14 +8,15 @@ A display is a separate process that subscribes to the controller's events and d
 
 | Module | What it does |
 |---|---|
-| `display/layout.py` | `LifeView` (events in; words, states, typing timeline, cursor, cards, vitals, gauge, snapshot out), `compose_flow` / `compose_grid` (a `Frame` of cells), `flow_metrics`, `derive_grid`, `map_charset` |
+| `display/layout.py` | `LifeView` (events in; words, states, typing timeline, cursor, cards, vitals, gauge, snapshot out), `compose_flow` / `compose_grid` (a `Frame` of cells), `flow_metrics`, `derive_grid`, `map_charset`, `verify_probe` (verify-life's split and bright-word checks) |
 | `display/themes/` | Colours per word state, the font (IBM Plex Mono, OFL), WCAG contrast helpers |
-| `display/app.py` | `drive(driver, source)`: feeds events, redraws at a fixed rate; `make_driver` |
+| `display/app.py` | `drive(driver, source)`: feeds events, redraws when something is due (`next_frame`); `make_driver` |
 | `display/terminal.py` | ANSI driver (any terminal, over SSH) |
 | `display/screen.py` | pygame driver (window, full screen, offscreen) |
 | `display/remote.py` | `epitaph display [--connect HOST]`: SSH tunnel, reconnect, snapshot redraw |
 | `display/replay.py` | `epitaph replay LIFE --speed --from`: republish `events.jsonl` |
 | `display/screenshot.py` | Offscreen PNGs; OCR, contrast and whole-word checks (test D13) |
+| `display/bench.py` | CPU share of the pygame screen while typing and during a fade (D7) |
 
 ## A new driver in four methods
 
@@ -56,14 +57,30 @@ Then `asyncio.run(drive(MyDriver(), remote.reconnecting(connect)))`.
   at death, in the silence, or while loading.
 - **Reload:** `Frame.dim` dims the whole text.
 - **Cards:** `Frame.card = (kind, lines)` replaces the text (birth while loading and until the
-  first word; death after the last letter, for 8 s).
+  first word, at most `birth_card_seconds`; death after the last letter, for
+  `death_card_seconds`).
+- **Fades** last `fade_seconds`, including the words a reload forgets (a `forget` during the
+  reload silence fades under the dimming and keeps fading after it).
 - **Contrast:** live text at least 12:1 on the rendered pixels; fading text stays at least
   4.5:1.
 - **Snapshots:** a `snapshot` event resets the view to exactly what it describes; after a
   reconnect or an overflow, redraw everything.
+
+## Cheap redraws (BUILD_PLAN 9 D7)
+
+The Pi has four cores and the creature gets three, so a display must stay well under 5% of
+one core. `drive` does not redraw a still screen: it sleeps until `LifeView.next_change`
+(the next letter, the end of typing, the next cursor blink), a new event, or at most
+0.25 s. Inside a frame, draw only what changed: `screen.py` compares each text row's items
+(text, column, colour) with the last frame's and repaints only the changed columns, then
+sends just those rectangles to the display. A terminal driver gets the same effect by
+diffing cells.
 
 ## Checking a display
 
 - `python -m epitaph.display.screenshot --out DIR`: D13 at 800×480, 1280×720, 1920×1080 and
   1080×1920 (OCR ≥ 95%, contrast ≥ 12:1, no split words).
 - `epitaph sim --events > life.jsonl`, then `epitaph replay life.jsonl --speed 20 --driver ...`.
+- `SDL_VIDEODRIVER=offscreen python -m epitaph.display.bench --full`: the CPU share at
+  800×480, 1280×720 and 1920×1080, new drawing against whole-frame painting. Run it on the
+  Pi pinned to one core (`taskset -c 0`) for the numbers that matter.
