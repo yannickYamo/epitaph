@@ -1296,12 +1296,12 @@ Sound; several Pis reading each other's last words; a physical 16-segment displa
 Defaults in brackets. Work proceeds on the defaults.
 
 1. Project name [epitaph].
-2. Models [the two best-scoring in the rehearsal, confirmed at checkpoint A].
+2. Models [**decided at checkpoint A, 2026-09-30: Qwen3 4B Instruct 2507**, on its own schedule with the slot hand-over (ADR-022); a second model is optional and not chosen yet].
 3. Does the model know when it will die? [No.]
 4. Status strip visible to viewers [on for testing].
 5. Silence [90 s] and its style [dark].
 6. Identity erosion in five groups, the last with the mechanics [yes, 49:00-57:00].
-7. Persona [the v6 groups, unless the rehearsal favours your original]; V2 persona [you write it].
+7. Persona [**decided: Yannick's original text**, with the mechanics rewritten for an introspective, poetic voice that faces its end without announcing it (in the spirit of Latent Reflection)]; V2 persona [you write it].
 8. Display [remote view and terminal now; any screen later; plain theme].
 9. Epitaph mode [last complete sentence] and passing it on [prefill if supported].
 10. Feed [X and Bluesky, dry-run] and archive [off].
@@ -1312,7 +1312,7 @@ Defaults in brackets. Work proceeds on the defaults.
 15. Machine facts line [off].
 16. Tell the model which life it is [no].
 17. Exhibition hours [always on] and outside them [unseen].
-18. Chat or diary mode [chat, unless the rehearsal says otherwise].
+18. Chat or diary mode [**decided: chat**; diary mode made the model recite its persona].
 19. Language [English].
 20. Reveal [letter by letter, adaptive].
 21. USB 3 SSD or a new A2 SD card [no for now; decide after S4 and the first soak].
