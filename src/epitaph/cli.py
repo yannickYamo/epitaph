@@ -16,9 +16,6 @@ from epitaph.config import ConfigError, load_config, parse_duration
 
 STUBS: dict[str, tuple[str, str]] = {
     "run": ("B", "P1 (controller.py)"),
-    "display": ("D", "P0b (display/)"),
-    "replay": ("D", "P0b (display/replay.py)"),
-    "verify-life": ("E", "P0b (verify.py)"),
     "selftest": ("C", "P2 (body/)"),
     "calibrate": ("C", "P2 (body/calibrate.py)"),
     "download": ("A", "P0b (tools/download_models.py)"),
@@ -137,6 +134,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=7707)
     p.set_defaults(fn=cmd_ctl)
 
+    from epitaph import verify
+
+    p = sub.add_parser("verify-life", help="check a recorded life (BUILD_PLAN 10.3)")
+    verify.add_arguments(p)
+    p.set_defaults(fn=verify.run)
+
+    sub.add_parser("display", help="show a life live: local screen or --connect HOST (agent D)")
+    sub.add_parser("replay", help="replay a recorded life at any speed (agent D)")
+
     for name in STUBS:
         p = sub.add_parser(name, help=f"(agent {STUBS[name][0]})")
         _common(p)
@@ -145,7 +151,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Subcommands with their own argument parsers (contract proposals D1, E1).
+PASSTHROUGH = {
+    "display": "epitaph.display.remote",
+    "replay": "epitaph.display.replay",
+}
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in PASSTHROUGH:
+        import importlib
+
+        return int(importlib.import_module(PASSTHROUGH[argv[0]]).main(argv[1:]))
     args = build_parser().parse_args(argv)
     try:
         return int(args.fn(args))

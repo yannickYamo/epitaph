@@ -104,7 +104,7 @@ def test_argv_defaults_and_options() -> None:
 def test_settings_from_config() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     s = ServerSettings.from_config(cfg)
-    assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 256
+    assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 32
     assert s.load_timeout_s == 300
 
 
@@ -295,3 +295,14 @@ async def test_prefill_posts_a_one_token_request() -> None:
         assert await b.prefill([Msg("system", "s")]) == 262
     finally:
         await b.aclose()
+
+
+def test_pi4_uses_direct_io_load_mode() -> None:
+    """Spike S3: on the Pi 4 the weights load with --load-mode dio so the death limit kills."""
+    from epitaph.backend.llama_server import ServerSettings, build_argv
+    from epitaph.config import load_config
+
+    cfg = load_config("pi4/default", "pi4-4gb")
+    argv = build_argv(ServerSettings.from_config(cfg), cfg.model(), "Q6_K", 3)
+    assert argv[argv.index("--load-mode") + 1] == "dio"
+    assert "--cache-reuse" in argv and argv[argv.index("--cache-reuse") + 1] == "32"

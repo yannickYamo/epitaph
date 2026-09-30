@@ -38,3 +38,26 @@ and records the decision in CHANGELOG.md.
 | 4 | 0b-1 | A | `ModelSpec` could carry `thinking: bool` from models.toml. Not needed for now: the backend sends `chat_template_kwargs = {enable_thinking: false}` on every request (ignored by templates without the switch) | Minimal contract | |
 | 5 | 0b-1 | A | Add `prefill(messages) -> int` to the `Backend` Protocol (implemented in both backends): read the system prompt into the cache right after `start`, during the birth card or the reload silence | S1b: the system prompt alone is 80-107 s of prompt processing for a 3-4B on the Pi 4 (37 s for Qwen3 1.7B); read during the load, the birth thought is only reading + generation (67-73 s for the 3-4B, under the 90 s go) | |
 | 6 | 0b-1 | A | `config/default.toml [backend]`: `cache_reuse = 32` (was 256) and a new `threads_batch = 3` (prompt threads stay at 3 when generation drops to 2) | S2f: with 256, Qwen3 re-reads the previous thought every turn (template drops the empty think block; +54 tokens, about 10 s on the Pi) and a cut to the late recall re-reads 38-51%; with 32 every model and edit is at 4-12%. S1b/S4: prompt speed scales with threads (Qwen3 1.7B 5.9 vs 4.1 tokens/s at 3 vs 2), generation barely does (1.65 vs 1.60) | |
+
+## Decisions after phase 0b (integrator, 2026-09-30)
+
+| Proposals | Decision |
+|---|---|
+| E1, D1 | Done: `verify-life`, `display` and `replay` are wired in `cli.py`. |
+| E5 | Done: `costmodel.check_rules` is public; verify-life uses it. |
+| E7 | Done: `verify.py` under pyright strict; coverage `fail_under = 80`. |
+| A6 | Done: `cache_reuse = 32`, `threads_batch = 3` in `default.toml`. |
+| C1, C3, A2 | Done: `[body] death_fraction = 0.5`, `cpu_period_us`; `[backend] load_mode` (`auto`/`mmap`/`none`/`dio`, the Pi 4 overlay uses `dio`), passed as `--load-mode`. |
+| D7 | Done: `[display] birth_card_seconds = 4`, `death_card_seconds = 8`. |
+| A3 | Accepted (B, round 0c): the memory-gap marker goes into the first reading after the first loss, never in front of kept turns (S2f: 80% re-read otherwise). The system prompt is rebuilt from the kept groups. |
+| A5 | Accepted (A, round 0c): `prefill(messages) -> int` joins the `Backend` protocol; the controller prefills the system prompt during the birth card and reload silences. |
+| E2, E3, D2, D6 | Accepted (B, P1 controller): every event carries `t` (life clock, 0 before birth); `birth_loading` carries `profile`, `hardware`, `lifespan_s`. |
+| E4, D3, D4, C-B5 | Accepted as specified (B's controller emits them; D and E already read them). |
+| D5 | Accepted: every memory cut emits `forget`, including the cut at a reload (sim fixed in 0c; controller in P1). |
+| C-B1, A1 | Accepted (L, next contract pass): `BannedHit`, `PushResult` into `types.py`; `ContextFull`, `BackendError` into `backend/base.py`. |
+| C-B2, C-B3, E6 | Accepted: language packs in `config/lang/`; B's optional keys and the verify keyword lists live there. |
+| C-B4 | Accepted (L, 0c): the cost model cuts memory to `recall × trim_to` at a reload. |
+| C-B6 | Accepted: the fake backend takes a clock protocol. |
+| C-B7 | Done in 0a-fix: `letters_per_token = 3.5` (non-space letters). |
+| 2 (C) | Accepted: `body.cgroup.make_body(cfg)` is the controller's only factory; controller units are named `epitaph*`. |
+| A4 | No change needed. |

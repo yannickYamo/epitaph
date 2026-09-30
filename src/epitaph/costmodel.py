@@ -187,7 +187,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
         t = t_done
 
     report.thought_times = life.thought_times
-    _check_rules(report, sch, end)
+    check_rules(report, sch, end)
     report.notes.append(
         f"{report.thoughts} thoughts; costs from {costs.source}"
         + (" (estimated)" if costs.estimated else "")
@@ -203,7 +203,8 @@ def _count(times: list[float], a: float, b: float) -> int:
     return sum(1 for x in times if a <= x < b)
 
 
-def _check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
+def check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
+    """Apply the thought-count rule (a)-(d) to report.thought_times; used by verify-life too."""
     th = report.thought_times
     health = sch.health_times()
     changes = sorted(set(sch.change_times()))
