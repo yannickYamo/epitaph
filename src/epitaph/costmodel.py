@@ -10,7 +10,15 @@ on real lives, because a profile is where they are won or lost:
 - **reload silence** (`verify.max_reload_silence_s`): the load plus the full re-read of a
   fresh server, from the reload to the first word after it;
 - **speed decline** (`verify.max_speed_ratio_end_vs_start`, full-level profiles): generation
-  speed in the last 5 minutes against the first 5.
+  speed in the last 5 minutes against the first 5;
+- **speed monotonic** (review 2, F2): generation never speeds up across a reload. The first
+  thought after each reload may not be modelled faster than the last thought before it.
+  Speeds here follow the context, which a reload cuts: when the bench measured a short
+  context (the birth thought) and a deep one, the speed at a thought is interpolated
+  between them by its prompt size and held at the nearer end outside that range; otherwise
+  the deep rate stands for every context. The life drift (below) is left out on both sides,
+  because a reload restarts the server and whether that resets the drift is not measured
+  (F8). `estimate.speed_monotonic = "warn"` reports a violation as a note instead.
 
 What the estimate assumes, from the spikes:
 
@@ -64,6 +72,10 @@ class Costs:
     # Generation at a short context (the bench birth thought), when measured: the end of a
     # life runs with little memory, so this is its speed (speed-decline check).
     tg_short_tok_s: dict[str, float] = field(default_factory=lambda: {})
+    # Prompt sizes (tokens) at which the short and the deep rates were measured, when known:
+    # `tg_at` interpolates between them.
+    short_ctx: float | None = None
+    deep_ctx: float | None = None
 
     def _rate(self, table: dict[str, float], step: int, threads: int) -> float:
         key = f"{step}-{threads}"
@@ -102,6 +114,21 @@ class Costs:
         table = {**self.tg_tok_s, **self.tg_short_tok_s}
         return self._rate(table, step, threads) * min(1.0, share / threads)
 
+    def tg_at(self, step: int, threads: int, share: float, context: float) -> float:
+        """Generation speed at a prompt of `context` tokens, scaled like `tg`.
+
+        Interpolates between the short-context rate (`tg_short`, at `short_ctx`) and the
+        deep one (`tg`, at `deep_ctx`), held at the nearer end outside that range; the deep
+        rate when either size is unknown.
+        """
+        deep = self.tg(step, threads, share)
+        lo, hi = self.short_ctx, self.deep_ctx
+        if lo is None or hi is None or hi <= lo:
+            return deep
+        short = self.tg_short(step, threads, share)
+        frac = min(1.0, max(0.0, (context - lo) / (hi - lo)))
+        return short + (deep - short) * frac
+
     def load(self, step: int) -> float:
         """Seconds to load the model at a ladder step; steps past the list reuse the last."""
         return self.load_s[min(step, len(self.load_s) - 1)]
@@ -122,6 +149,8 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
     bench = bench_dir or REPO_ROOT / "bench"
     measured = sorted(bench.glob(f"{cfg.hw_class}-{name}-*.json")) if bench.exists() else []
     late: list[float] = []
+    short_ctx: list[float] = []
+    deep_ctx: list[float] = []
     for path in measured:
         rec: dict[str, Any] = json.loads(path.read_text())
         key = f"{rec['step']}-{rec['threads']}"
@@ -132,6 +161,10 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
                 costs.late_after_s = float(rec.get("late_after_s", costs.late_after_s))
         if "tg_tok_s_birth" in rec:
             costs.tg_short_tok_s[key] = float(rec["tg_tok_s_birth"])
+            birth: dict[str, Any] = rec.get("birth") or {}
+            if birth.get("prompt_tokens") and rec.get("deep_prompt_tokens"):
+                short_ctx.append(float(birth["prompt_tokens"]))
+                deep_ctx.append(float(rec["deep_prompt_tokens"]))
         if "pp_tok_s" in rec:
             costs.pp_tok_s[key] = float(rec["pp_tok_s"])
         if "load_s" in rec:
@@ -143,6 +176,9 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
             costs.cache_reuse_works = bool(rec["cache_reuse_works"])
     if late:
         costs.tg_late_factor = min(1.0, *late)
+    if short_ctx:
+        costs.short_ctx = statistics.fmean(short_ctx)
+        costs.deep_ctx = statistics.fmean(deep_ctx)
     if measured:
         costs.estimated = False
         costs.source = f"bench ({len(measured)} files) over {costs.source}"
@@ -161,6 +197,10 @@ class _Life:
     thought_times: list[float] = field(default_factory=lambda: [])
     # (start time, generation speed at a short context) per thought, for the speed decline
     speeds: list[tuple[float, float]] = field(default_factory=lambda: [])
+    # generation speed at each thought's own context (speed monotonic), and for each reload
+    # (its start, the index of the first thought after it)
+    gen_speeds: list[float] = field(default_factory=lambda: [])
+    reload_thoughts: list[tuple[float, int]] = field(default_factory=lambda: [])
     reload_windows: list[tuple[float, float]] = field(default_factory=lambda: [])
     silences: list[float] = field(default_factory=lambda: [])
 
@@ -272,8 +312,12 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
             life.silences.append(t_first_word - reload_start)
         if t_done > end:
             break
+        if reload_start is not None:
+            life.reload_thoughts.append((reload_start, len(life.thought_times)))
         life.thought_times.append(t_done)
         life.speeds.append((t, costs.tg_short(life.step, life.threads, share)))
+        context = sys_tokens + life.memory + reading
+        life.gen_speeds.append(costs.tg_at(life.step, life.threads, share, context))
         life.memory += reading + int(gen_tokens)
         t = t_done
 
@@ -281,6 +325,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
     check_rules(report, sch, end)
     _check_silences(report, cfg, life.silences)
     _check_speed_decline(report, cfg, life.speeds, end)
+    _check_speed_monotonic(report, cfg, life.gen_speeds, life.reload_thoughts)
     report.notes.append(
         f"{report.thoughts} thoughts; costs from {costs.source}"
         + (" (estimated)" if costs.estimated else "")
@@ -343,6 +388,41 @@ def _check_speed_decline(
                 "speed", end - 300, f"last 5 min at {ratio:.0%} of the first 5 (need < {limit:.0%})"
             )
         )
+
+
+def _check_speed_monotonic(
+    report: RuleReport,
+    cfg: Config,
+    speeds: list[float],
+    reloads: list[tuple[float, int]],
+) -> None:
+    """The first thought after each reload is not modelled faster than the last one before.
+
+    `speeds` is the generation speed of every thought at its own context (`Costs.tg_at`);
+    `reloads` pairs each reload's start with the index of the first thought after it. A
+    violation is a note instead when `estimate.speed_monotonic` is "warn".
+    """
+    mode = str(cfg.get("estimate.speed_monotonic", "fail"))
+    if mode not in ("fail", "warn"):
+        raise ValueError(f'estimate.speed_monotonic must be "fail" or "warn", not {mode!r}')
+    steps: list[str] = []
+    for start, i in reloads:
+        if i == 0 or i >= len(speeds):
+            continue
+        before, after = speeds[i - 1], speeds[i]
+        steps.append(f"{before:.2f} -> {after:.2f} at {start / 60:.1f} min")
+        if after <= before * (1 + 1e-9):
+            continue
+        detail = (
+            f"reload at {start / 60:.1f} min speeds generation up from {before:.2f} to "
+            f"{after:.2f} tokens/s ({after / before - 1:+.0%}); it must never rise"
+        )
+        if mode == "warn":
+            report.notes.append(f"WARNING speed_monotonic (warn only): {detail}")
+        else:
+            report.violations.append(RuleViolation("speed_monotonic", start, detail))
+    if steps:
+        report.notes.append("speed across reloads (tokens/s): " + "; ".join(steps))
 
 
 def _count(times: list[float], a: float, b: float) -> int:
