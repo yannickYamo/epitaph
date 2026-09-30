@@ -50,5 +50,7 @@
   "fits": true,
   "temp_c": 52.582,
   "throttled": "throttled=0x0",
-  "birth_ok": true
+  "birth_ok": true,
+  "cache_reuse_works": true,
+  "cache_reuse_note": "S2f/S2t: warm trims and erosion re-read 2-8% with --cache-reuse (Gemma 3 needs --swa-full)"
 }
