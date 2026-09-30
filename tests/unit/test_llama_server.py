@@ -15,8 +15,7 @@ from typing import Any
 import httpx
 import pytest
 
-from epitaph.backend.base import CreatureDied
-from epitaph.backend.errors import BackendError, ContextFull
+from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.backend.llama_server import (
     LlamaServerBackend,
     ServerSettings,
@@ -105,7 +104,7 @@ def test_settings_from_config() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     s = ServerSettings.from_config(cfg)
     assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 32
-    assert s.load_timeout_s == 300
+    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == -1
 
 
 def test_request_body() -> None:
@@ -114,6 +113,9 @@ def test_request_body() -> None:
     assert b["messages"] == [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
     assert b["chat_template_kwargs"] == {"enable_thinking": False}
     assert b["dry_multiplier"] == 0.8 and "grammar" not in b
+    assert "dry_penalty_last_n" not in b  # the server's default unless asked
+    assert request_body([], SAMPLING, 1, dry_penalty_last_n=-1)["dry_penalty_last_n"] == -1
+    assert ServerSettings().dry_penalty_last_n == -1  # whole context: DRY sees past thoughts
     raw = request_body(None, Sampling(0.7, 0.05, latin_only=True), 20, prompt="Dear")
     assert raw["prompt"] == "Dear" and raw["n_predict"] == 20 and "grammar" in raw
 
@@ -137,7 +139,10 @@ def test_sse_parsing() -> None:
 async def test_start_stream_and_timings() -> None:
     def api(req: httpx.Request) -> httpx.Response:
         assert req.url.path == "/v1/chat/completions"
-        assert json.loads(req.content)["messages"][0]["role"] == "system"
+        body = json.loads(req.content)
+        assert body["messages"][0]["role"] == "system"
+        # -1 (the whole context) is sent as ctx: b11277 rejects negative values
+        assert body["dry_penalty_last_n"] == 2048
         return httpx.Response(200, content=sse(chat_events(["I ", "am ", "here."])))
 
     body = SleeperBody()
@@ -160,6 +165,7 @@ async def test_start_stream_and_timings() -> None:
 async def test_complete_stream() -> None:
     def api(req: httpx.Request) -> httpx.Response:
         assert req.url.path == "/completion"
+        assert json.loads(req.content)["dry_penalty_last_n"] == 2048
         evs = [{"content": "a"}, {"content": "b", "stop": True, "timings": {"predicted_n": 2}}]
         return httpx.Response(200, content=sse(evs))
 

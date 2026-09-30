@@ -20,6 +20,20 @@ class CreatureDied(RuntimeError):
         self.status = status
 
 
+class ContextFull(RuntimeError):
+    """The prompt no longer fits the context (`unbounded` dies of this: cause=full)."""
+
+    def __init__(self, tokens: int, ctx: int) -> None:
+        """`tokens` is the prompt size and `ctx` the context size, both in tokens."""
+        super().__init__(f"context full: {tokens} tokens > ctx {ctx}")
+        self.tokens = tokens
+        self.ctx = ctx
+
+
+class BackendError(RuntimeError):
+    """The server answered with an error, or a stream broke while the process lives on."""
+
+
 class Backend(Protocol):
     """A running creature. start() spawns it; chat() streams one thought."""
 
@@ -42,6 +56,16 @@ class Backend(Protocol):
 
     def complete(self, prompt: str, sampling: Sampling, max_tokens: int) -> AsyncIterator[Chunk]:
         """Stream a raw completion of `prompt` (diary mode); the final chunk is as in chat()."""
+        ...
+
+    async def prefill(self, messages: list[Msg]) -> int:
+        """Read `messages` into the prompt cache without showing anything; return tokens read.
+
+        The controller calls it right after `start`, during the birth card or a reload
+        silence, with the system prompt, so the first thought only has to read its reading
+        (spike S1b: the system prompt alone is 37-107 s of prompt processing on the Pi 4).
+        Raises CreatureDied if the process is gone.
+        """
         ...
 
     async def count_past_tokens(self, messages: list[Msg]) -> int:
