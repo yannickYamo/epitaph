@@ -133,7 +133,7 @@ fix_sudoers() { put_file "$SUDOERS" 0440 "$SUDOERS_BODY" "visudo -cqf"; }
 # --- Wi-Fi country, radio, power save ----------------------------------------------------
 chk_country() {
   [ "$(raspi-config nonint get_wifi_country 2>/dev/null)" = "$COUNTRY" ] \
-    && ! rfkill list wifi 2>/dev/null | grep -q "Soft blocked: yes"
+    && ! grep -q "Soft blocked: yes" <<<"$(rfkill list wifi 2>/dev/null)"
 }
 fix_country() { raspi-config nonint do_wifi_country "$COUNTRY" && rfkill unblock wifi; }
 
@@ -176,7 +176,7 @@ fix_eth() {
 # --- cloud-init off after first boot, credentials out of user-data -----------------------
 chk_cloudinit() { [ -e /etc/cloud/cloud-init.disabled ] || [ ! -d /etc/cloud ]; }
 fix_cloudinit() {
-  if cloud-init status 2>/dev/null | grep -q running; then
+  if grep -q running <<<"$(cloud-init status 2>/dev/null)"; then
     echo "cloud-init is still running its first boot; try again later" >&2; return 1
   fi
   touch /etc/cloud/cloud-init.disabled
@@ -269,20 +269,24 @@ chk_ntp() { [ "$(timedatectl show -p NTP --value)" = yes ]; }
 fix_ntp() { timedatectl set-ntp true; }
 
 # --- sshd: keys only except over the cable -----------------------------------------------
+# sshd -T output is captured first: `sshd -T | grep -q` under pipefail fails when grep exits
+# early and sshd gets SIGPIPE.
 chk_sshd() {
+  local wifi cable
+  wifi="$(sshd -T 2>/dev/null)"; cable="$(sshd -T -C addr=10.42.0.1,user=pi,host=laptop 2>/dev/null)"
   same_file "$SSHD" 644 "$SSHD_BODY" && [ ! -e /etc/ssh/sshd_config.d/50-cloud-init.conf ] \
-    && sshd -T 2>/dev/null | grep -qx 'passwordauthentication no' \
-    && sshd -T -C addr=10.42.0.1,user=pi,host=laptop 2>/dev/null | grep -qx 'passwordauthentication yes'
+    && grep -qx 'passwordauthentication no' <<<"$wifi" \
+    && grep -qx 'passwordauthentication yes' <<<"$cable"
 }
 fix_sshd() {
-  backup "$SSHD"
+  [ -e "$SSHD" ] && cp -a "$SSHD" "/root/10-epitaph.conf.bak-bootstrap-$STAMP"
   if [ -e /etc/ssh/sshd_config.d/50-cloud-init.conf ]; then
     mv /etc/ssh/sshd_config.d/50-cloud-init.conf "/root/50-cloud-init.conf.bak-bootstrap-$STAMP"
   fi
   put_file "$SSHD" 0644 "$SSHD_BODY"
   if ! sshd -t; then
     echo "sshd config invalid; restoring" >&2
-    [ -e "$SSHD.bak-bootstrap-$STAMP" ] && cp -a "$SSHD.bak-bootstrap-$STAMP" "$SSHD"
+    [ -e "/root/10-epitaph.conf.bak-bootstrap-$STAMP" ] && cp -a "/root/10-epitaph.conf.bak-bootstrap-$STAMP" "$SSHD"
     return 1
   fi
   systemctl reload ssh
