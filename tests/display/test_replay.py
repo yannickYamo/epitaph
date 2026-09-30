@@ -84,6 +84,12 @@ def test_timeline_from_ts_when_no_t() -> None:
         {"type": "birth", "life": 2, "ts": 200.0},
     ]
     assert replay.timeline(ev) == [0.0, 1.5, 1.5, 100.5]
+    # between lives: the ts gap, but never less than the announced silence
+    ev2 = [
+        {"type": "silence", "life": 1, "ts": 10.0, "seconds": 90},
+        {"type": "birth_loading", "life": 2, "ts": 10.001},
+    ]
+    assert replay.timeline(ev2) == [0.0, 90.0]
 
 
 def test_start_index_and_scaled() -> None:

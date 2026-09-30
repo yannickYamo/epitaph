@@ -78,7 +78,7 @@ def timeline(events: list[Event]) -> list[float]:
 
     Within a life, time advances by the change in the life clock `t` (or in `ts` when an
     event has no `t`); a clock that goes backwards (the load before `birth`) adds nothing.
-    Between lives it advances by the `ts` gap, or by the announced silence.
+    Between lives it advances by the `ts` gap, and at least by the announced silence.
     """
     keys: list[float] = []
     key = 0.0
@@ -89,10 +89,9 @@ def timeline(events: list[Event]) -> list[float]:
     for n, e in enumerate(events):
         t, ts = _num(e.get("t")), _num(e.get("ts"))
         if n and e.get("life") != life:
-            gap = (
-                ts - prev_ts if ts is not None and prev_ts is not None and ts > prev_ts else silence
-            )
-            key += gap
+            # a real gap is the silence plus the next load; the simulator's ts barely moves
+            ts_gap = ts - prev_ts if ts is not None and prev_ts is not None else 0.0
+            key += max(ts_gap, silence)
             prev_t, silence = None, 0.0
         elif n:
             if t is not None and prev_t is not None:
