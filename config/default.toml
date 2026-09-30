@@ -131,7 +131,8 @@ fill = 0.85                      # share of max_tokens a thought actually uses
 reading_tokens = { full = 45, short = 28, minimal = 10 }
 system_tokens_per_group = 30
 mechanics_tokens = 70
-letters_per_token = 4.2
+letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters per word; rehearsal measures it
+letters_per_word = 4.7
 cache_reuse_works = true         # set from spike S2
 
 [paths]

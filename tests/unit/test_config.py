@@ -65,7 +65,7 @@ def test_unknown_model_is_rejected() -> None:
 
 def test_overlay_overrides_base() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
-    assert cfg.get("verify.wpm_birth_range") == [45, 180]
+    assert cfg.get("verify.wpm_birth_range") == [15, 60]  # decision 30
     assert cfg.get("body.token_gap_timeout_s") == 120
 
 
