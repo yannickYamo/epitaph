@@ -161,7 +161,7 @@ unknown. The Pi lives of phase 2 will show it.
 
 A lower share also slows the post-reload re-read (prompt threads are capped by the share, QUESTIONS
 A #9), so the post-reload recalls come down to keep the silence under 180 s. The tuning round
-that followed (docs/PROMPT_LOG.md) made the mechanics 25 tokens longer, which every fresh
+that followed (docs/PROMPT_LOG.md) made the mechanics longer (about 95 to 131 tokens), which every fresh
 server re-reads, so the recalls came down once more and reload 2 of `pi4/default` moved 30 s
 earlier (a thought in progress at 43:00 pushed the reload to 44:06, leaving one thought before
 erosion, rule (b)):
