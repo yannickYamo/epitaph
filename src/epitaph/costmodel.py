@@ -7,6 +7,7 @@ the model enough thoughts after every loss to notice it? Costs come from bench/*
 
 from __future__ import annotations
 
+import itertools
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +35,9 @@ class Costs:
         if key in table:
             return table[key]
         # Nearest known thread count for this step, scaled linearly by threads.
-        same_step = [(int(k.split("-")[1]), v) for k, v in table.items() if k.startswith(f"{step}-")]
+        same_step = [
+            (int(k.split("-")[1]), v) for k, v in table.items() if k.startswith(f"{step}-")
+        ]
         if same_step:
             th, v = min(same_step, key=lambda kv: abs(kv[0] - threads))
             return v * threads / th
@@ -207,12 +210,16 @@ def _check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
 
     # (a) at least 3 thoughts between consecutive health-label changes
     bounds = [0.0, *health, end]
-    for a, b in zip(bounds[1:-1], bounds[2:], strict=False):
+    for a, b in itertools.pairwise(bounds):
         n = _count(th, a, b)
         if n < 3:
             report.violations.append(
-                RuleViolation("a", a, f"{n} thoughts between health changes at "
-                              f"{a / 60:.1f} and {b / 60:.1f} min (need 3)")
+                RuleViolation(
+                    "a",
+                    a,
+                    f"{n} thoughts between health changes at "
+                    f"{a / 60:.1f} and {b / 60:.1f} min (need 3)",
+                )
             )
 
     # (b) at least 2 thoughts after each reload's silence ends, before the next change
@@ -221,9 +228,13 @@ def _check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
         n = _count(th, resumed, nxt)
         if n < 2:
             report.violations.append(
-                RuleViolation("b", start, f"reload at {start / 60:.1f} min resumes at "
-                              f"{resumed / 60:.1f}; {n} thoughts before the next change at "
-                              f"{nxt / 60:.1f} (need 2)")
+                RuleViolation(
+                    "b",
+                    start,
+                    f"reload at {start / 60:.1f} min resumes at "
+                    f"{resumed / 60:.1f}; {n} thoughts before the next change at "
+                    f"{nxt / 60:.1f} (need 2)",
+                )
             )
 
     # (c) at least 1 thought after each persona group is removed
@@ -232,8 +243,11 @@ def _check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
         n = _count(th, e, nxt)
         if n < 1:
             report.violations.append(
-                RuleViolation("c", e, f"no thought between erosion steps at {e / 60:.1f} "
-                              f"and {nxt / 60:.1f} min")
+                RuleViolation(
+                    "c",
+                    e,
+                    f"no thought between erosion steps at {e / 60:.1f} and {nxt / 60:.1f} min",
+                )
             )
 
     # (d) at least 4 thoughts after erosion starts

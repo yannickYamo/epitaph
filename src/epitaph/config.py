@@ -8,6 +8,7 @@ Validation fails fast with a message that names the file and the problem.
 from __future__ import annotations
 
 import copy
+import itertools
 import os
 import re
 import tomllib
@@ -339,7 +340,7 @@ def validate_config(cfg: Config) -> None:
     times = [kf.at.resolve(p.nominal_s, p.lifespan_s) for kf in p.keyframes]
     if times[0] != 0:
         problems.append("the first keyframe must be at 0:00")
-    for (a, b), kf in zip(zip(times, times[1:], strict=False), p.keyframes[1:], strict=True):
+    for (a, b), kf in zip(itertools.pairwise(times), p.keyframes[1:], strict=True):
         if b <= a:
             problems.append(
                 f"keyframe at {_fmt(kf.at)} resolves to {b:.0f}s, not after the previous "
@@ -368,7 +369,9 @@ def validate_config(cfg: Config) -> None:
         if v["health"] not in HEALTH_LABELS:
             problems.append(f"{where}: unknown health label {v['health']!r}")
         if not 0 <= int(v["step"]) < ladder_len:
-            problems.append(f"{where}: ladder step {v['step']} does not exist (0..{ladder_len - 1})")
+            problems.append(
+                f"{where}: ladder step {v['step']} does not exist (0..{ladder_len - 1})"
+            )
         if not 1 <= int(v["threads"]) <= 3:
             problems.append(f"{where}: threads must be 1-3 (core 0 belongs to the controller)")
         if not 0 < float(v["cpu_share"]) <= int(v["threads"]):
