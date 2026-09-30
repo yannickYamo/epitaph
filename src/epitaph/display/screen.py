@@ -5,6 +5,11 @@ It draws the same `Frame` as the terminal: letters typed one by one with each wo
 cadence, a block cursor (solid while typing, blinking in pauses, dim in a reload, gone at
 death), forgotten words fading through grey, the whole text dimmed during a reload, a
 small status strip above the text, and the birth and death cards.
+
+Only what changed is repainted (D7): each frame is reduced to the items of each text row
+and the status strip, and only rows whose items differ are cleared, redrawn and sent to
+the display. A letter typed costs one row, not the screen. `python -m
+epitaph.display.bench` measures the CPU this takes.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +35,24 @@ from epitaph.display.layout import (
 from epitaph.display.themes import PLAIN, Rgb, Theme
 
 DEFAULT_WINDOW = (1280, 720)
+
+# A fade is drawn in this many colour steps: about four repaints a second over an 8 s fade
+# instead of thirty, each step a few grey levels (too small to see as a step).
+FADE_STEPS = 32
+
+Rect = tuple[int, int, int, int]
+RowItem = tuple[str, int, str, Rgb]  # kind (text, gauge, cursor), column, text, colour
+
+
+@dataclass(frozen=True)
+class _Geometry:
+    """Pixel position of cell (0, 0), the cell size and the letter size on the surface."""
+
+    left: float
+    top: float
+    cell_w: float
+    line_h: float
+    px: int
 
 
 def _pygame() -> Any:
@@ -90,6 +114,10 @@ class ScreenDriver:
         self.last_frame: Frame | None = None
         self._cache: dict[tuple[int, str, Rgb], Any] = {}
         self._sig: tuple[Any, ...] | None = None
+        self._rows: dict[int, tuple[RowItem, ...]] | None = None
+        self._scene: tuple[Any, ...] | None = None
+        self._status: str | None = None
+        self.dirty: list[Rect] | None = None
         self._fonts: dict[int, Any] = {}
         self.font_path: Path | None = None
 
@@ -126,6 +154,7 @@ class ScreenDriver:
         self._cache.clear()
         self._fonts.clear()
         self._sig = None
+        self._rows = None
         self.font_path = _font_path(self.theme)
         m = flow_metrics(
             *logical,
@@ -199,7 +228,8 @@ class ScreenDriver:
     def render(self, now: float | None = None) -> None:
         """Process window events (quit on close, q or Esc; refit on resize), then draw.
 
-        The display is flipped only when the frame changed.
+        The display is flipped only when the frame changed, and only the changed
+        rectangles are sent to it when the rest of the screen is unchanged.
         """
         pg = self._ensure()
         for ev in pg.event.get():
@@ -208,7 +238,10 @@ class ScreenDriver:
             elif ev.type == pg.VIDEORESIZE and not self.rotate:
                 self._setup(self.window.get_size())
         if self.draw(self.clock() if now is None else now):
-            pg.display.flip()
+            if self.dirty is None:
+                pg.display.flip()
+            elif self.dirty:
+                pg.display.update(self.dirty)
 
     # -- drawing ----------------------------------------------------------------------------
 
@@ -236,47 +269,135 @@ class ScreenDriver:
         """Paint the view at `now` onto the window; returns whether anything was painted.
 
         Returns False, painting nothing, when the frame equals the last one painted (unless
-        `force`), so a still screen costs no drawing or flip. The caller flips.
+        `force`), so a still screen costs no drawing or flip. Otherwise only the text rows
+        and the status strip that changed are repainted, and `dirty` lists their rectangles
+        in window pixels; `dirty` is None after a full repaint (the first frame, a card, the
+        dark screen, a reload dimming the text, or `force`). The caller flips or updates.
         """
-        pg = self._ensure()
+        self._ensure()
         assert self.metrics is not None
         frame = self.compose(now)
         self.last_frame = frame
-        sig = _signature(frame)
+        g = self._geometry()
+        rows = _rows(frame, self.theme)
+        scene = (frame.dark, frame.card is not None, frame.dim)
+        status = self._status_text(frame.status) if frame.status and not frame.dark else None
+        card = (frame.card[0], tuple(frame.card[1])) if frame.card is not None else None
+        sig = (tuple(sorted(rows.items())), status, card, scene)
         if not force and sig == self._sig:
             return False
         self._sig = sig
-        m = self.metrics
         surf = self.surface
-        surf.fill(self.theme.bg)
-        if not frame.dark:
-            if self.layout == "grid":
-                _, _, margin, cell_w, line_h, px = self._grid_geometry()
+        full = force or self._rows is None or scene != self._scene or frame.card is not None
+        if full:
+            surf.fill(self.theme.bg)
+            rects: list[Rect] | None = None
+            if not frame.dark:
+                if status:
+                    self._draw_status(status)
                 if frame.card is not None:
-                    self._draw_card(frame.card[1], px)
+                    self._draw_card(frame.card[1], g.px)
                 else:
-                    self._draw_cells(frame, margin, margin, cell_w, line_h, px)
-            else:
-                if frame.status:
-                    self._draw_status(frame.status)
-                if frame.card is not None:
-                    self._draw_card(frame.card[1], m.font_px)
-                else:
-                    left = m.margin_x + (m.width - 2 * m.margin_x - m.cols * m.cell_w) / 2
-                    top = m.margin_y + m.strip_h
-                    self._draw_cells(frame, left, top, m.cell_w, m.line_h, m.font_px)
-        if self.rotate:
-            self.window.blit(pg.transform.rotate(surf, self.rotate), (0, 0))
+                    for r, items in rows.items():
+                        self._draw_row(r, items, g, frame)
+        else:
+            rects = []
+            if status != self._status:
+                rects.append(self._paint_band(self._status_rect(self._status, status)))
+                if status:
+                    self._draw_status(status)
+            old = self._rows or {}
+            for r in sorted(set(rows) | set(old)):
+                new, before = rows.get(r, ()), old.get(r, ())
+                if new != before:
+                    x0, x1 = self._extent(set(new) ^ set(before), g)
+                    y0, h = self._row_band(r, g)[1::2]
+                    rect = self._paint_band((x0, y0, x1 - x0, h))
+                    rects.append(rect)
+                    self._draw_row(r, new, g, frame, rect)
+        self._rows, self._scene, self._status = rows, scene, status
+        self.dirty = self._to_window(rects)
         return True
 
-    def _draw_status(self, text: str) -> None:
-        """Draw the status strip in small type, trimmed to whole parts to fit the width."""
+    def _geometry(self) -> _Geometry:
+        """Where text cells go on the logical surface, for the current layout."""
         m = self.metrics
         assert m is not None
-        px = max(12, round(m.font_px * 0.45))
-        font = self.font(px)
+        if self.layout == "grid":
+            _, _, margin, cell_w, line_h, px = self._grid_geometry()
+            return _Geometry(margin, margin, cell_w, line_h, px)
+        left = m.margin_x + (m.width - 2 * m.margin_x - m.cols * m.cell_w) / 2
+        return _Geometry(left, m.margin_y + m.strip_h, m.cell_w, m.line_h, m.font_px)
+
+    def _paint_band(self, rect: Rect) -> Rect:
+        """Fill `rect` with the background; returns it, clipped to the logical surface."""
+        r = self.pg.Rect(rect).clip(self.surface.get_rect())
+        self.surface.fill(self.theme.bg, r)
+        return (r.x, r.y, r.w, r.h)
+
+    def _row_band(self, row: int, g: _Geometry) -> Rect:
+        """The full-width band of text row `row`; bands of neighbouring rows never overlap."""
+        y0 = round(g.top + row * g.line_h)
+        y1 = round(g.top + (row + 1) * g.line_h)
+        return (0, y0, self.surface.get_width(), max(1, y1 - y0))
+
+    def _status_band(self) -> Rect:
+        """Everything above the first text row: margin and status strip."""
+        m = self.metrics
+        assert m is not None
+        return (0, 0, self.surface.get_width(), max(1, round(m.margin_y + m.strip_h)))
+
+    def _status_rect(self, *texts: str | None) -> Rect:
+        """Where the status strip showing any of `texts` is drawn, inside `_status_band`."""
+        m = self.metrics
+        assert m is not None
+        px = self._status_px()
+        w = max((self._glyphs(px, t, self.theme.status).get_width() for t in texts if t), default=0)
+        r = self.pg.Rect(m.margin_x, m.margin_y, w + 1, self.font(px).get_height())
+        band = r.clip(self._status_band())
+        return (band.x, band.y, band.w, band.h)
+
+    def _to_window(self, rects: list[Rect] | None) -> list[Rect] | None:
+        """Copy the painted logical rectangles to the window (rotating them if needed).
+
+        Returns the rectangles to update in window pixels, or None for the whole window.
+        """
+        pg = self.pg
+        if not self.rotate:
+            return rects
+        if rects is None:
+            self.window.blit(pg.transform.rotate(self.surface, self.rotate), (0, 0))
+            return None
+        width = self.surface.get_width()
+        out: list[Rect] = []
+        for x, y, w, h in rects:
+            if w <= 0 or h <= 0:
+                continue
+            piece = pg.transform.rotate(self.surface.subsurface((x, y, w, h)), self.rotate)
+            # 90 degrees counter-clockwise: logical (x, y) lands at (y, width - x)
+            dest = (y, width - x - w, h, w)
+            self.window.blit(piece, dest[:2])
+            out.append(dest)
+        return out
+
+    def _status_text(self, text: str) -> str:
+        """The status strip trimmed to whole parts so it fits the width."""
+        m = self.metrics
+        assert m is not None
+        font = self.font(self._status_px())
         max_chars = max(1, int((m.width - 2 * m.margin_x) // max(1, font.size("M")[0])))
-        glyphs = self._glyphs(px, fit_status(text, max_chars), self.theme.status)
+        return fit_status(text, max_chars)
+
+    def _status_px(self) -> int:
+        """Letter height of the status strip: 45% of the text, at least 12 pixels."""
+        assert self.metrics is not None
+        return max(12, round(self.metrics.font_px * 0.45))
+
+    def _draw_status(self, text: str) -> None:
+        """Draw the (already fitted) status strip in small type above the text."""
+        m = self.metrics
+        assert m is not None
+        glyphs = self._glyphs(self._status_px(), text, self.theme.status)
         self.surface.blit(glyphs, (m.margin_x, m.margin_y))
 
     def _draw_card(self, lines: list[str], px: int) -> None:
@@ -299,31 +420,57 @@ class ScreenDriver:
             self.surface.blit(g, ((m.width - g.get_width()) / 2, y))
             y += size + gap
 
-    def _draw_cells(
-        self, frame: Frame, left: float, top: float, cell_w: float, line_h: float, px: int
+    def _extent(self, items: set[RowItem], g: _Geometry) -> tuple[int, int]:
+        """The horizontal pixel span covering `items` as drawn (a margin of 1 pixel)."""
+        width = self.surface.get_width()
+        x0, x1 = width, 0
+        for kind, col, text, colour in items:
+            x = round(g.left + col * g.cell_w)
+            if kind == "text":
+                end = x + self._glyphs(g.px, text, colour).get_width()
+            elif kind == "cursor":
+                end = x + round(g.cell_w)
+            else:  # the gauge spans the row
+                x, end = 0, width
+            x0, x1 = min(x0, x), max(x1, end)
+        return max(0, x0 - 1), min(width, x1 + 1)
+
+    def _draw_row(
+        self,
+        row: int,
+        items: tuple[RowItem, ...],
+        g: _Geometry,
+        frame: Frame,
+        clip: Rect | None = None,
     ) -> None:
-        """Draw the spans and the cursor on a cell grid starting at (`left`, `top`) pixels."""
-        th = self.theme
-        font_h = self.font(px).get_height()
-        pad = (line_h - font_h) / 2
-        for s in frame.spans:
-            x = left + s.col * cell_w
-            y = top + s.row * line_h + pad
-            if s.kind == "gauge":
-                self._draw_gauge(frame.gauge, x, y, frame.cols * cell_w, font_h)
-                continue
-            colour = th.word(s.kind, s.fade, frame.dim)
-            self.surface.blit(self._glyphs(px, s.text, colour), (round(x), round(y)))
-        cur = frame.cursor
-        if cur is not None and cur.mode in ("on", "dim"):
-            colour = th.dimmed(th.live) if cur.mode == "dim" else th.live
-            rect = (
-                round(left + cur.col * cell_w),
-                round(top + cur.row * line_h + pad),
-                round(cell_w),
-                font_h,
-            )
-            self.pg.draw.rect(self.surface, colour, rect)
+        """Draw one text row's words, gauge and cursor (see `_rows`) at cell positions.
+
+        Drawing is clipped to the row's band (and to `clip`), so a font taller than the
+        row (small grids) never paints into pixels a partial repaint does not clear.
+        """
+        font_h = self.font(g.px).get_height()
+        y = g.top + row * g.line_h + (g.line_h - font_h) / 2
+        band = self.pg.Rect(self._row_band(row, g))
+        self.surface.set_clip(band.clip(clip) if clip is not None else band)
+        try:
+            self._draw_items(items, y, font_h, g, frame)
+        finally:
+            self.surface.set_clip(None)
+
+    def _draw_items(
+        self, items: tuple[RowItem, ...], y: float, font_h: int, g: _Geometry, frame: Frame
+    ) -> None:
+        """Draw a row's items with their tops at `y` pixels."""
+        for kind, col, text, colour in items:
+            x = g.left + col * g.cell_w
+            if kind == "text":
+                self.surface.blit(self._glyphs(g.px, text, colour), (round(x), round(y)))
+            elif kind == "gauge":
+                self._draw_gauge(frame.gauge, x, y, frame.cols * g.cell_w, font_h)
+            else:  # the cursor
+                self.pg.draw.rect(
+                    self.surface, colour, (round(x), round(y), round(g.cell_w), font_h)
+                )
 
     def _draw_gauge(
         self, fraction: float | None, x: float, y: float, width: float, h: float
@@ -352,18 +499,23 @@ class ScreenDriver:
         return rows, cols, margin, cell_w, line_h, px
 
 
-def _signature(frame: Frame) -> tuple[Any, ...]:
-    """A hashable summary of everything `draw` paints, to skip unchanged frames."""
-    card = (frame.card[0], tuple(frame.card[1])) if frame.card is not None else None
-    return (
-        tuple(frame.spans),
-        frame.cursor,
-        frame.status,
-        card,
-        frame.dark,
-        frame.dim,
-        frame.gauge,
-    )
+def _rows(frame: Frame, theme: Theme) -> dict[int, tuple[RowItem, ...]]:
+    """What each text row shows, as comparable items: a row is repainted when its items
+    change. Colours, not fade progress, are compared, and fades move in `FADE_STEPS`
+    steps, so a fading row is repainted only when its colour visibly moves."""
+    rows: dict[int, list[RowItem]] = {}
+    for s in frame.spans:
+        if s.kind == "gauge":
+            item: RowItem = ("gauge", s.col, f"{frame.gauge or 0.0:.4f}", theme.gauge)
+        else:
+            fade = round(s.fade * FADE_STEPS) / FADE_STEPS
+            item = ("text", s.col, s.text, theme.word(s.kind, fade, frame.dim))
+        rows.setdefault(s.row, []).append(item)
+    cur = frame.cursor
+    if cur is not None and cur.mode in ("on", "dim"):
+        colour = theme.dimmed(theme.live) if cur.mode == "dim" else theme.live
+        rows.setdefault(cur.row, []).append(("cursor", cur.col, "", colour))
+    return {r: tuple(items) for r, items in rows.items()}
 
 
 def _console() -> bool:

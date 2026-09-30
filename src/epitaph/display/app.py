@@ -57,23 +57,31 @@ async def drive(
     linger_s: float = 1.0,
     clock: Callable[[], float] = time.monotonic,
     on_event: Callable[[Event], None] | None = None,
+    max_idle_s: float = 0.25,
 ) -> None:
-    """Feed `driver` from `source` and redraw it at `fps` until it is closed.
+    """Feed `driver` from `source` and redraw it until it is closed.
+
+    Frames come at most `fps` times a second, when the view says a letter or the cursor
+    is due (`LifeView.next_change`), when an event arrives, and at least every
+    `max_idle_s` (fades, the status clock). A still screen costs almost nothing.
 
     With `exit_when_done`, also stop once the source has ended and every queued letter has
     been typed, plus `linger_s` seconds. `on_event` sees each event after the driver has.
     An exception raised by the source is re-raised here; the driver is always closed.
     """
     done = asyncio.Event()
+    wake = asyncio.Event()
 
     async def consume() -> None:
         try:
             async for event in source:
                 driver.handle(event)
+                wake.set()
                 if on_event is not None:
                     on_event(event)
         finally:
             done.set()
+            wake.set()
 
     task = asyncio.create_task(consume())
     period = 1.0 / max(1.0, fps)
@@ -86,12 +94,25 @@ async def drive(
                 break
             if task.done() and task.exception() is not None:
                 raise task.exception()  # type: ignore[misc]
+            due = next_frame(driver.view, now, fps, max_idle_s)
+            if not wake.is_set():
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(wake.wait(), max(0.0, due - clock()))
+            wake.clear()
+            # never faster than fps, even when events arrive in a burst
             await asyncio.sleep(max(0.0, period - (clock() - now)))
     finally:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
         driver.close()
+
+
+def next_frame(view: LifeView, now: float, fps: float = 30.0, max_idle_s: float = 0.25) -> float:
+    """When the frame after the one drawn at `now` is due: the view's next change, but no
+    sooner than one frame period and no later than `max_idle_s`."""
+    period = 1.0 / max(1.0, fps)
+    return min(max(view.next_change(now), now + period), now + max(period, max_idle_s))
 
 
 async def iterate(events: list[Event]) -> AsyncIterator[Event]:
