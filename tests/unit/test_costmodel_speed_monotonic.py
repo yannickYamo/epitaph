@@ -6,11 +6,15 @@ the reload causes, the warn mode); the Pi 4 profiles are checked on the costs in
 
 from __future__ import annotations
 
+import json
+import runpy
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from epitaph.config import Config, load_config
+from epitaph.config import REPO_ROOT, Config, load_config
 from epitaph.costmodel import Costs, estimate, format_report, load_costs
 
 PROFILE = "pi4/default"  # step 0 (3 threads), reload 1 to step 1, reload 2 to step 2 (2 threads)
@@ -119,3 +123,20 @@ def test_pi4_profiles_never_speed_up_at_a_reload(profile: str) -> None:
     config = cfg(profile=profile)
     report = estimate(config, load_costs(config))
     assert not [v for v in report.violations if v.rule == "speed_monotonic"], format_report(report)
+
+
+def test_the_g0_script_judges_it_in_strict_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`estimate_measured.py --strict` (gate G0.4) fails a rise even while the config warns."""
+    for f in (REPO_ROOT / "bench").glob("pi4-qwen3-1.7b-*.json"):
+        shutil.copy(f, tmp_path)
+    rec = json.loads((tmp_path / "pi4-qwen3-1.7b-1-3.json").read_text())
+    rec.update(tg_tok_s=9.0, tg_tok_s_birth=9.0)  # step 1 far faster than step 0: a rise
+    (tmp_path / "pi4-qwen3-1.7b-1-3.json").write_text(json.dumps(rec))
+    script = runpy.run_path(str(REPO_ROOT / ".github" / "scripts" / "estimate_measured.py"))
+    argv = ["--bench", str(tmp_path), "--profiles", "pi4/default", "--models", "qwen3-1.7b"]
+    script["main"](argv)
+    assert "(speed_monotonic)" not in capsys.readouterr().out
+    assert script["main"]([*argv, "--strict"]) == 1
+    assert "(speed_monotonic)" in capsys.readouterr().out
