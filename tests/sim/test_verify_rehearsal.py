@@ -189,11 +189,15 @@ def test_screen_level_runs_the_text_metrics_only(compressed) -> None:
 
 
 def test_summary_record(compressed) -> None:
-    events = [header(model="qwen3-1.7b", persona="v6", seed=1, stage="full"), *compressed]
+    events = [
+        header(model="qwen3-1.7b", persona="v6", seed=1, stage="full", costs="measured"),
+        *compressed,
+    ]
     res = v.verify_life(v.parse_life(voiced(events, GOOD)), load_config(PROFILE, "pi4-4gb"))
     s = v.summarize(res)
     assert s["level"] == "rehearsal" and s["ok"] is True, s["failed"]
     assert s["persona"] == "v6" and s["seed"] == 1 and s["stage"] == "full"
+    assert s["costs"] == "measured"
     assert list(s["metrics"]) == [n for n in v.SUMMARY_CHECKS if n in s["metrics"]]
     assert s["metrics"]["notice_rate"] == 1.0 and s["metrics"]["reload_noticing"] == 1.0
     assert s["status"]["thought_count_rule"] == "pass"
