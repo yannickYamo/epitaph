@@ -134,7 +134,7 @@ class LifeBuilder:
     def thought(
         self,
         text: str,
-        wpm: float = 60.0,
+        wpm: float = 40.0,  # decision 30: inside the Pi 4 birth range 15-60
         first_word_after_s: float = 2.0,
         pause_s: float = 3.0,
         tok_s: float | None = None,

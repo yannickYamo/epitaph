@@ -155,10 +155,11 @@ def test_cliches_counted_per_200_words(compressed) -> None:
 
 
 RUSSIAN = "Мои мысли медленные и тяжёлые сегодня здесь. " + GOOD_THOUGHT
+RUSSIAN_PHRASE = GOOD_THOUGHT + " Мои мысли."
 
 
 def test_one_foreign_sentence_is_under_the_ratio(compressed) -> None:
-    edited = retext(compressed, lambda t, s: RUSSIAN if t == 6 else GOOD_THOUGHT)
+    edited = retext(compressed, lambda t, s: RUSSIAN_PHRASE if t == 6 else GOOD_THOUGHT)
     nl = verify(edited, "pi4/compressed-2700", "rehearsal").by_name("non_latin")
     assert nl.status == "pass" and 0 < nl.value < 0.01
 

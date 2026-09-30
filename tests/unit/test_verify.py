@@ -19,7 +19,7 @@ def skeleton_cfg(**overrides: Any) -> Config:
     return load_config("pi4/skeleton-1200", "pi4-4gb", overrides=overrides or None)
 
 
-def good_skeleton(text: str = GOOD, wpm: float = 60.0, n: int = 1) -> LifeBuilder:
+def good_skeleton(text: str = GOOD, wpm: float = 40.0, n: int = 1) -> LifeBuilder:
     b = LifeBuilder(n).birth()
     while b.t < 1140:
         b.thought(text, wpm=wpm, vitals={"recall": 1280, "recall_used": 600, "reading": "x"})
@@ -106,7 +106,7 @@ def test_parse_life_picks_lives_and_rebuilds_thoughts() -> None:
     with pytest.raises(ValueError):
         v.parse_life([])
     th = life.thoughts[0]
-    assert th.wpm == pytest.approx(60, rel=0.05)
+    assert th.wpm == pytest.approx(40, rel=0.05)  # the baseline speed (decision 30)
     assert th.first_word_t == pytest.approx(2.0)
 
 
@@ -135,7 +135,7 @@ def test_good_skeleton_life_passes() -> None:
     assert res.ok, v.format_result(res)
     assert status(res, "no_split_words") == "pending"
     assert status(res, "next_birth") == "pending"
-    assert res.metrics["thoughts"] > 40
+    assert res.metrics["thoughts"] > 25  # fewer, slower thoughts since decision 30
 
 
 def test_banned_phrase_shown_fails() -> None:
@@ -250,7 +250,7 @@ def test_no_thoughts_fail() -> None:
 
 
 @pytest.mark.parametrize(
-    ("wpm", "which"), [(300, "typing_speed_birth"), (30, "typing_speed_birth")]
+    ("wpm", "which"), [(100, "typing_speed_birth"), (10, "typing_speed_birth")]
 )
 def test_typing_speed_out_of_range_fails(wpm: float, which: str) -> None:
     res = run(good_skeleton(wpm=wpm))
@@ -259,7 +259,7 @@ def test_typing_speed_out_of_range_fails(wpm: float, which: str) -> None:
 
 def test_writing_speed_too_slow_fails() -> None:
     b = good_skeleton()
-    b.at(900).thought(GOOD, wpm=5)
+    b.at(900).thought(GOOD, wpm=1.5)
     res = run(b)
     assert status(res, "typing_speed_writing") == "fail"
     assert status(res, "typing_speed_birth") == "pass"
@@ -267,9 +267,11 @@ def test_writing_speed_too_slow_fails() -> None:
 
 def test_speed_thresholds_come_from_the_overlay() -> None:
     dev = load_config("pi4/skeleton-1200", "pi5-8gb", validate=False)
-    # Same life; the Pi 5 overlay wants 120-180 wpm at birth.
-    res = v.verify_life(v.parse_life(good_skeleton().events), dev)
-    assert res.by_name("typing_speed_birth").limit == [120.0, 180.0]
+    # Same life; the Pi 5 overlay wants 40-60 wpm at birth (decision 30).
+    res = v.verify_life(
+        v.parse_life(good_skeleton(wpm=30).events), dev
+    )  # fine on a Pi 4, too slow for a Pi 5
+    assert res.by_name("typing_speed_birth").limit == [40.0, 60.0]
     assert status(res, "typing_speed_birth") == "fail"
 
 

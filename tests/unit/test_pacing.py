@@ -298,7 +298,7 @@ def test_from_config(pi4_default: Config) -> None:
     p = Pacer.from_config(pi4_default, FakeClock(), seed=3)
     assert p.rate_margin == 0.88 and p.lookahead.cap == 8 and p.max_regenerations == 2
     assert ("how", "can", "i", "help") in p.lookahead.phrases
-    assert p.hesitation_ms == (400, 1200)
+    assert p.hesitation_ms == (1200, 3600)  # decision 30
 
 
 # ---------------------------------------------------------------------------------------
@@ -484,3 +484,19 @@ def test_stream_without_done_chunk_still_ends_the_request() -> None:
     rec, sp = run_virtual(main)
     assert sp.text == "I am here." and sp.tokens == 2 and sp.prompt_n is None
     assert rec.of("gen_end")[0]["tokens"] == 2
+
+
+def test_cadence_comes_from_config_decision_30() -> None:
+    """The reveal speed is Yannick's decision 30 (3x slower); the pacer must take it from
+    config, never from constructor defaults."""
+    from epitaph.clock import FakeClock
+    from epitaph.config import load_config
+    from epitaph.pacing import Pacer
+
+    cfg = load_config("pi4/default", "pi4-4gb")
+    p = Pacer.from_config(cfg, FakeClock())
+    rev = cfg.section("reveal")
+    assert p.word_gap_ms == rev["word_gap_ms"] == 270
+    assert p.comma_pause_ms == rev["comma_pause_ms"] == 750
+    assert p.sentence_pause_ms == rev["sentence_pause_ms"] == 2100
+    assert p.hesitation_ms == (1200, 3600)
