@@ -10,3 +10,7 @@ class ContextFull(RuntimeError):
         super().__init__(f"context full: {tokens} tokens > ctx {ctx}")
         self.tokens = tokens
         self.ctx = ctx
+
+
+class BackendError(RuntimeError):
+    """The server answered with an error, or a stream broke while the process lives on."""
