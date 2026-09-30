@@ -7,7 +7,6 @@
   "cache_reuse": 256,
   "swa_full": false,
   "marker": "reading",
-  "host": "epitaph",
   "when": "2026-09-30T02:46:07",
   "steps": [
     {

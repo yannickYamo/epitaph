@@ -7,7 +7,6 @@
   "cache_reuse": 32,
   "swa_full": true,
   "marker": "reading",
-  "host": "dev-laptop",
   "when": "2026-09-30T03:08:13",
   "steps": [
     {

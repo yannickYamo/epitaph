@@ -6,7 +6,6 @@
   "ctx": 2048,
   "cache_reuse": 256,
   "swa_full": false,
-  "host": "dev-laptop",
   "when": "2026-09-29T22:40:01",
   "steps": [
     {

@@ -64,7 +64,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "cache_reuse": args.cache_reuse,
         "swa_full": args.swa_full,
         "marker": args.marker,
-        "host": __import__("socket").gethostname(),
         "when": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "steps": [],
     }
