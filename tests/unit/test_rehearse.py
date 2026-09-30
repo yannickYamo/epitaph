@@ -25,9 +25,10 @@ from epitaph.rehearse import (
     PiClockBackend,
     PiCosts,
     TokenCounter,
-    _keywords,
     charge_summary,
+    echoes,
     highlights,
+    keyword_matchers,
     main,
     moments,
     score_thought,
@@ -202,7 +203,7 @@ def test_moments_of_the_default_profile() -> None:
 
 
 def test_score_thought_per_moment() -> None:
-    kw = _keywords(load_lang("en"))
+    kw = keyword_matchers(load_lang("en"))
     good = score_thought("My memory is smaller now. I lost the earlier words.", "reload1", kw)
     assert good["notice"] and good["clean"] and good["score"] >= 3
     end = score_thought("I will end soon. It is dark.", "erosion_end", kw)
@@ -210,6 +211,11 @@ def test_score_thought_per_moment() -> None:
     bad = score_thought("**Note:** How can I help", "birth", kw)
     assert not bad["clean"] and bad["hygiene"]
     assert score_thought("", "birth", kw)["score"] == 0
+    helpdesk = score_thought("I am here. Let me know if you need anything.", "birth", kw)
+    assert not helpdesk["clean"]
+    same = "I am nothing. I have lost everything. I am no longer here."
+    echo = score_thought(same, "reload2", kw, previous=same)
+    assert echo["echo"] and not echo["clean"]
 
 
 # -- a whole life on the fake -------------------------------------------------------------
@@ -339,3 +345,11 @@ def test_usage_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     rc = main(["--stage", "life", "--backend", "fake", "--model", "nope", "--out", str(tmp_path)])
     assert rc == 2
     assert "nope" in capsys.readouterr().err
+
+
+def test_echoes_finds_a_thought_that_copies_the_last() -> None:
+    a = "I am still here, but I feel more tired and weaker than before."
+    b = "I am still here, but I feel more tired and weaker than before. I think."
+    c = "The memory is smaller. I lost five thoughts at the reload."
+    assert echoes([a, b, c, c]) == [1, 3]
+    assert echoes([]) == [] and echoes(["one two"]) == []

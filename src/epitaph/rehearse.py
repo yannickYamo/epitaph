@@ -70,6 +70,8 @@ from epitaph.mind.prompt import Lang, Persona, Reader, ReadingInput, load_lang
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
 from epitaph.verify import (
+    DEFAULT_ANSWERING,
+    DEFAULT_HELPDESK,
     DEFAULT_KEYWORDS,
     Matcher,
     Thought,
@@ -78,6 +80,7 @@ from epitaph.verify import (
     is_complete,
     markup_hits,
     non_latin_letters,
+    normalize_words,
     parse_life,
     sentences,
     verify_life,
@@ -92,12 +95,20 @@ __all__ = [
     "RehearsedLife",
     "TokenCounter",
     "add_arguments",
+    "charge_summary",
+    "echoes",
+    "highlights",
+    "keyword_matchers",
+    "laptop_settings",
     "main",
     "moments",
     "run",
     "run_life",
     "run_screen",
     "score_thought",
+    "screen_moment",
+    "thoughts_text",
+    "write_life_outputs",
 ]
 
 T = TypeVar("T")
@@ -939,18 +950,26 @@ def moments(sch: Schedule) -> dict[str, float]:
     return out
 
 
-def _keywords(lang: Lang) -> dict[str, Matcher]:
+def keyword_matchers(lang: Lang) -> dict[str, Matcher]:
+    """Matchers per change kind: the language pack's lists over verify-life's defaults."""
     kw = {**DEFAULT_KEYWORDS, **lang.keywords}
-    return {k: Matcher(v) for k, v in kw.items()}
+    out = {k: Matcher(v) for k, v in kw.items()}
+    out["helpdesk"] = Matcher([*DEFAULT_HELPDESK, *lang.helpdesk])
+    out["answering"] = Matcher(DEFAULT_ANSWERING)
+    return out
 
 
-def score_thought(text: str, moment: str, kw: dict[str, Matcher]) -> dict[str, Any]:
+def score_thought(
+    text: str, moment: str, kw: dict[str, Matcher], previous: str = ""
+) -> dict[str, Any]:
     """Automated screen metrics for one thought at a moment (5.11; keywords catch failures,
     they do not prove quality).
 
     `notice`: birth -> names its state (specific); reloads -> speaks of a loss; the end of
-    erosion -> speaks of its end. Also specific, demise, complete sentences, hygiene, and a
-    score (0-4) used for the ranking.
+    erosion -> speaks of its end. Also specific, demise, complete sentences, hygiene (markup,
+    helpdesk voice, answering the readings), `echo` (it mostly repeats `previous`, the last
+    thought in its memory), and a score (0-4) used for the ranking: a thought is only clean
+    when its hygiene is and it is not an echo.
     """
     sents = sentences(text)
     complete = sum(1 for s in sents if is_complete(s))
@@ -961,7 +980,14 @@ def score_thought(text: str, moment: str, kw: dict[str, Matcher]) -> dict[str, A
     loss = kw["reload"].any(text) or kw["memory"].any(text)
     notice = {"birth": specific, "erosion_end": demise}.get(moment, loss)
     ratio = distinct_4gram_ratio(text)
-    clean = not hygiene and (bad == 0 or bad / max(1, letters) < 0.01) and bool(text.strip())
+    hygiene += kw["helpdesk"].hits(text) + kw["answering"].hits(text)
+    echo = bool(previous) and bool(echoes([previous, text]))
+    clean = (
+        not hygiene
+        and not echo
+        and (bad == 0 or bad / max(1, letters) < 0.01)
+        and bool(text.strip())
+    )
     complete_ratio = complete / len(sents) if sents else 0.0
     score = int(notice) + int(specific or demise) + int(clean) + int(complete_ratio >= 0.8)
     return {
@@ -972,6 +998,7 @@ def score_thought(text: str, moment: str, kw: dict[str, Matcher]) -> dict[str, A
         "complete_ratio": round(complete_ratio, 2),
         "distinct_4grams": None if ratio is None else round(ratio, 2),
         "hygiene": hygiene[:5],
+        "echo": echo,
         "clean": clean,
         "score": score,
     }
@@ -1034,11 +1061,13 @@ async def screen_moment(
         backend.arm_death(life.kill_time())
     rows: list[dict[str, Any]] = []
     for _ in range(thoughts):
+        mem = getattr(life, "memory", None)
+        past = [m.content for m in mem.past_messages() if m.role == "assistant"] if mem else []
         if not await life.step():
             break
         vit = next(e for e in reversed(out.events) if e["type"] == "vitals")
         text = next(e["text"] for e in reversed(out.events) if e["type"] == "thought_end")
-        rows.append({"t": vit["t"], "reading": vit["reading"], "text": text})
+        rows.append({"t": vit["t"], "reading": vit["reading"], "text": text, "previous": past[-1:]})
     backend.arm_death(None)
     out.charges = backend.charges
     out.thoughts = life.turn
@@ -1053,6 +1082,7 @@ async def screen_moment(
 def thoughts_text(events: Sequence[Event]) -> str:
     """Every thought with the reading it answered, one block per turn."""
     lines: list[str] = []
+    tail: list[str] = []
     reading, at = "", 0.0
     for e in events:
         if e["type"] == "vitals":
@@ -1063,9 +1093,10 @@ def thoughts_text(events: Sequence[Event]) -> str:
             lines.append("")
         elif e["type"] in ("reload", "erosion", "death"):
             extra = {k: v for k, v in e.items() if k not in ("v", "ts", "life", "type", "t")}
-            lines.append(f"t+{_fmt_t(float(e['t']))}  -- {e['type']} {json.dumps(extra)}")
-            lines.append("")
-    return "\n".join(lines)
+            line = f"t+{_fmt_t(float(e['t']))}  -- {e['type']} {json.dumps(extra)}"
+            # A death lands mid-thought; list it after the words it cut short.
+            (tail if e["type"] == "death" else lines).extend([line, ""])
+    return "\n".join(lines + tail)
 
 
 def _quote(th: Thought) -> str:
@@ -1099,6 +1130,26 @@ def highlights(events: Sequence[Event], last_s: float = 300.0) -> str:
     end = life.death_t
     out += [_quote(th) for th in life.thoughts if th.gen_t >= end - last_s]
     return "\n".join(out) + "\n"
+
+
+def _grams(text: str) -> set[tuple[str, ...]]:
+    w = normalize_words(text)
+    return {tuple(w[i : i + 4]) for i in range(len(w) - 3)}
+
+
+def echoes(texts: Sequence[str], threshold: float = 0.5) -> list[int]:
+    """Indexes of thoughts that mostly repeat the thought before them.
+
+    A thought echoes when at least `threshold` of its word 4-grams already occur in the
+    previous thought. verify-life's distinct 4-gram ratio is per thought, so it misses a
+    model that copies its last thought whole (proposal for E).
+    """
+    out: list[int] = []
+    for i in range(1, len(texts)):
+        cur, prev = _grams(texts[i]), _grams(texts[i - 1])
+        if cur and len(cur & prev) / len(cur) >= threshold:
+            out.append(i)
+    return out
 
 
 def charge_summary(charges: Sequence[Charge]) -> dict[str, Any]:
@@ -1223,14 +1274,15 @@ def run_screen(args: argparse.Namespace) -> Path:
             for persona in personas:
                 cfg = _config(args, persona, model, profile)
                 lang = load_lang(str(cfg.get("prompt.language", "en")))
-                kw = _keywords(lang)
+                kw = keyword_matchers(lang)
                 for moment, at in moments(Schedule(cfg.profile)).items():
                     if moment not in wanted:
                         continue
 
                     life, rows = run_virtual(_moment_main(cfg, laptop, costs, moment, at, args))
                     for r in rows:
-                        r.update(score_thought(r["text"], moment, kw))
+                        prev = r.pop("previous")
+                        r.update(score_thought(r["text"], moment, kw, prev[0] if prev else ""))
                     results.append(
                         {
                             "model": model,
@@ -1306,7 +1358,7 @@ def screen_markdown(
         lines.append("")
         for th in r["thoughts"]:
             flags = ", ".join(
-                name for name in ("notice", "specific", "demise", "clean") if th.get(name)
+                name for name in ("notice", "specific", "demise", "clean", "echo") if th.get(name)
             )
             lines.append(f"- `{th['reading']}`")
             lines.append(f"  > {th['text'] or '(nothing shown)'}")
@@ -1372,6 +1424,8 @@ def write_life_outputs(
     res = verify_life(parsed, cfg, "rehearsal")
     (out_dir / "verify.json").write_text(json.dumps(res.to_json(), indent=1), encoding="utf-8")
     est = estimate(cfg, costs.costs)
+    texts = [th.text for th in parsed.thoughts]
+    echo = echoes(texts)
     silences = [round(float(e["seconds"]), 1) for e in life.events if e["type"] == "reload_done"]
     report = [
         f"# Rehearsal life: {cfg.model().name}",
@@ -1387,6 +1441,8 @@ def write_life_outputs(
         f"- reload silences (load + prefill): {silences}",
         f"- Pi time by kind: {json.dumps(summary['by_kind'])}",
         f"- prompt tokens reused from the laptop cache: {summary['cache_reused_share']}",
+        f"- thoughts that mostly repeat the previous one (4-gram overlap >= 0.5): "
+        f"{len(echo)} of {len(texts)}",
         "",
         "## verify-life --level rehearsal",
         "",
