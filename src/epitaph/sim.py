@@ -66,6 +66,11 @@ async def run_life(
     groups = list(cfg.get("prompt.persona_groups", []))
     end = sch.lifespan_s
     death_at = sch.death_s if str(cfg.get("body.death_mode", "oom")) == "oom" else None
+    margin = float(cfg.get("reveal.rate_margin", 0.88))
+    letters_per_token = float(cfg.get("estimate.letters_per_token", 3.5))
+    gap_ms = int(cfg.get("reveal.word_gap_ms", 90))
+    comma_ms = int(cfg.get("reveal.comma_pause_ms", 250))
+    sentence_ms = int(cfg.get("reveal.sentence_pause_ms", 700))
 
     def ev(etype: str, **f: Any) -> None:
         e = make_event(etype, n, **f)
@@ -171,6 +176,9 @@ async def run_life(
             tokens = 0
             gen_started = clock.elapsed()
             typing_s = 0.0
+            # Adaptive cadence (BUILD_PLAN 5.12): never type faster than 88% of generation.
+            letters_per_s = costs.tg(k.step, k.threads, k.cpu_share) * letters_per_token
+            interval = max(k.letter_ms, 1000 / (margin * letters_per_s))
             async for chunk in backend.chat(msgs, sampling, k.max_tokens):
                 now = clock.elapsed()
                 if death_at is not None and now >= death_at:
@@ -185,8 +193,12 @@ async def run_life(
                     w, buf = buf.split(" ", 1)
                     if w:
                         words.append(w)
-                        cms = [int(k.letter_ms * (1 + k.jitter * (rng.random() - 0.5))) for _ in w]
-                        pause = 700 if w[-1] in ".?!" else (250 if w[-1] in ",;:" else 90)
+                        cms = [int(interval * (1 + k.jitter * (rng.random() - 0.5))) for _ in w]
+                        pause = (
+                            sentence_ms
+                            if w[-1] in ".?!"
+                            else (comma_ms if w[-1] in ",;:" else gap_ms)
+                        )
                         typing_s += (sum(cms) + pause) / 1000
                         ev(
                             "word",
@@ -203,9 +215,10 @@ async def run_life(
                     turn=turn,
                     i=len(words) - 1,
                     text=buf.strip(),
-                    char_ms=[int(k.letter_ms) for _ in buf.strip()],
-                    pause_after_ms=700,
+                    char_ms=[int(interval) for _ in buf.strip()],
+                    pause_after_ms=sentence_ms,
                 )
+                typing_s += (interval * len(buf.strip()) + sentence_ms) / 1000
             ev("gen_end", turn=turn, tokens=tokens)
             # The sync rule: the thought ends when its last letter has been typed.
             await clock.sleep(max(0.0, typing_s - (clock.elapsed() - gen_started)))

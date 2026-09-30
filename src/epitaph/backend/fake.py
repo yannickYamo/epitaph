@@ -142,5 +142,10 @@ class FakeBackend:
 
 
 def _split_tokens(piece: str) -> list[str]:
-    """Roughly 4 letters per token, like a real tokenizer."""
-    return [piece[i : i + 4] for i in range(0, len(piece), 4)] or [piece]
+    """About 1.3 tokens per English word, like a real tokenizer: short words are one token,
+    longer ones two."""
+    word = piece.rstrip()
+    if len(word) <= 5:
+        return [piece]
+    cut = (len(word) + 1) // 2
+    return [piece[:cut], piece[cut:]]

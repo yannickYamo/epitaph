@@ -55,7 +55,7 @@ def test_sim_agrees_with_cost_model() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     sim_n = simulate(cfg).thoughts[0]
     est_n = estimate(cfg, load_costs(cfg)).thoughts
-    assert abs(sim_n - est_n) / est_n < 0.35
+    assert abs(sim_n - est_n) / est_n < 0.20
 
 
 def test_deterministic() -> None:
