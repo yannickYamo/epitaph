@@ -278,3 +278,18 @@ async def test_count_past_tokens_renders_and_tokenizes() -> None:
         assert await b.count_past_tokens([]) == 0
     finally:
         await b.aclose()
+
+
+async def test_prefill_posts_a_one_token_request() -> None:
+    def api(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        assert body["stream"] is False and body["max_tokens"] == 1
+        assert body["messages"][0] == {"role": "system", "content": "s"}
+        return httpx.Response(200, json={"timings": {"prompt_n": 262}})
+
+    b = make(healthy(api))
+    await b.start(MODEL, "Q6_K", 3)
+    try:
+        assert await b.prefill([Msg("system", "s")]) == 262
+    finally:
+        await b.aclose()
