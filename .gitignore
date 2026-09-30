@@ -1,0 +1,5 @@
+.pi.env
+voice/
+__pycache__/
+.venv/
+*.gguf
