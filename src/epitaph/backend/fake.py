@@ -23,10 +23,9 @@ import re
 import signal as _signal
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
-from epitaph.backend.base import CreatureDied
-from epitaph.backend.errors import ContextFull
-from epitaph.clock import FakeClock
+from epitaph.backend.base import ContextFull, CreatureDied
 from epitaph.costmodel import Costs
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
@@ -46,6 +45,19 @@ _MIDDLE = [
     "Each reading takes something away.",
 ]
 
+
+class FakeBackendClock(Protocol):
+    """The clock the fake runs on: `clock.FakeClock`, `RehearsalClock` or `VirtualClock`."""
+
+    def now(self) -> float:
+        """Absolute clock time in seconds (fault times are compared against it)."""
+        ...
+
+    async def sleep(self, s: float) -> None:
+        """Let s seconds pass on this clock."""
+        ...
+
+
 SIGKILL = int(_signal.SIGKILL)
 SIGSEGV = int(_signal.SIGSEGV)
 FAKE_PID = 4242
@@ -56,7 +68,7 @@ class FakeFaults:
     """Faults to inject. Token counts are cumulative over the creature's life (all requests).
 
     `*_at_token`: fire before emitting that token. `*_at_s`: fire at that clock time
-    (FakeClock.now()), checked before each token and during prompt processing.
+    (`clock.now()`), checked before each token and during prompt processing.
     """
 
     oom_at_token: int | None = None
@@ -97,7 +109,7 @@ class FakeBackend:
 
     def __init__(
         self,
-        clock: FakeClock,
+        clock: FakeBackendClock,
         costs: Costs,
         seed: int = 0,
         *,
@@ -338,10 +350,17 @@ class FakeBackend:
         return text
 
     async def prefill(self, messages: list[Msg]) -> int:
-        """Read messages into the cache at prompt speed (see LlamaServerBackend.prefill)."""
+        """Read messages into the cache at prompt speed; return the tokens processed.
+
+        Only what the cache lacks is read, as in `chat`. Raises CreatureDied when the creature
+        is gone (or a fault kills it meanwhile) and ContextFull when the messages do not fit.
+        """
         if not self.alive:
             raise CreatureDied(self.status())
         blocks, todo, _ = self._plan(messages)
+        total = sum(n for _, n in blocks)
+        if total + 1 > self.ctx:
+            raise ContextFull(total, self.ctx)
         pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
         await self._tick(todo / pp)
         self._cache.blocks = blocks
