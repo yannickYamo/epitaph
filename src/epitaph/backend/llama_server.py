@@ -52,6 +52,7 @@ class ServerSettings:
     ctx: int = 2048
     cache_reuse: int = 256
     mmap: bool = True
+    load_mode: str = "auto"  # auto | mmap | none | dio (spike S3: dio on the Pi 4)
     swa_full: str | bool = "auto"
     cache_type_k: str = "f16"
     cache_type_v: str = "f16"
@@ -80,6 +81,7 @@ class ServerSettings:
             ctx=int(cfg.ctx),
             cache_reuse=int(cfg.get("backend.cache_reuse", cls.cache_reuse)),
             mmap=bool(cfg.get("backend.mmap", True)),
+            load_mode=str(cfg.get("backend.load_mode", "auto")),
             swa_full=cfg.get("backend.swa_full", "auto"),
             cache_type_k=str(cfg.get("backend.cache_type_k", "f16")),
             cache_type_v=str(cfg.get("backend.cache_type_v", "f16")),
@@ -113,7 +115,9 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
     ]  # fmt: skip
     if s.cache_reuse > 0:
         argv += ["--cache-reuse", str(s.cache_reuse)]
-    if not s.mmap:
+    if s.load_mode in ("mmap", "none", "dio"):
+        argv += ["--load-mode", s.load_mode]
+    elif not s.mmap:
         argv += ["--load-mode", "none"]
     if s.swa_full is True or (s.swa_full == "auto" and model.sliding_window):
         argv += ["--swa-full"]

@@ -61,8 +61,10 @@ bin = "~/llama.cpp/build/bin/llama-server"
 models_dir = "auto"              # auto = <state_dir>/models
 port = 8081
 ctx = 2048
-cache_reuse = 256
+cache_reuse = 32                 # spike S2f: 256 re-read the previous thought every turn for Qwen3
+threads_batch = 3                # prompt threads stay at 3 when generation drops to 2 (S1b, S4)
 mmap = true
+load_mode = "auto"               # auto | mmap | none | dio; hardware overlays set it (S3)
 swa_full = "auto"
 cache_type_k = "f16"
 cache_type_v = "f16"
@@ -72,6 +74,8 @@ creature_cpus = "1-3"
 cgroups = "auto"                 # auto | off
 death_mode = "oom"               # oom | deadline
 squeeze = "death_only"           # death_only | gradual | off
+death_fraction = 0.5             # death limit = this x the creature's anonymous memory (S3)
+cpu_period_us = 100000
 cpu_share = true
 progress_signals = ["cpu", "io", "majfault", "tokens"]
 token_gap_timeout_s = 90
@@ -99,6 +103,8 @@ cursor_blink_ms = 530
 fade_seconds = 8
 status_strip = true
 birth_card = true
+birth_card_seconds = 4
+death_card_seconds = 8
 silence_style = "dark"           # dark | last_words | death_card | idle
 screenshot_on = ["birth", "reload_done", "death_shown"]
 

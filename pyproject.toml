@@ -35,6 +35,9 @@ addopts = "-m 'not pi and not model'"
 source = ["src/epitaph"]
 omit = ["src/epitaph/display/screen.py", "src/epitaph/afterlife/*", "src/epitaph/senses/*"]
 
+[tool.coverage.report]
+fail_under = 80
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -56,6 +59,7 @@ strict = [
   "src/epitaph/events.py",
   "src/epitaph/controller.py",
   "src/epitaph/costmodel.py",
+  "src/epitaph/verify.py",
 ]
 venvPath = "."
 venv = ".venv"

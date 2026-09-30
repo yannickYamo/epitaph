@@ -39,7 +39,7 @@ from typing import Any, Literal, Protocol
 
 from epitaph.clock import Schedule
 from epitaph.config import Config, ConfigError, load_config, parse_duration
-from epitaph.costmodel import _check_rules  # pyright: ignore[reportPrivateUsage]
+from epitaph.costmodel import check_rules
 from epitaph.state import atomic_write_json
 from epitaph.types import RuleReport
 
@@ -824,7 +824,7 @@ class Verifier:
         for e in self.life.of("reload"):
             first = self._first_word_after(e["_idx"])
             rep.reload_windows.append((_t(e), first if first is not None else self.life.death_t))
-        _check_rules(rep, self.schedule, self.life.death_t)
+        check_rules(rep, self.schedule, self.life.death_t)
         return rep
 
     def check_thought_count_rule(self) -> list[Check]:
