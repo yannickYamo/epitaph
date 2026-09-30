@@ -1,4 +1,5 @@
-PY      := .venv/bin/python
+# PYTHONPATH makes every worktree test its own src/, not the editable install of main.
+PY      := PYTHONPATH=$(CURDIR)/src $(CURDIR)/.venv/bin/python
 PROFILE ?= pi4/compressed-2700
 PROFILES_PI4 := pi4/default pi4/smoke-300 pi4/skeleton-1200 pi4/compressed-2700 pi4/unbounded
 
