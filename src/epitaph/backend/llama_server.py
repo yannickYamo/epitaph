@@ -9,6 +9,12 @@
 - `count_past_tokens` renders the messages with the model's own chat template and tokenizes
   them (S6: exact against the server's count), minus the same render without them.
 
+- A reload (`start` while a creature of the same model is running) either re-reads the memory
+  in the fresh server (`reload_handover = "reread"`) or carries the KV cache over
+  (`"slot"`, spike S4b): the old server saves its slot to `slot_save_path` (RAM, /dev/shm),
+  the new quant restores it, and cache reuse absorbs the reload's cut on the next request.
+  Any failure falls back to the re-read.
+
 Flags at llama.cpp b11277: `--no-mmap` no longer exists; `--load-mode none` replaces it.
 `--cache-ram 0` keeps the server from holding prompt caches in host RAM (8 GB by default).
 """
@@ -18,10 +24,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import signal
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +38,8 @@ from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
 _PROBE = Msg("user", "x")
+_log = logging.getLogger(__name__)
+HANDOVERS = ("reread", "slot")
 
 
 class _Spawner:
@@ -67,6 +76,18 @@ class ServerSettings:
     stop_timeout_s: float = 10.0
     log_path: str | None = None
     extra_args: tuple[str, ...] = ()
+    # How a reload carries the memory: "reread" (the fresh server reads it all again) or
+    # "slot" (save the KV cache before the stop, restore it after the load; spike S4b).
+    reload_handover: str = "reread"
+    # Where slot files go (--slot-save-path). RAM: the SD card reads 40 MB/s.
+    slot_save_path: str = "/dev/shm/epitaph-slots"
+
+    def __post_init__(self) -> None:
+        """Reject an unknown `reload_handover`."""
+        if self.reload_handover not in HANDOVERS:
+            raise ValueError(
+                f"backend.reload_handover must be one of {HANDOVERS}, not {self.reload_handover!r}"
+            )
 
     @classmethod
     def from_config(cls, cfg: Any) -> ServerSettings:
@@ -95,6 +116,8 @@ class ServerSettings:
             ),
             dry_penalty_last_n=_opt_int(cfg.get("sampling.dry_penalty_last_n", -1)),
             load_timeout_s=float(cfg.get("life.load_timeout_s", 300)),
+            reload_handover=str(cfg.get("backend.reload_handover", cls.reload_handover)),
+            slot_save_path=str(cfg.get("backend.slot_save_path", cls.slot_save_path)),
         )
 
 
@@ -129,8 +152,28 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
         argv += ["--load-mode", "none"]
     if s.swa_full is True or (s.swa_full == "auto" and model.sliding_window):
         argv += ["--swa-full"]
+    if s.reload_handover == "slot":
+        argv += ["--slot-save-path", str(Path(s.slot_save_path).expanduser())]
     argv += list(s.extra_args)
     return argv
+
+
+@dataclass
+class Handover:
+    """What the last reload did with the KV cache (`LlamaServerBackend.last_handover`).
+
+    `mode` is "reread" when nothing was carried over (the configured mode, a birth, a new
+    model, or a failure; `error` says which failure), else "slot". Times are in seconds;
+    `tokens` is how many cached tokens the new server got back.
+    """
+
+    mode: str = "reread"
+    tokens: int = 0
+    file_bytes: int = 0
+    save_s: float = 0.0
+    restore_s: float = 0.0
+    error: str | None = None
+    details: dict[str, Any] = field(default_factory=lambda: {})
 
 
 def request_body(
@@ -259,6 +302,9 @@ class LlamaServerBackend:
         self.argv: list[str] = []
         self.load_s: float | None = None
         self.last_timings: dict[str, Any] | None = None
+        self.last_handover = Handover()
+        self._model_name: str | None = None
+        self._restored = False
 
     # -- process -----------------------------------------------------------------------------
 
@@ -282,7 +328,12 @@ class LlamaServerBackend:
 
         Sets `load_s` to the load time in seconds. Raises CreatureDied if the process exits
         while loading and TimeoutError after `load_timeout_s`; neither leaves a process behind.
+        With `reload_handover = "slot"`, a running creature of the same model saves its KV
+        cache first and the new one restores it (`last_handover` says what happened); the
+        next `prefill` is then skipped, since the restored cache already holds the prompt.
         """
+        self._restored = False
+        saved = await self._save_slot(model)
         await self.stop()
         self.argv = self.body.wrap_spawn(build_argv(self.s, model, quant, threads))
         log = self.s.log_path
@@ -306,6 +357,67 @@ class LlamaServerBackend:
                 await self.stop(hard=True)
             raise
         self.load_s = loop.time() - t0
+        self._model_name = model.name
+        if saved is not None:
+            await self._restore_slot(saved)
+
+    # -- reload handover (spike S4b) ---------------------------------------------------------
+
+    def _slot_file(self, model: ModelSpec) -> str:
+        return f"{model.name}.bin"
+
+    async def _save_slot(self, model: ModelSpec) -> str | None:
+        """Save the running creature's slot for the next quant; None when nothing is carried."""
+        self.last_handover = Handover()
+        if self.s.reload_handover != "slot" or not self._alive():
+            return None
+        if self._model_name != model.name:
+            self.last_handover.error = "new model"
+            return None
+        name = self._slot_file(model)
+        Path(self.s.slot_save_path).expanduser().mkdir(mode=0o700, parents=True, exist_ok=True)
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        r = await self._slot_action("save", name)
+        self.last_handover.save_s = loop.time() - t0
+        if r is None or not r.get("n_saved"):
+            self.last_handover.error = f"save failed: {r}"
+            _log.warning("slot save failed, the reload re-reads the memory: %s", r)
+            return None
+        self.last_handover.file_bytes = int(r.get("n_written") or 0)
+        self.last_handover.details["save"] = r
+        return name
+
+    async def _restore_slot(self, name: str) -> None:
+        """Restore a saved slot into the new server; on failure the cache simply stays empty."""
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        r = await self._slot_action("restore", name)
+        self.last_handover.restore_s = loop.time() - t0
+        with contextlib.suppress(OSError):
+            (Path(self.s.slot_save_path).expanduser() / name).unlink()
+        if r is None or not r.get("n_restored"):
+            self.last_handover.error = f"restore failed: {r}"
+            _log.warning("slot restore failed, the reload re-reads the memory: %s", r)
+            return
+        self.last_handover.mode = "slot"
+        self.last_handover.tokens = int(r["n_restored"])
+        self.last_handover.details["restore"] = r
+        self._restored = True
+
+    async def _slot_action(self, action: str, name: str) -> dict[str, Any] | None:
+        """POST /slots/0?action=save|restore; the JSON reply, or None on any failure."""
+        try:
+            r = await self.client().post(f"/slots/0?action={action}", json={"filename": name})
+        except httpx.HTTPError as e:
+            return {"error": repr(e)}
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"error": r.text[:200]}
+        if r.status_code != 200 or not isinstance(data, dict):
+            return {"error": data, "status": r.status_code}
+        return data
 
     async def _wait_healthy(self, t0: float) -> None:
         loop = asyncio.get_running_loop()
@@ -380,6 +492,7 @@ class LlamaServerBackend:
     async def _stream(self, path: str, body: dict[str, Any], chat: bool) -> AsyncIterator[Chunk]:
         if not self._alive():
             raise CreatureDied(self.status())
+        self._restored = False  # the request uses (and reshapes) the restored cache
         timings: dict[str, Any] | None = None
         try:
             async with self.client().stream("POST", path, json=body) as r:
@@ -455,6 +568,11 @@ class LlamaServerBackend:
         """
         if not self._alive():
             raise CreatureDied(self.status())
+        if self._restored:
+            # The restored cache already starts with this prompt and holds the memory after
+            # it; a prefill request would cut the cache back to the system prompt.
+            self._restored = False
+            return 0
         body = request_body([*messages, _PROBE], Sampling(temperature=0.0, min_p=0.0), 1)
         body["stream"] = False
         try:
