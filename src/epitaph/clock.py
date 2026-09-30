@@ -266,7 +266,8 @@ class Schedule:
         )
 
     def change_times(self) -> list[float]:
-        """Times where any stepped field changes (reloads, health, erosion, readings form)."""
+        """Times where the model's state steps: a reload, a health label, an erosion step.
+        (A readings-form change alone is not counted.)"""
         out: list[float] = []
         for i in range(1, len(self.values)):
             a, b = self.values[i - 1], self.values[i]
