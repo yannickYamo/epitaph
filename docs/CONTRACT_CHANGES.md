@@ -61,3 +61,14 @@ and records the decision in CHANGELOG.md.
 | C-B7 | Done in 0a-fix: `letters_per_token = 3.5` (non-space letters). |
 | 2 (C) | Accepted: `body.cgroup.make_body(cfg)` is the controller's only factory; controller units are named `epitaph*`. |
 | A4 | No change needed. |
+
+## Proposals in phase 0c
+
+| # | Round | Agent | Proposal | Why | Decision |
+|---|---|---|---|---|---|
+| C-B8 | 0c r1 | B | `config.validate_config`: allow `cpu_share` up to `max(threads, backend.threads_batch)` (today: at most `threads`) | With 3 prompt threads, a share of 3.0 after the thread drop keeps the reload re-read fast (S4) while generation stays on 2 threads; today the only way to get that speed was to move the thread drop to reload 2 (QUESTIONS B #10). Optional: the profiles pass without it | |
+| C-B9 | 0c r1 | B | Bench file (A): optional `tg_tok_s_late` and `late_after_s` (S1c late generation speed), read by `costmodel.load_costs`; `tg_tok_s_birth` (already written by bench) is now used as the short-context speed. Added to `bench/pi4-qwen3-1.7b-0-3.json` from S1c | Card: model late-life speed as the lower value | |
+| C-B10 | 0c r1 | B | `RuleReport.violations` from `costmodel.estimate` may carry rules `silence` (reload silence over `verify.max_reload_silence_s`) and `speed` (full-level profiles: last 5 min at or above `verify.max_speed_ratio_end_vs_start` of the first 5), besides (a)-(d). `check_rules` (used by verify-life) is unchanged | `make check` now fails a profile that verify-life would fail on these two, before any Pi time | |
+| C-B11 | 0c r1 | B | BUILD_PLAN 5.3/5.4 text (L): the marker rides on the reading after a loss (A3); live trims cut on turn boundaries; the Pi 4 table: recall 300 at reload 1, 260 at 36:00, thread drop at reload 2, end CPU share 1.3/0.9/0.6/0.4 (docs/PROFILES.md) | Keep the plan in step with the code | |
+| C-B12 | 0c r1 | B | `[estimate] system_tokens_per_group` / `mechanics_tokens` are now only a fallback: the cost model sizes the system prompt from the persona text. `reading_tokens.full` could rise from 45 to 55 (S2t: a turn re-reads 54-55 tokens with reuse 32) | Estimates closer to the Pi | |
+| C-B13 | 0c r1 | B | Tests (A, `tests/templates`): a real-server check of the mind's `Memory` + `Persona` through trims, the marker and erosion (numbers in docs/PROFILES.md; every edit re-read 55-62 tokens with Qwen3 1.7B) | Regression guard for A3 on the real server | |

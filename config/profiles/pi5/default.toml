@@ -81,20 +81,24 @@ temperature = 1.35
 max_tokens = 25
 pause_s = 9
 persona_groups = 4
+cpu_share = 0.8               # speed decline: last 5 min under 40% of the first 5
 letter_ms = 510
 jitter = 0.35
 hesitation = 0.15
 
 [[keyframe]]
 at = "55:00"
+cpu_share = 0.6
 persona_groups = 3
 
 [[keyframe]]
 at = "56:00"
+cpu_share = 0.5
 persona_groups = 2
 
 [[keyframe]]
 at = "57:00"
+cpu_share = 0.4
 persona_groups = 1
 readings = "minimal"
 
@@ -102,6 +106,7 @@ readings = "minimal"
 at = "58:00"
 phase = "end"
 recall = 48
+cpu_share = 0.3
 temperature = 1.60
 min_p = 0.02
 max_tokens = 12

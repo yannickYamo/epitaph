@@ -15,6 +15,7 @@ from epitaph import sim as sim_mod
 from epitaph import verify as v
 from epitaph.backend.fake import FakeBackend
 from epitaph.config import load_config
+from epitaph.costmodel import Costs, load_costs
 from epitaph.sim import simulate
 
 
@@ -39,13 +40,17 @@ def test_crash_is_recorded_and_fails_verify(monkeypatch: pytest.MonkeyPatch) -> 
     assert res.by_name("next_birth").status == "pass"
 
 
-def test_deadline_during_a_reload() -> None:
+def test_deadline_during_a_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     """A reload longer than the time left: cause=deadline, nothing typed after it."""
-    cfg = load_config(
-        "pi4/compressed-2700",
-        "pi4-4gb",
-        overrides={"costs": {"load_s": [60.0, 45.0, 3000.0]}, "body": {"death_mode": "deadline"}},
-    )
+    deadline = {"body": {"death_mode": "deadline"}}
+    cfg = load_config("pi4/compressed-2700", "pi4-4gb", overrides=deadline)
+
+    def slow_step_2(cfg: Any) -> Costs:  # measured bench costs override the overlay's
+        costs = load_costs(cfg)
+        costs.load_s[2] = 3000.0
+        return costs
+
+    monkeypatch.setattr(sim_mod, "load_costs", slow_step_2)
     r = simulate(cfg)
     assert r.causes == ["deadline"]
     reloads = [e for e in r.events if e["type"] == "reload"]
