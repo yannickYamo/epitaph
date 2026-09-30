@@ -141,9 +141,10 @@ class Rate:
     source: RateSource
 
 
-# Spike S4b on the Pi 4: slot save plus restore through /dev/shm, per reload.
-PI4_SLOT_FIXED_S = 0.5
-PI4_SLOT_BYTES_PER_S = 200e6
+# Spike S4b on the Pi 4: slot save plus restore through /dev/shm, per reload (0.28-0.29 s
+# for 85-89 MB, Qwen3 1.7B and Llama 3.2 3B).
+PI4_SLOT_FIXED_S = 0.1
+PI4_SLOT_BYTES_PER_S = 450e6
 
 
 class PiCosts:
