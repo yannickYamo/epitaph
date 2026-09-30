@@ -354,12 +354,15 @@ fix_pkgs() {
 check_manual() {
   if [ -z "$(wifi_conns)" ]; then
     manual wifi "Wi-Fi is not set up. Yannick, in your own terminal (not a non-interactive shell):  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\"   then run this script again."
+  elif [ "$(nmcli -g GENERAL.STATE device show wlan0 2>/dev/null | cut -d' ' -f1)" != 100 ]; then
+    # 100 = connected. Typically the saved network is out of range where the Pi stands now.
+    manual wifi "Wi-Fi is set up but wlan0 is not connected (saved network out of range?), so epitaph.local does not resolve and the tools use the cable. To add this place's network, Yannick, in your own terminal:  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\""
   else
-    say wifi "ok (a system connection exists)"
+    say wifi "ok (connected)"
   fi
   case "$(passwd -S "$USER_NAME" | awk '{print $2}')" in
     P) say password ok ;;
-    *) manual password "The $USER_NAME password is locked or unset (keys work; a password is only for the cable). Yannick, in your own terminal:  ssh -t pi sudo passwd $USER_NAME" ;;
+    *) manual password "The $USER_NAME password is locked or unset (keys work; a password is only for the cable). Yannick, in your own terminal:  ssh -t pi-eth sudo passwd $USER_NAME" ;;
   esac
 }
 
