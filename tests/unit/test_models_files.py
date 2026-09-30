@@ -111,3 +111,23 @@ def test_repo_models_toml_ladders_are_all_pinned() -> None:
     for name, spec in models.items():
         for q in mf.ladder(spec, "pi4"):
             assert q in lock.get(name, {}), f"{name} {q} not pinned in models.lock.toml"
+
+
+def test_pick_host_prefers_the_cable_and_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Model pushes go over the cable when it answers, else over Wi-Fi (F12)."""
+    import subprocess
+
+    up: set[str] = {"pi"}
+    tried: list[str] = []
+
+    def fake_run(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[bytes]:
+        tried.append(argv[-2])
+        return subprocess.CompletedProcess(argv, 0 if argv[-2] in up else 255)
+
+    monkeypatch.setattr(mf.subprocess, "run", fake_run)
+    assert mf.pick_host() == "pi" and tried == ["pi-eth", "pi"]
+    up.add("pi-eth")
+    assert mf.pick_host() == "pi-eth"
+    up.clear()
+    with pytest.raises(mf.ModelFileError, match="none of pi-eth, pi"):
+        mf.pick_host()
