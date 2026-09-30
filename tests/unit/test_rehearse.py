@@ -81,6 +81,15 @@ def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
     assert not empty.any_measured and "ESTIMATED" in empty.describe()
 
 
+def test_an_estimated_bench_file_gives_rates_labelled_estimates(tmp_path: Path) -> None:
+    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    rec = {"step": 2, "threads": 2, "pp_tok_s": 3.0, "tg_tok_s": 2.5, "estimated": True}
+    (tmp_path / "pi4-qwen3-1.7b-2-2.json").write_text(json.dumps(rec))
+    costs = PiCosts.from_bench(cfg, "qwen3-1.7b", tmp_path)
+    tg = costs.tg(2, 2, 2.0)
+    assert tg.value == pytest.approx(2.5) and tg.source == "estimate"
+
+
 def test_worker_returns_results_and_raises_errors(worker: LaptopWorker) -> None:
     async def ok() -> int:
         return 7
@@ -389,3 +398,17 @@ def test_screen_runs_with_another_last_step(tmp_path: Path) -> None:
     results = json.loads((folder / "screen.json").read_text())
     assert "3-bit (was 4-bit)" in results[0]["thoughts"][0]["reading"]
     assert "ladder Q8_0,Q4_K_M,Q3_K_M" in (folder / "screen.md").read_text()
+
+
+def test_bare_mode_raw_continues_the_text_once_the_persona_is_gone(tmp_path: Path) -> None:
+    rc = main(
+        [
+            "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--persona", "persona", "--moments", "erosion_end", "--thoughts", "1",
+            "--set", 'prompt.bare_mode="raw"', "--out", str(tmp_path),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    log = (folder / "screen.json").read_text()
+    assert json.loads(log)[0]["thoughts"][0]["text"]
