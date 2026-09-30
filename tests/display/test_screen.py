@@ -214,3 +214,119 @@ def test_an_unchanged_frame_is_not_painted_again() -> None:
         assert d.draw(0.16, force=True) is True
     finally:
         d.close()
+
+
+# -- D7: partial redraw ---------------------------------------------------------------------
+
+
+def _script() -> list[tuple[float, list[dict[str, Any]]]]:
+    """A short life touching everything the screen draws, as (time, events) steps."""
+    text = "the quick grey words scroll up the screen one letter at a time until it ends"
+    steps: list[tuple[float, list[dict[str, Any]]]] = [
+        (0.0, [ev("birth_loading", model="m", quant="Q6_K"), ev("birth", t=0)]),
+        (0.1, [ev("vitals", t=1, recall=900, recall_used=300, health="healthy")]),
+    ]
+    for turn in (1, 2, 3):
+        words = [word(turn, i, w, 40, pause=90) for i, w in enumerate(text.split())]
+        steps.append((0.2 + (turn - 1) * 20, [ev("thought_start", turn=turn), *words]))
+    steps += [
+        (70.0, [ev("forget", items=[{"turn": 1, "all": True}, {"turn": 2, "upto_i": 4}])]),
+        (72.0, [ev("reload", **{"from": "Q6_K", "to": "Q4_K_M"})]),
+        (74.0, [ev("reload_done", seconds=2)]),
+        (75.0, [ev("vitals", t=75, recall=500, recall_used=480, health="failing")]),
+        (80.0, [ev("death", cause="oom", lived_s=80), ev("death_shown")]),
+        (95.0, [ev("silence", seconds=90, style="dark")]),
+    ]
+    return steps
+
+
+def _frames_match_a_full_repaint(d: ScreenDriver) -> tuple[int, int]:
+    """Play `_script` at 30 fps; after each partial repaint compare the window's pixels with
+    a full repaint of the same moment. Returns (partial repaints, full repaints)."""
+    steps = _script()
+    partial = full = 0
+    k = 0
+    for n, (at, events) in enumerate(steps):
+        until = steps[n + 1][0] if n + 1 < len(steps) else at + 12
+        for e in events:
+            d.view.handle(e, at)
+        while k / 30 < until:
+            now = k / 30
+            k += 1
+            if now < at or not d.draw(now):
+                continue
+            if d.dirty is None:
+                full += 1
+                continue
+            partial += 1
+            painted = pygame.image.tobytes(d.window, "RGB")
+            d.draw(now, force=True)
+            assert pygame.image.tobytes(d.window, "RGB") == painted, f"frame at {now:.2f}s"
+    return partial, full
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"size": (640, 360)},
+        {"size": (800, 480), "orientation": "portrait"},
+        {"size": (640, 240), "layout": "grid", "grid": (6, 16), "charset": "ascii"},
+    ],
+    ids=["flow", "portrait", "grid"],
+)
+def test_partial_repaint_matches_a_full_repaint(opts: dict[str, Any]) -> None:
+    d = ScreenDriver(settings=ViewSettings(fade_s=2.0, birth_card_s=0.1), min_font_px=24, **opts)
+    d.open()
+    try:
+        partial, full = _frames_match_a_full_repaint(d)
+    finally:
+        d.close()
+    assert partial > 100
+    assert full < partial / 5
+
+
+def test_only_changed_rows_are_repainted() -> None:
+    d = ScreenDriver(settings=ViewSettings(birth_card=False), size=(1280, 720))
+    d.open()
+    try:
+        for e in shot.sample_events():
+            d.view.handle(e, 0.0)
+        d.view.handle(word(99, 0, "typing", 100, pause=5000), 1.0)
+        assert d.draw(1.0) and d.dirty is None  # the first frame is whole
+        assert d.draw(1.15)  # one more letter: its row, and the strip if the clock moved
+        assert d.dirty is not None and 1 <= len(d.dirty) <= 2
+        row = max(d.dirty, key=lambda r: r[1])
+        assert row[2] == 1280 and row[3] < 720 / 8
+    finally:
+        d.close()
+
+
+def test_a_fade_repaints_in_steps() -> None:
+    from epitaph.display.screen import FADE_STEPS
+
+    d = ScreenDriver(settings=ViewSettings(birth_card=False, fade_s=8.0), size=(640, 360))
+    d.open()
+    try:
+        for e in shot.sample_events():
+            d.view.handle(e, 0.0)
+        d.draw(0.0)
+        d.view.handle(ev("forget", items=[{"turn": 1, "all": True}]), 0.0)
+        painted = sum(d.draw(k / 30) for k in range(1, 8 * 30 + 1))
+        assert FADE_STEPS / 2 <= painted <= FADE_STEPS + 2
+    finally:
+        d.close()
+
+
+def test_render_bench(capsys: pytest.CaptureFixture[str]) -> None:
+    from epitaph.display import bench
+
+    r = bench.bench_render((640, 360), "typing", seconds=1.0)
+    assert r["frames"] == 30 and 0 < r["painted"] <= 30 and r["core_share"] > 0
+    f = bench.bench_render((640, 360), "fade", seconds=1.0, partial=False, layout="grid")
+    assert f["partial"] is False and f["painted"] > 0
+    with pytest.raises(ValueError):
+        bench.bench_render((640, 360), "nope", seconds=0.1)
+    assert bench.main(["--sizes", "320x240", "--seconds", "0.2", "--full"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 4 and '"core_share"' in lines[0]
+    assert bench.main(["--sizes", "320x240", "--seconds", "0.2", "--budget", "1e-9"]) == 1
