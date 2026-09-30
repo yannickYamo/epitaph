@@ -68,6 +68,7 @@ from epitaph.costmodel import Costs, estimate, load_costs
 from epitaph.events import Event, make_event
 from epitaph.mind.memory import Memory
 from epitaph.mind.prompt import Lang, Persona, Reader, ReadingInput, load_lang
+from epitaph.mind.sampling import sampling_for
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
 from epitaph.verify import (
@@ -769,15 +770,8 @@ class _Life:
         return k, reading
 
     def _sampling(self, k: Knobs) -> Sampling:
-        s = self.cfg.section("sampling")
-        return Sampling(
-            temperature=k.temperature,
-            min_p=k.min_p,
-            top_p=float(s.get("top_p", 1.0)),
-            repeat_penalty=float(s.get("repeat_penalty", 1.1)),
-            dry_multiplier=float(s.get("dry_multiplier", 0.8)),
-            seed=self.seed * 1000 + self.turn,
-            latin_only=bool(s.get("latin_only", False)),
+        return sampling_for(
+            self.cfg.section("sampling"), k, self.cur[0], seed=self.seed * 1000 + self.turn
         )
 
     async def thought(self, t: float) -> Spoken:
