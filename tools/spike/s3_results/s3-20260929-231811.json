@@ -1,0 +1,380 @@
+{
+ "model": "/var/lib/epitaph/models/llama-3.2-3b-instruct/Q4_K_M.gguf",
+ "fraction": 0.5,
+ "trials": [
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1: ['warning: no usable GPU found, --gpu-layers option will be ignored', 'warning: one possible reason is that llama.cpp was compiled without GPU support', 'warning: consult docs/build.md for compilation instructions', 'error: invalid argument: --no-mmap']",
+   "env_after": {
+    "cpu_c": 50.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 50.1,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1: ['warning: no usable GPU found, --gpu-layers option will be ignored', 'warning: one possible reason is that llama.cpp was compiled without GPU support', 'warning: consult docs/build.md for compilation instructions', 'error: invalid argument: --no-mmap']",
+   "env_after": {
+    "cpu_c": 48.2,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1: ['warning: no usable GPU found, --gpu-layers option will be ignored', 'warning: one possible reason is that llama.cpp was compiled without GPU support', 'warning: consult docs/build.md for compilation instructions', 'error: invalid argument: --no-mmap']",
+   "env_after": {
+    "cpu_c": 48.2,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 48.2,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1: ['warning: no usable GPU found, --gpu-layers option will be ignored', 'warning: one possible reason is that llama.cpp was compiled without GPU support', 'warning: consult docs/build.md for compilation instructions', 'error: invalid argument: --no-mmap']",
+   "env_after": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1: ['warning: no usable GPU found, --gpu-layers option will be ignored', 'warning: one possible reason is that llama.cpp was compiled without GPU support', 'warning: consult docs/build.md for compilation instructions', 'error: invalid argument: --no-mmap']",
+   "env_after": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 49.2,
+    "throttled": "0x0"
+   },
+   "load_s": 48.65,
+   "warm": {
+    "current_mb": 2235,
+    "anon_mb": 299,
+    "file_mb": 1926,
+    "pgmajfault": 9
+   },
+   "limit_mb": 1118,
+   "killed": false,
+   "kill_s": null,
+   "rc": null,
+   "tokens_after_squeeze": 1,
+   "majfault_during": 1629,
+   "io_read_mb_during": 1224,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 3897,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   },
+   "env_after": {
+    "cpu_c": 48.2,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 48.2,
+    "throttled": "0x0"
+   },
+   "load_s": 48.62,
+   "warm": {
+    "current_mb": 2237,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 1659
+   },
+   "limit_mb": 1118,
+   "killed": false,
+   "kill_s": null,
+   "rc": null,
+   "tokens_after_squeeze": 1,
+   "majfault_during": 1513,
+   "io_read_mb_during": 1237,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 10466,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   },
+   "env_after": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 46.3,
+    "throttled": "0x0"
+   },
+   "load_s": 48.4,
+   "warm": {
+    "current_mb": 2236,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 3193
+   },
+   "limit_mb": 1118,
+   "killed": false,
+   "kill_s": null,
+   "rc": null,
+   "tokens_after_squeeze": 1,
+   "majfault_during": 1379,
+   "io_read_mb_during": 1237,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 15922,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   },
+   "env_after": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 46.3,
+    "throttled": "0x0"
+   },
+   "load_s": 48.4,
+   "warm": {
+    "current_mb": 2236,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 4593
+   },
+   "limit_mb": 1118,
+   "killed": false,
+   "kill_s": null,
+   "rc": null,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 1448,
+   "io_read_mb_during": 1231,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 23330,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   },
+   "env_after": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 45.3,
+    "throttled": "0x0"
+   },
+   "load_s": 48.4,
+   "warm": {
+    "current_mb": 2236,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 6062
+   },
+   "limit_mb": 1118,
+   "killed": false,
+   "kill_s": null,
+   "rc": null,
+   "tokens_after_squeeze": 1,
+   "majfault_during": 1632,
+   "io_read_mb_during": 1234,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 30132,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0
+   },
+   "env_after": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "anon",
+   "env_before": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   },
+   "load_s": 48.4,
+   "warm": {
+    "current_mb": 2237,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 7712
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 1.38,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 35210,
+    "oom": 25020,
+    "oom_kill": 2,
+    "oom_group_kill": 1
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "anon",
+   "env_before": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   },
+   "load_s": 48.38,
+   "warm": {
+    "current_mb": 2236,
+    "anon_mb": 299,
+    "file_mb": 1927,
+    "pgmajfault": 7736
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 1.08,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 40313,
+    "oom": 26978,
+    "oom_kill": 4,
+    "oom_group_kill": 2
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 54.0,
+    "throttled": "0x0"
+   }
+  }
+ ],
+ "eviction": {
+  "env_before": {
+   "cpu_c": 54.5,
+   "throttled": "0x0"
+  },
+  "load_s": 48.37,
+  "baseline": {
+   "n": 23,
+   "tok_s": 1.858,
+   "p50": 0.552,
+   "p95": 0.608,
+   "max": 0.61,
+   "mean": 0.538,
+   "current_mb": 2237,
+   "anon_mb": 299,
+   "file_mb": 1927,
+   "pgmajfault": 7760
+  },
+  "evict_1pct": {
+   "n": 11,
+   "tok_s": 0.421,
+   "p50": 2.572,
+   "p95": 3.449,
+   "max": 3.449,
+   "mean": 2.377,
+   "wall_s": 58.7,
+   "io_read_mb": 1072,
+   "majfault": 58156,
+   "current_mb": 2214,
+   "anon_mb": 299,
+   "file_mb": 1904,
+   "pgmajfault": 65916
+  },
+  "evict_5pct": {
+   "n": 11,
+   "tok_s": 0.085,
+   "p50": 12.268,
+   "p95": 15.098,
+   "max": 15.098,
+   "mean": 11.738,
+   "wall_s": 162.0,
+   "io_read_mb": 5231,
+   "majfault": 74754,
+   "current_mb": 2124,
+   "anon_mb": 299,
+   "file_mb": 1815,
+   "pgmajfault": 140670
+  },
+  "env_after": {
+   "cpu_c": 44.3,
+   "throttled": "0x0"
+  }
+ },
+ "spike": "s3",
+ "started": "2026-09-29T23:18:14-0700",
+ "finished": "2026-09-29T23:36:15-0700",
+ "kernel": "6.18.50+rpt-rpi-v8"
+}
