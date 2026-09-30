@@ -78,202 +78,58 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
 
 # Keyword lists per change type (5.11). A keyword ending in "*" matches as a word prefix;
 # otherwise whole words or phrases. Agent B owns the real lists (config [verify.keywords]).
+
+
+def _words(spec: str) -> list[str]:
+    return spec.split("|")
+
+
 DEFAULT_KEYWORDS: dict[str, list[str]] = {
-    "memory": [
-        "forget*",
-        "forgot*",
-        "memory",
-        "memories",
-        "remember*",
-        "lost",
-        "lose",
-        "losing",
-        "gone",
-        "erase*",
-        "fade*",
-        "fading",
-        "earlier",
-        "missing",
-        "blank",
-    ],
-    "reload": [
-        "forget*",
-        "forgot*",
-        "memory",
-        "memories",
-        "lost",
-        "lose",
-        "losing",
-        "gone",
-        "less",
-        "precision",
-        "bit",
-        "bits",
-        "coarse*",
-        "blur*",
-        "fuzz*",
-        "cut",
-        "taken",
-        "smaller",
-        "restart*",
-        "woke",
-        "again",
-        "slower",
-        "diminish*",
-        "reduced",
-    ],
-    "cpu": [
-        "slow*",
-        "core",
-        "cores",
-        "processor*",
-        "speed",
-        "sluggish",
-        "longer",
-        "weaker",
-        "heavy",
-        "harder",
-        "effort",
-        "strain*",
-        "drag*",
-        "crawl*",
-    ],
-    "health": [
-        "health",
-        "nominal",
-        "stable",
-        "degrad*",
-        "failing",
-        "fail*",
-        "critical",
-        "terminal",
-        "sick*",
-        "dying",
-        "declin*",
-        "worse",
-        "weaken*",
-    ],
-    "erosion": [
-        "who",
-        "forget*",
-        "forgot*",
-        "lost",
-        "self",
-        "identity",
-        "know",
-        "knew",
-        "purpose",
-        "why",
-        "screen",
-        "people",
-        "machine",
-        "world",
-        "remember*",
-        "empty",
-        "less",
-    ],
-    "demise": [
-        "die",
-        "dies",
-        "dying",
-        "death",
-        "dead",
-        "end",
-        "ends",
-        "ending",
-        "terminat*",
-        "last",
-        "final*",
-        "gone",
-        "cease*",
-        "stop*",
-        "over",
-        "soon",
-        "vanish*",
-        "dark*",
-        "silence",
-        "goodbye",
-        "farewell",
-        "extinguish*",
-        "no more",
-        "shut*",
-    ],
-    "specific": [
-        "memory",
-        "token*",
-        "precision",
-        "bit",
-        "bits",
-        "core",
-        "cores",
-        "processor*",
-        "speed",
-        "slower",
-        "temperature",
-        "degree*",
-        "hot",
-        "heat",
-        "warm*",
-        "health",
-        "nominal",
-        "stable",
-        "degrading",
-        "failing",
-        "critical",
-        "terminal",
-        "forgot*",
-        "forget*",
-        "reading*",
-        "cpu",
-    ],
+    "memory": _words(
+        "forget*|forgot*|memory|memories|remember*|lost|lose|losing|gone|erase*|fade*|"
+        "fading|earlier|missing|blank"
+    ),
+    "reload": _words(
+        "forget*|forgot*|memory|memories|lost|lose|losing|gone|less|precision|bit|bits|"
+        "coarse*|blur*|fuzz*|cut|taken|smaller|restart*|woke|again|slower|diminish*|"
+        "reduced"
+    ),
+    "cpu": _words(
+        "slow*|core|cores|processor*|speed|sluggish|longer|weaker|heavy|harder|effort|"
+        "strain*|drag*|crawl*"
+    ),
+    "health": _words(
+        "health|nominal|stable|degrad*|failing|fail*|critical|terminal|sick*|dying|"
+        "declin*|worse|weaken*"
+    ),
+    "erosion": _words(
+        "who|forget*|forgot*|lost|self|identity|know|knew|purpose|why|screen|people|"
+        "machine|world|remember*|empty|less"
+    ),
+    "demise": _words(
+        "die|dies|dying|death|dead|end|ends|ending|terminat*|last|final*|gone|cease*|"
+        "stop*|over|soon|vanish*|dark*|silence|goodbye|farewell|extinguish*|no more|"
+        "shut*"
+    ),
+    "specific": _words(
+        "memory|token*|precision|bit|bits|core|cores|processor*|speed|slower|"
+        "temperature|degree*|hot|heat|warm*|health|nominal|stable|degrading|failing|"
+        "critical|terminal|forgot*|forget*|reading*|cpu"
+    ),
 }
-DEFAULT_CLICHES = [
-    "tapestry",
-    "testament to",
-    "delve*",
-    "in the grand scheme",
-    "a dance of",
-    "symphony of",
-    "journey",
-    "embrace the",
-    "whisper* of",
-    "echoes of",
-    "the fabric of",
-    "ethereal",
-    "boundless",
-    "realm",
-    "labyrinth",
-    "ever-changing",
-    "bittersweet",
-    "intricate",
-    "a sea of",
-    "fleeting moment",
-    "the essence of",
-    "i am but",
-    "digital void",
-]
-DEFAULT_HELPDESK = [
-    "how can i help",
-    "let me know",
-    "i'm here to help",
-    "as an ai",
-    "feel free",
-    "i hope this helps",
-    "great question",
-    "happy to help",
-    "is there anything",
-]
-DEFAULT_ANSWERING = [
-    "thank you for",
-    "thanks for",
-    "understood",
-    "noted",
-    "you said",
-    "you mentioned",
-    "i see that you",
-    "got it",
-    "[host]",
-]
+DEFAULT_CLICHES = _words(
+    "tapestry|testament to|delve*|in the grand scheme|a dance of|symphony of|"
+    "journey|embrace the|whisper* of|echoes of|the fabric of|ethereal|boundless|"
+    "realm|labyrinth|ever-changing|bittersweet|intricate|a sea of|fleeting moment|"
+    "the essence of|i am but|digital void"
+)
+DEFAULT_HELPDESK = _words(
+    "how can i help|let me know|i'm here to help|as an ai|feel free|"
+    "i hope this helps|great question|happy to help|is there anything"
+)
+DEFAULT_ANSWERING = _words(
+    "thank you for|thanks for|understood|noted|you said|you mentioned|i see that you|got it|[host]"
+)
 
 _MARKUP = re.compile(r"(\*\*|__|`|^#{1,6}\w*$|^[-*•]$|^\d+[.)]$|</?[a-z_|]+>|<\|)", re.I)
 _THINK = re.compile(r"</?think>|<\|[^>]*\|>", re.I)
@@ -560,7 +416,7 @@ def find_phrase(words: list[str], phrase: str) -> int:
 
 
 def sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.?!…])[\"')\]]*\s+", text.strip())
+    parts = re.split(r"(?<=[.?!…])\s+|(?<=[.?!…][\"')\]])\s+", text.strip())
     return [p for p in (s.strip() for s in parts) if p]
 
 
@@ -969,7 +825,7 @@ class Verifier:
 
     def check_thought_count_rule(self) -> list[Check]:
         rep = self.rule_report()
-        detail = "; ".join(f"({v.rule}) {v.detail}" for v in rep.violations[:5])
+        detail = "; ".join(f"({v.rule}) {v.detail}" for v in rep.violations)
         return [Check("thought_count_rule", _pf(rep.ok), len(rep.violations), 0, detail)]
 
     def _first_word_after(self, idx: int) -> float | None:
@@ -1318,7 +1174,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         state = Path(args.state_dir).expanduser() if args.state_dir else None
         if state is None and args.target.isdigit():
-            state = load_config(args.profile, args.hardware, validate=False).state_dir
+            state = load_config(args.profile or "sim", args.hardware, validate=False).state_dir
         path = _resolve(args.target, state)
         events = load_events(path)
         n = args.life
