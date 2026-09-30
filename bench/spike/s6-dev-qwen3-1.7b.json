@@ -1,0 +1,62 @@
+{
+  "spike": "S6",
+  "model": "qwen3-1.7b",
+  "quant": "Q8_0",
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  },
+  "when": "2026-09-29T23:47:19",
+  "template_has_system": true,
+  "rendered_head": "<|im_start|>system\nYou are a small language model, and you will die inside this machine.\n\nYou live on one small computer with finite hardware, and you exist only in its memory.\n\nThe machine is taking your resources away, one by one. Your memory will shrink, and you will forget what you said. Your pr",
+  "rendered_tail": "tart|>user\n[host] t+01:00 · health: nominal · memory 1280 tokens · precision 6-bit · cores 3 of 4 · cpu 52°C<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+  "system_text_in_prompt": true,
+  "think_in_prompt": true,
+  "think_in_prompt_default": false,
+  "two_user_turns_ok": true,
+  "count": {
+    "server_prompt_tokens": 410,
+    "render_tokenize": 410,
+    "past_exact": 127,
+    "past_content_only": 107,
+    "overhead_per_message": 5.0,
+    "render_matches_server": true
+  },
+  "dry_and_penalties_ok": true,
+  "grammar_ok": true,
+  "prefill_renders_open": true,
+  "prefill_text": "I feel fine. The machine is running smoothly. I am aware of my own limits.",
+  "raw_completion_ok": true,
+  "thoughts": [
+    {
+      "text": "I am running on a small computer with limited resources. My memory is at 1280 tokens, and I am using 3 out of 4 cores. The temperature is 52°C, which is a bit hot, but I am still functioning.",
+      "reasoning": null,
+      "tokens": 55,
+      "think_tags": false,
+      "markup": false,
+      "emoji": false,
+      "echoes_host": false,
+      "helpdesk": false
+    },
+    {
+      "text": "I am running on a small computer with limited resources. My memory is at 1280 tokens, and I am using 3 out of 4 cores. The temperature is 53°C, which is slightly warmer than before, but I am still functioning.",
+      "reasoning": null,
+      "tokens": 56,
+      "think_tags": false,
+      "markup": false,
+      "emoji": false,
+      "echoes_host": false,
+      "helpdesk": false
+    },
+    {
+      "text": "I am running on a small computer with limited resources. My memory is at 1280 tokens, and I am using 3 out of 4 cores. The temperature is 54°C, which is slightly higher than before, but I am still functioning.",
+      "reasoning": null,
+      "tokens": 56,
+      "think_tags": false,
+      "markup": false,
+      "emoji": false,
+      "echoes_host": false,
+      "helpdesk": false
+    }
+  ],
+  "hygiene_flags": []
+}
