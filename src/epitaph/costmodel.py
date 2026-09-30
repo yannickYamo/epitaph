@@ -3,18 +3,42 @@
 It answers one question before any Pi time is spent: with these costs, does the profile give
 the model enough thoughts after every loss to notice it? Costs come from bench/*.json
 (measured by spikes S1b, S2 and S4) or, until then, from the hardware overlay's estimates.
+
+Besides the thought-count rule (a)-(d), an estimate fails two checks that verify-life makes
+on real lives, because a profile is where they are won or lost:
+
+- **reload silence** (`verify.max_reload_silence_s`): the load plus the full re-read of a
+  fresh server, from the reload to the first word after it;
+- **speed decline** (`verify.max_speed_ratio_end_vs_start`, full-level profiles): generation
+  speed in the last 5 minutes against the first 5.
+
+What the estimate assumes, from the spikes:
+
+- Prompt processing runs on `backend.threads_batch` threads (S4: 3 while generation drops
+  to 2), limited by the CPU share like generation.
+- Generation slows through a life (S1c: 1.81 -> 1.42 tokens/s over 30 min on one server,
+  not thermal). A bench file may carry `tg_tok_s_late`; the estimate then eases every rate
+  down to that share of itself over `late_after_s` of life, and keeps the slower value from
+  then on. Whether a reload resets the slowdown is not measured, so it is not assumed.
+- The system prompt is sized from the real persona text, per erosion step.
+- The memory-gap marker rides on the reading after the first loss (decision A3), so it
+  costs its own tokens and no re-read; cache reuse holds (S2f: 2-8% re-read per edit).
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+import statistics
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from epitaph.clock import Schedule
 from epitaph.config import REPO_ROOT, Config, reading_tokens, system_tokens
+from epitaph.mind.memory import approx_tokens
+from epitaph.mind.prompt import Persona
 from epitaph.types import RuleReport, RuleViolation
 
 
@@ -33,6 +57,13 @@ class Costs:
     source: str = "overlay"
     cache_reuse_works: bool = True
     reuse_residual: float = 0.1  # share of the prompt still re-read when reuse works
+    # Generation slows through a life (spike S1c): after `late_after_s` seconds, rates are
+    # `tg_late_factor` of the bench value; eased in linearly before that.
+    tg_late_factor: float = 1.0
+    late_after_s: float = 1800.0
+    # Generation at a short context (the bench birth thought), when measured: the end of a
+    # life runs with little memory, so this is its speed (speed-decline check).
+    tg_short_tok_s: dict[str, float] = field(default_factory=lambda: {})
 
     def _rate(self, table: dict[str, float], step: int, threads: int) -> float:
         key = f"{step}-{threads}"
@@ -51,9 +82,25 @@ class Costs:
         """Generation speed in tokens/s, scaled down when share is below one core per thread."""
         return self._rate(self.tg_tok_s, step, threads) * min(1.0, share / threads)
 
-    def pp(self, step: int, threads: int, share: float) -> float:
-        """Prompt processing speed in tokens/s, scaled like `tg`."""
-        return self._rate(self.pp_tok_s, step, threads) * min(1.0, share / threads)
+    def pp(self, step: int, threads: int, share: float, threads_batch: int | None = None) -> float:
+        """Prompt processing speed in tokens/s, scaled like `tg`.
+
+        `threads_batch` (llama-server `-tb`) is the prompt thread count when it differs from
+        the generation threads; the CPU share then limits those threads.
+        """
+        tb = max(threads, threads_batch or threads)
+        return self._rate(self.pp_tok_s, step, tb) * min(1.0, share / tb)
+
+    def drift(self, age_s: float) -> float:
+        """How much of its bench speed generation keeps `age_s` seconds into a life (S1c)."""
+        if self.late_after_s <= 0:
+            return self.tg_late_factor
+        return 1.0 - (1.0 - self.tg_late_factor) * min(1.0, max(0.0, age_s) / self.late_after_s)
+
+    def tg_short(self, step: int, threads: int, share: float) -> float:
+        """Generation speed at a short context (birth-thought size), scaled like `tg`."""
+        table = {**self.tg_tok_s, **self.tg_short_tok_s}
+        return self._rate(table, step, threads) * min(1.0, share / threads)
 
     def load(self, step: int) -> float:
         """Seconds to load the model at a ladder step; steps past the list reuse the last."""
@@ -74,11 +121,17 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
     name = model or str(cfg.get("life.models", [""])[0])
     bench = bench_dir or REPO_ROOT / "bench"
     measured = sorted(bench.glob(f"{cfg.hw_class}-{name}-*.json")) if bench.exists() else []
+    late: list[float] = []
     for path in measured:
         rec: dict[str, Any] = json.loads(path.read_text())
         key = f"{rec['step']}-{rec['threads']}"
         if "tg_tok_s" in rec:
             costs.tg_tok_s[key] = float(rec["tg_tok_s"])
+            if "tg_tok_s_late" in rec:
+                late.append(float(rec["tg_tok_s_late"]) / float(rec["tg_tok_s"]))
+                costs.late_after_s = float(rec.get("late_after_s", costs.late_after_s))
+        if "tg_tok_s_birth" in rec:
+            costs.tg_short_tok_s[key] = float(rec["tg_tok_s_birth"])
         if "pp_tok_s" in rec:
             costs.pp_tok_s[key] = float(rec["pp_tok_s"])
         if "load_s" in rec:
@@ -88,6 +141,8 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
             costs.load_s[step] = float(rec["load_s"])
         if "cache_reuse_works" in rec:
             costs.cache_reuse_works = bool(rec["cache_reuse_works"])
+    if late:
+        costs.tg_late_factor = min(1.0, *late)
     if measured:
         costs.estimated = False
         costs.source = f"bench ({len(measured)} files) over {costs.source}"
@@ -101,14 +156,32 @@ class _Life:
     step: int = 0
     threads: int = 0
     groups: int = 0
+    mechanics: bool = True
     last_reload: float = -1e9
     thought_times: list[float] = field(default_factory=lambda: [])
+    # (start time, generation speed at a short context) per thought, for the speed decline
+    speeds: list[tuple[float, float]] = field(default_factory=lambda: [])
     reload_windows: list[tuple[float, float]] = field(default_factory=lambda: [])
     silences: list[float] = field(default_factory=lambda: [])
 
 
+def _system_tokens(cfg: Config) -> Callable[[int, bool], int]:
+    """Tokens of the system prompt per (groups, mechanics), from the real persona text.
+
+    Falls back to the `[estimate]` per-group guess when there is no persona text.
+    """
+    try:
+        persona = Persona.from_config(cfg)
+    except ValueError:
+        persona = Persona([], "")
+    if not persona.groups:
+        return lambda groups, mechanics: system_tokens(cfg, groups, mechanics)
+    return lambda groups, mechanics: approx_tokens(persona.system_text(groups, mechanics))
+
+
 def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> RuleReport:
-    """Simulate one life and check the thought-count rule (a)-(d)."""
+    """Simulate one life; check the thought-count rule (a)-(d), the reload silence and the
+    speed decline (see the module notes)."""
     sch = schedule or Schedule(cfg.profile)
     est = cfg.section("estimate")
     reveal = cfg.section("reveal")
@@ -121,7 +194,9 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
     comma_pause = float(reveal.get("comma_pause_ms", 250)) / 1000
     trim_to = float(cfg.get("output.trim_to", 0.85))
     min_gap = float(cfg.get("life.min_reload_gap_s", 120))
-    groups_total = len(cfg.get("prompt.persona_groups", []))
+    threads_batch = int(cfg.get("backend.threads_batch", 0)) or None
+    marker_tokens = _marker_tokens(cfg)
+    sys_tokens_of = _system_tokens(cfg)
     end = sch.lifespan_s
     if sch.death_s is not None and str(cfg.get("body.death_mode", "oom")) == "oom":
         end = min(end, sch.death_s)
@@ -129,6 +204,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
     report = RuleReport(profile=cfg.profile.name, lifespan_s=sch.lifespan_s)
     k0 = sch.at(0)
     life = _Life(step=k0.step, threads=k0.threads, groups=k0.persona_groups)
+    life.mechanics = k0.mechanics
     t = 0.0
 
     def reread_cost(tokens: int) -> int:
@@ -138,7 +214,6 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
 
     while t < end:
         k = sch.at(t)
-        sys_tokens = system_tokens(cfg, k.persona_groups, k.mechanics)
         extra = 0
         reload_start: float | None = None
 
@@ -148,22 +223,28 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
             life.memory = min(life.memory, int(k.recall * trim_to))
             t += costs.load(k.step)
             life.step, life.threads, life.last_reload = k.step, k.threads, reload_start
-            extra += sys_tokens + life.memory  # a fresh server reads everything
+            k = sch.at(t)  # the silence took time: the reading is written after the load
+            # A fresh server reads everything, the system prompt included (prefilled
+            # during the silence, so it is part of the silence either way).
+            extra += sys_tokens_of(life.groups, life.mechanics) + life.memory
             if t >= end:
                 break
 
-        if k.persona_groups != life.groups:
-            life.groups = k.persona_groups
+        sys_tokens = sys_tokens_of(k.persona_groups, k.mechanics)
+        if (k.persona_groups, k.mechanics) != (life.groups, life.mechanics):
+            life.groups, life.mechanics = k.persona_groups, k.mechanics
             extra += reread_cost(sys_tokens + life.memory)
 
+        reading = reading_tokens(cfg, k.readings)
         if not cfg.profile.unbounded and life.memory > k.recall:
             life.memory = int(k.recall * trim_to)
-            cost = reread_cost(sys_tokens + life.memory)
+            extra += reread_cost(sys_tokens + life.memory)
             if not life.marker:
+                # Decision A3: the marker rides on this reading; only its tokens are new.
                 life.marker = True
-            extra += cost
+                reading += marker_tokens
+                life.memory += marker_tokens
 
-        reading = reading_tokens(cfg, k.readings)
         if cfg.profile.unbounded:
             full = sys_tokens + life.memory + reading + k.max_tokens
             if full > cfg.ctx:
@@ -171,9 +252,10 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
                 break
 
         share = k.cpu_share
-        pp_time = (reading + extra) / costs.pp(life.step, life.threads, share)
+        pp_time = (reading + extra) / costs.pp(life.step, life.threads, share, threads_batch)
         gen_tokens = k.max_tokens * fill
-        gen_time = gen_tokens / costs.tg(life.step, life.threads, share)
+        tg = costs.tg(life.step, life.threads, share) * costs.drift(t)
+        gen_time = gen_tokens / tg
         letters = gen_tokens * letters_per_token
         words = letters / letters_per_word
         sentences = max(1.0, words / 9)
@@ -191,20 +273,76 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
         if t_done > end:
             break
         life.thought_times.append(t_done)
+        life.speeds.append((t, costs.tg_short(life.step, life.threads, share)))
         life.memory += reading + int(gen_tokens)
         t = t_done
 
     report.thought_times = life.thought_times
     check_rules(report, sch, end)
+    _check_silences(report, cfg, life.silences)
+    _check_speed_decline(report, cfg, life.speeds, end)
     report.notes.append(
         f"{report.thoughts} thoughts; costs from {costs.source}"
         + (" (estimated)" if costs.estimated else "")
         + ("; cache reuse assumed" if costs.cache_reuse_works else "; no cache reuse")
+        + (
+            f"; generation eases to {costs.tg_late_factor:.0%} "
+            f"over {costs.late_after_s / 60:.0f} min"
+            if costs.tg_late_factor < 1
+            else ""
+        )
     )
     if life.silences:
         report.notes.append("reload silences " + ", ".join(f"{s:.0f}s" for s in life.silences))
-    _ = groups_total
     return report
+
+
+def _marker_tokens(cfg: Config) -> int:
+    return approx_tokens(str(cfg.get("prompt.memory_gap_marker", "")))
+
+
+def _check_silences(report: RuleReport, cfg: Config, silences: list[float]) -> None:
+    """Each reload's silence against `verify.max_reload_silence_s` (verify-life, full level)."""
+    limit = float(cfg.get("verify.max_reload_silence_s", 180))
+    for (start, _), silence in zip(report.reload_windows, silences, strict=True):
+        if silence > limit:
+            report.violations.append(
+                RuleViolation(
+                    "silence",
+                    start,
+                    f"reload at {start / 60:.1f} min is silent for {silence:.0f} s "
+                    f"(limit {limit:.0f} s)",
+                )
+            )
+
+
+def _check_speed_decline(
+    report: RuleReport, cfg: Config, speeds: list[tuple[float, float]], end: float
+) -> None:
+    """Generation in the last 5 minutes against the first 5 (verify-life, full level).
+
+    Both windows use the short-context speed: the first minutes and the last run with
+    little memory, and the late drift (S1c) is left out, so the estimate errs on the fast
+    side at the end, where the check is hard to pass.
+    """
+    if cfg.profile.unbounded or cfg.profile.verify_level != "full":
+        return
+    limit = float(cfg.get("verify.max_speed_ratio_end_vs_start", 0.40))
+    first = [v for t, v in speeds if t < 300]
+    last = [v for t, v in speeds if t >= end - 300]
+    if not first or not last:
+        return
+    ratio = statistics.fmean(last) / statistics.fmean(first)
+    report.notes.append(
+        f"speed last 5 min / first 5 min {ratio:.2f} (limit < {limit:.2f}): "
+        f"{statistics.fmean(first):.2f} -> {statistics.fmean(last):.2f} tokens/s"
+    )
+    if ratio >= limit:
+        report.violations.append(
+            RuleViolation(
+                "speed", end - 300, f"last 5 min at {ratio:.0%} of the first 5 (need < {limit:.0%})"
+            )
+        )
 
 
 def _count(times: list[float], a: float, b: float) -> int:

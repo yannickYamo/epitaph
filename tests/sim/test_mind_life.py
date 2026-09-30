@@ -16,6 +16,7 @@ plan asks of them across reloads, erosion and death:
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import pytest
@@ -247,7 +248,7 @@ def test_first_reading_after_a_reload_reports_the_loss(life: dict[str, Any]) -> 
         after = next(text for t, text in readings if t >= rt)
         assert "(was" in after and "-bit" in after, after
         if "precision" in after:  # full form
-            assert "cores 2 of 4 (was 3)" in after or "(was 4-bit)" in after
+            assert re.search(r"precision \d+-bit \(was \d+-bit\)", after), after
 
 
 def test_cache_reuse_holds_through_every_loss(life: dict[str, Any]) -> None:
