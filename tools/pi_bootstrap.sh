@@ -105,6 +105,22 @@ PermitRootLogin no
 Match Address 10.42.0.0/24
     PasswordAuthentication yes'
 AVAHI=/etc/avahi/avahi-daemon.conf
+# Swap (BUILD_PLAN F11). Raspberry Pi OS defaults to zram with write-back to /var/swap on the
+# SD card. Keep the compressed RAM swap for the system, drop the card file (rpi-swap removes
+# it at the next boot), and swap late. The creature's cgroup has memory.swap.max = 0 anyway.
+SWAP_CONF=/etc/rpi/swap.conf.d/90-epitaph.conf
+SWAP_CONF_BODY='# epitaph (BUILD_PLAN F11): compressed RAM swap only, no write-back file on the SD card.
+# rpi-swap removes the old /var/swap at the next boot.
+[Main]
+Mechanism=zram'
+SWAP_FILE=/var/swap
+SYSCTL=/etc/sysctl.d/90-epitaph.conf
+SWAPPINESS=10
+SYSCTL_BODY="# epitaph (BUILD_PLAN F11): swap only under real pressure (the OS default is 60).
+vm.swappiness = $SWAPPINESS"
+# The cable is a fallback route (BUILD_PLAN F12): Wi-Fi (metric 600) wins whenever it is up;
+# when the Pi is off Wi-Fi, the laptop's shared connection still gives it NTP and apt.
+ETH_METRIC=800
 STATE_DIRS="/var/lib/epitaph /var/lib/epitaph/models"
 PACKAGES="nftables"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -168,12 +184,16 @@ fix_wifi_settings() {
   done < <(wifi_conns)
 }
 
-# --- the cable is maintenance-only --------------------------------------------------------
+# --- the cable: maintenance link, and the route of last resort ---------------------------
+# IPv4 may route over the cable, but only behind Wi-Fi (metric ETH_METRIC > 600): with Wi-Fi
+# up nothing changes (V6), with Wi-Fi out of range the laptop's NAT keeps NTP working. The
+# laptop gives no IPv6 over the cable, so IPv6 stays never-default.
 chk_eth() {
   local c ok=0
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    [ "$(nm_get "$c" ipv4.never-default)" = "yes" ] || ok=1
+    [ "$(nm_get "$c" ipv4.never-default)" = "no" ] || ok=1
+    [ "$(nm_get "$c" ipv4.route-metric)" = "$ETH_METRIC" ] || ok=1
     [ "$(nm_get "$c" ipv6.never-default)" = "yes" ] || ok=1
   done < <(eth_conns)
   return "$ok"
@@ -182,7 +202,7 @@ fix_eth() {
   local c
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    nmcli connection modify "$c" ipv4.never-default yes ipv6.never-default yes
+    nmcli connection modify "$c" ipv4.never-default no ipv4.route-metric "$ETH_METRIC" ipv6.never-default yes
     nmcli device reapply eth0 >/dev/null 2>&1 || true
   done < <(eth_conns)
 }
@@ -252,6 +272,18 @@ fix_cmdline() {
 }
 # After a reboot the running kernel must agree (the firmware injects cgroup_disable=memory).
 chk_memcg_live() { grep -qw memory /sys/fs/cgroup/cgroup.controllers; }
+
+# --- swap: zram only, swappiness 10 -------------------------------------------------------
+chk_swap_conf() { same_file "$SWAP_CONF" 644 "$SWAP_CONF_BODY"; }
+fix_swap_conf() { mkdir -p "$(dirname "$SWAP_CONF")"; put_file "$SWAP_CONF" 0644 "$SWAP_CONF_BODY"; }
+# After a reboot: zram is the only swap, it has no backing device, the card file is gone.
+chk_swap_live() {
+  [ "$(awk 'NR>1{print $1}' /proc/swaps)" = /dev/zram0 ] \
+    && [ "$(cat /sys/block/zram0/backing_dev 2>/dev/null || echo none)" = none ] \
+    && [ ! -e "$SWAP_FILE" ]
+}
+chk_sysctl() { same_file "$SYSCTL" 644 "$SYSCTL_BODY" && [ "$(cat /proc/sys/vm/swappiness)" = "$SWAPPINESS" ]; }
+fix_sysctl() { put_file "$SYSCTL" 0644 "$SYSCTL_BODY" && /usr/sbin/sysctl -q -p "$SYSCTL"; }
 
 # --- console boot, watchdog, journal, time -----------------------------------------------
 chk_target() { [ "$(systemctl get-default)" = multi-user.target ]; }
@@ -348,11 +380,14 @@ state() {
   echo "watchdog: $(systemctl show -p RuntimeWatchdogUSec --value)"
   echo "journald-storage: $(systemd-analyze cat-config systemd/journald.conf | grep -E '^(Storage|SystemMaxUse)=' | tr '\n' ' ')"
   echo "timezone: $(timedatectl show -p Timezone --value) ntp: $(timedatectl show -p NTP --value)"
+  echo "cable-route: $(ip -4 route show default dev eth0 | awk '{print "default metric", $NF}')"
   echo "sshd-wifi: $(sshd -T 2>/dev/null | grep -E '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) ' | tr '\n' ' ')"
   echo "sshd-cable: $(sshd -T -C addr=10.42.0.1,user=pi,host=laptop 2>/dev/null | grep -E '^passwordauthentication ')"
+  echo "swaps: $(awk 'NR>1{print $1, $2}' /proc/swaps | tr '\n' ' ')zram-backing: $(cat /sys/block/zram0/backing_dev 2>/dev/null || echo none) swapfile: $([ -e "$SWAP_FILE" ] && echo present || echo absent)"
+  echo "swappiness: $(cat /proc/sys/vm/swappiness) page-cluster: $(cat /proc/sys/vm/page-cluster)"
   echo "avahi: $(grep -E '^\s*allow-interfaces=' "$AVAHI") $(systemctl is-active avahi-daemon)"
   echo "password-status: $(passwd -S "$USER_NAME" | awk '{print $2}')"
-  for f in "$SUDOERS" "$JOURNALD" "$SSHD" "$AVAHI" "$CMDLINE" /etc/hosts /etc/hostname "$USERDATA"; do
+  for f in "$SUDOERS" "$JOURNALD" "$SSHD" "$AVAHI" "$SWAP_CONF" "$SYSCTL" "$CMDLINE" /etc/hosts /etc/hostname "$USERDATA"; do
     [ -e "$f" ] && echo "file $f: $(stat -c '%a %U:%G %Y' "$f") $(sha256sum < "$f" | cut -c1-16)"
   done
   ls /etc/ssh/sshd_config.d/ | sed 's/^/sshd.d: /'
@@ -367,13 +402,15 @@ item sudoers        chk_sudoers       fix_sudoers       0
 item wifi-country   chk_country       fix_country       0
 check_manual
 item wifi-settings  chk_wifi_settings fix_wifi_settings 0
-item cable-no-route chk_eth           fix_eth           0
+item cable-fallback chk_eth           fix_eth           0
 item cloud-init-off chk_cloudinit     fix_cloudinit     1
 item user-data-cred chk_userdata      fix_userdata      0
 item hostname       chk_hostname      fix_hostname      0
 item avahi-wlan0    chk_avahi         fix_avahi         0
 item cmdline        chk_cmdline       fix_cmdline       1
 item console-boot   chk_target        fix_target        1
+item swap-zram-only chk_swap_conf     fix_swap_conf     1
+item swappiness     chk_sysctl        fix_sysctl        0
 item watchdog       chk_watchdog      fix_watchdog      0
 item journald       chk_journald      fix_journald      0
 item timezone       chk_tz            fix_tz            0
@@ -383,6 +420,13 @@ item state-dirs     chk_dirs          fix_dirs          0
 item packages       chk_pkgs          fix_pkgs          0
 if [ "$NEED_REBOOT" = 0 ] && chk_cmdline; then
   if chk_memcg_live; then say memory-cgroup ok; else say memory-cgroup "MISSING (reboot pending, or the firmware override failed: death_mode = deadline)"; FAILED+=(memory-cgroup); fi
+fi
+# NTP enabled is not NTP working: with no route out (Wi-Fi out of range, cable not shared)
+# the clock drifts from the last saved time, and exhibition hours use local time.
+if [ "$(timedatectl show -p NTPSynchronized --value)" = yes ]; then say clock-synced ok
+else manual clock-synced "The clock is not NTP-synchronised (no route to a time server?). Check Wi-Fi, or that the laptop shares its connection over the cable."; fi
+if [ "$NEED_REBOOT" = 0 ] && chk_swap_conf; then
+  if chk_swap_live; then say swap-live "ok (zram only)"; else say swap-live "NOT YET (reboot pending: $(awk 'NR>1{printf "%s ", $1}' /proc/swaps)backing $(cat /sys/block/zram0/backing_dev 2>/dev/null))"; FAILED+=(swap-live); fi
 fi
 
 echo "== changed: ${#CHANGED[@]} (${CHANGED[*]:-none}); drift: ${#DRIFT[@]} (${DRIFT[*]:-none}); failed: ${#FAILED[@]} (${FAILED[*]:-none})"
