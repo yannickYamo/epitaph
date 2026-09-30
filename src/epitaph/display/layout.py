@@ -426,6 +426,8 @@ class LifeView:
         if not self.exhibit_open:
             return True
         if self.mode == "silence" and self.card(now) is None:
+            if now < max(self.tail, self.death_shown_at or 0.0):
+                return False  # the last words are still being typed
             return self.s.silence_style in ("dark", "idle", "death_card")
         return False
 
