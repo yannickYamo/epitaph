@@ -365,3 +365,20 @@ def test_parse_set_builds_nested_overrides() -> None:
     }
     with pytest.raises(ValueError):
         parse_set(["nothing"])
+
+
+def test_a_slot_handover_is_charged_instead_of_the_reread(tmp_path: Path) -> None:
+    """reload_handover = "slot" (spike S4b): each reload charges the save and restore, and
+    the fresh server reads only what the cut left new, not the whole memory."""
+    rc = main(
+        ["--stage", "life", "--backend", "fake", "--model", "qwen3-1.7b", "--out", str(tmp_path),
+         "--set", 'backend.reload_handover="slot"']
+    )  # fmt: skip
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    data = json.loads((folder / "charges.json").read_text())
+    handovers = [c for c in data["charges"] if c["kind"] == "handover"]
+    assert len(handovers) == 2 and all(c["tokens"] > 0 and c["seconds"] > 0 for c in handovers)
+    for h in handovers:  # the prefill after a restore is skipped: nothing is read
+        after = [c for c in data["charges"] if c["t"] >= h["t"] and c["kind"] == "prefill"]
+        assert after and after[0]["tokens"] == 0

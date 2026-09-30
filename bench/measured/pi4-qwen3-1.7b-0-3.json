@@ -8,7 +8,6 @@
   "kv": "f16",
   "file_mb": 2065,
   "when": "2026-09-30T01:10:40",
-  "host": "epitaph",
   "mem_available_before_mb": 3605,
   "load_s": 52.2,
   "cold": true,
@@ -52,5 +51,14 @@
   "throttled": "throttled=0x0",
   "birth_ok": true,
   "cache_reuse_works": true,
-  "cache_reuse_note": "S2f/S2t: warm trims and erosion re-read 2-8% with --cache-reuse (Gemma 3 needs --swa-full)"
+  "cache_reuse_note": "S2f/S2t: warm trims and erosion re-read 2-8% with --cache-reuse (Gemma 3 needs --swa-full)",
+  "tg_ctx_model": {
+    "a_s": 0.4964,
+    "b_s_per_token": 0.00012434,
+    "source": "S1c round 2 soak (R2 0.99 against the KV high-water mark)"
+  },
+  "late_ctx": 1792,
+  "tg_tok_s_late": 1.39,
+  "late_after_s": 1200,
+  "late_note": "S1c round 2 (F8, bench/spike/s1c-pi4-qwen3-1.7b-r2.json): seconds per token = 0.496 + 0.000124 x the KV cache's high-water mark; tg_tok_s_late is that line at n_kv 1792, the largest context of a pi4/default life, reached as the memory fills. Round 1's 1.424 came from a soak whose context grew to about 1850 tokens."
 }

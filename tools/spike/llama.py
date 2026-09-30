@@ -53,7 +53,11 @@ class Server:
         port: int = 8091,
         cache_reuse: int = 256,
         mmap: bool = True,
+        load_mode: str = "",
+        threads_batch: int = 0,
         swa_full: bool = False,
+        slot_save_path: str = "",
+        kv_debug: bool = False,
         extra: list[str] | None = None,
         log: Path | None = None,
         taskset: str | None = None,
@@ -74,25 +78,40 @@ class Server:
             "-ngl", "0",
             "--metrics",
         ]  # fmt: skip
+        if threads_batch:
+            self.argv += ["-tb", str(threads_batch)]
         if cache_reuse:
             self.argv += ["--cache-reuse", str(cache_reuse)]
-        if not mmap:
+        if load_mode:
+            self.argv += ["--load-mode", load_mode]  # mmap | none | dio (S3: dio on the Pi 4)
+        elif not mmap:
             self.argv += ["--load-mode", "none"]  # --no-mmap was removed before b11277
         if swa_full:
             self.argv += ["--swa-full"]
+        if slot_save_path:
+            self.argv += ["--slot-save-path", slot_save_path]
+        # LLAMA_KV_CACHE_DEBUG=1 with -v logs the KV cache's used cells and high-water mark
+        # (find_slot: n = used_max_p1, the cells attention runs over) for every batch.
+        self.env = {**os.environ, "LLAMA_KV_CACHE_DEBUG": "1"} if kv_debug else None
+        if kv_debug:
+            self.argv += ["-v"]
         self.argv += extra or []
         if taskset:
             self.argv = ["taskset", "-c", taskset, *self.argv]
         self.log = log or Path(os.environ.get("TMPDIR", "/tmp")) / f"llama-server-{port}.log"
         self.proc: subprocess.Popen[bytes] | None = None
+        self._log_pos = 0
         self.t_spawn = 0.0
         self.load_s = 0.0
 
     def start(self, timeout: float = 600) -> float:
         """Spawn and wait for /health; returns seconds from spawn to healthy."""
         self.t_spawn = time.monotonic()
+        self._log_pos = 0
         with self.log.open("wb") as f:
-            self.proc = subprocess.Popen(self.argv, stdout=f, stderr=subprocess.STDOUT)
+            self.proc = subprocess.Popen(
+                self.argv, stdout=f, stderr=subprocess.STDOUT, env=self.env
+            )
         while time.monotonic() - self.t_spawn < timeout:
             if self.proc.poll() is not None:
                 raise RuntimeError(f"llama-server exited {self.proc.returncode}: {self.tail()}")
@@ -163,6 +182,9 @@ class Server:
             "min_p": kw.pop("min_p", 0.05),
             "seed": kw.pop("seed", 42),
             "cache_prompt": True,
+            # Non-thinking, as the backend sends it (S6). Round 1's S1b/S1c runs lacked it,
+            # so Qwen3 1.7B thought aloud and its visible text was empty.
+            "chat_template_kwargs": kw.pop("chat_template_kwargs", {"enable_thinking": False}),
             **kw,
         }
         t0 = time.monotonic()
@@ -175,6 +197,7 @@ class Server:
             "text": r["choices"][0]["message"].get("content") or "",
             "reasoning": r["choices"][0]["message"].get("reasoning_content"),
             "prompt_tokens": r.get("usage", {}).get("prompt_tokens"),
+            "completion_tokens": r.get("usage", {}).get("completion_tokens"),
             "prompt_n": tm.get("prompt_n"),
             "cache_n": tm.get("cache_n"),
             "prompt_ms": tm.get("prompt_ms"),
@@ -184,6 +207,61 @@ class Server:
             "predicted_per_s": tm.get("predicted_per_second"),
             "wall_s": wall,
         }
+
+    def prefill(self, system: str) -> dict[str, Any]:
+        """Read the system prompt into the cache as the backend's `prefill` does (one token).
+
+        The backend sends [system, probe user "x"] and generates one token; the next request's
+        shared prefix (system and the user header) then comes from the cache.
+        """
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": "x"}]
+        return self.chat(msgs, max_tokens=1, temperature=0.0)
+
+    def count(self, messages: list[dict[str, str]]) -> int:
+        """Tokens of the messages rendered with the model's template (the backend's method)."""
+        r = self.post(
+            "/apply-template",
+            {"messages": messages, "chat_template_kwargs": {"enable_thinking": False}},
+        )
+        t = self.post("/tokenize", {"content": r["prompt"], "parse_special": True})
+        return len(t["tokens"])
+
+    def slot(self) -> dict[str, Any]:
+        """GET /slots for slot 0, without its sampling params; n_past is derived.
+
+        n_past = the last prompt's tokens + the tokens decoded after it (the logical context).
+        """
+        s = {k: v for k, v in self.get("/slots")[0].items() if k != "params"}
+        nt = (s.get("next_token") or [{}])[0]
+        if "n_prompt_tokens" in s:
+            s["n_past"] = int(s["n_prompt_tokens"]) + int(nt.get("n_decoded") or 0)
+        return s
+
+    def slot_action(self, action: str, filename: str) -> tuple[dict[str, Any], float]:
+        """POST /slots/0?action=save|restore (needs --slot-save-path); (reply, wall seconds)."""
+        t0 = time.monotonic()
+        r = self.post(f"/slots/0?action={action}", {"filename": filename}, timeout=600)
+        return r, time.monotonic() - t0
+
+    def kv_marks(self) -> list[tuple[int, int]]:
+        """(high-water cells, used cells) per batch logged since the last call (kv_debug=True).
+
+        Reads the log incrementally: with -v it grows by megabytes per minute.
+        """
+        out: list[tuple[int, int]] = []
+        tag = "find_slot: stream[0], n ="
+        try:
+            with self.log.open("rb") as f:
+                f.seek(self._log_pos)
+                data = f.read()
+                self._log_pos += len(data)
+        except OSError:
+            return out
+        for line in data.decode(errors="replace").splitlines():
+            if tag in line:
+                part = line.split(tag)[1]
+                out.append((int(part.split(",")[0]), int(part.split("used =")[1].split(",")[0])))
+        return out
 
 
 @contextlib.contextmanager

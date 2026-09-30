@@ -9,7 +9,10 @@ It models what matters about llama-server for the life loop:
   cached: the common prefix is always kept; with cache reuse on, runs of kept turns that were
   shifted by a front trim are reused too if they are at least `cache_reuse_min` tokens long
   (`--cache-reuse N`). Without it, everything after the first changed message is re-read.
-  A (re)start empties the cache. The final chunk's `prompt_n` is the processed count.
+  A (re)start empties the cache, unless `reload_handover = "slot"` carries it across a
+  reload of the same model (spike S4b: save, stop, load, restore, `handover_s` on the clock);
+  the next `prefill` is then skipped, as the real backend does. The final chunk's
+  `prompt_n` is the processed count.
 - **Faults** (`FakeFaults`): OOM kill, crash, hang (alive, silent, no progress), full context,
   slow load, slow prompt processing, and a hang during load. Each can fire at a token count or
   at a clock time.
@@ -26,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from epitaph.backend.base import ContextFull, CreatureDied
+from epitaph.backend.llama_server import Handover
 from epitaph.costmodel import Costs
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
@@ -57,6 +61,10 @@ class FakeBackendClock(Protocol):
         """Let s seconds pass on this clock."""
         ...
 
+
+# f16 KV cache bytes per token of a 1.7-3B candidate (S4b: 28 layers x 8 KV heads x 128 x 2 x
+# 2 bytes = 112 KiB for Qwen3 1.7B and Llama 3.2 3B); sizes the fake's slot file.
+KV_BYTES_PER_TOKEN = 114_688
 
 SIGKILL = int(_signal.SIGKILL)
 SIGSEGV = int(_signal.SIGSEGV)
@@ -117,12 +125,16 @@ class FakeBackend:
         cache_reuse: bool | None = None,
         cache_reuse_min: int = 256,
         faults: FakeFaults | None = None,
+        reload_handover: str = "reread",
+        handover_s: float = 0.3,
     ) -> None:
         """Create a stopped creature on `clock`, with the speeds of `costs`.
 
         `seed` makes the text deterministic. `ctx` is the context size in tokens. `cache_reuse`
         says whether `--cache-reuse` works (default: `costs.cache_reuse_works`), and
-        `cache_reuse_min` is the shortest reusable run, in tokens.
+        `cache_reuse_min` is the shortest reusable run, in tokens. `reload_handover` is
+        "reread" or "slot" (the cache survives a reload of the same model; saving and
+        restoring it takes `handover_s` seconds; S4b: 0.28-0.29 s on the Pi 4).
         """
         self.clock = clock
         self.costs = costs
@@ -148,19 +160,31 @@ class FakeBackend:
         self._wake = asyncio.Event()
         self._ends = 0  # bumped by every kill or stop, to wake a hung wait with the news
         self.truncated = False  # the last request stopped because the context was full
+        self.reload_handover = reload_handover
+        self.handover_s = handover_s
+        self.handovers = 0  # reloads that carried the cache
+        self.last_handover = Handover()  # as LlamaServerBackend reports it
+        self._model: str | None = None
+        self._restored = False
 
     # -- lifecycle ---------------------------------------------------------------------------
 
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
         """Load the quant's ladder step, taking the modelled load time on the clock.
 
-        Empties the prompt cache. Raises CreatureDied for `crash_on_start`, or when a stop or
-        kill ends a `hang_on_start`.
+        Empties the prompt cache, or keeps it when the slot handover applies (see the module
+        notes). Raises CreatureDied for `crash_on_start`, or when a stop or kill ends a
+        `hang_on_start`.
         """
+        carry = self.reload_handover == "slot" and self.alive and self._model == model.name
+        kept = self._cache if carry else _Cache()
+        self._restored = False
+        self.last_handover = Handover()
         self.alive = False
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
         self.cpu_share = float(threads)
+        self._model = model.name
         self._cache = _Cache()
         self._tokens = 0
         self.hung = False
@@ -177,6 +201,13 @@ class FakeBackend:
         if self.faults.crash_on_start:
             self._last = CreatureStatus(alive=False, pid=FAKE_PID, exit_code=1)
             raise CreatureDied(self._last)
+        if carry:
+            await self.clock.sleep(self.handover_s)
+            self._cache = kept
+            self._restored = True
+            self.handovers += 1
+            tokens = sum(n for _, n in kept.blocks)
+            self.last_handover = Handover("slot", tokens, tokens * KV_BYTES_PER_TOKEN)
         self.alive = True
         self._last = CreatureStatus(alive=True, pid=FAKE_PID)
 
@@ -357,6 +388,9 @@ class FakeBackend:
         """
         if not self.alive:
             raise CreatureDied(self.status())
+        if self._restored:  # the restored cache already holds the prompt
+            self._restored = False
+            return 0
         blocks, todo, _ = self._plan(messages)
         total = sum(n for _, n in blocks)
         if total + 1 > self.ctx:
@@ -376,6 +410,7 @@ class FakeBackend:
         """
         if not self.alive:
             raise CreatureDied(self.status())
+        self._restored = False
         blocks, todo, reused = self._plan(messages)
         prompt_tokens = sum(n for _, n in blocks)
         if prompt_tokens + 1 > self.ctx:

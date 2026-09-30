@@ -1,0 +1,49 @@
+{
+  "spike": "S4",
+  "model": "qwen3-4b-instruct-2507",
+  "from": "Q4_K_M",
+  "cases": [
+    {
+      "quant": "Q3_K_M",
+      "threads": 3,
+      "threads_batch": 3,
+      "recall": 300,
+      "memory_tokens": 184,
+      "cold": true,
+      "load_mode": "dio",
+      "prefill": true,
+      "stop_s": 0.6,
+      "load_s": 55.3,
+      "prefill_tokens": 240,
+      "prefill_s": 117.6,
+      "reread_tokens": 230,
+      "reread_s": 118.1,
+      "pp_tok_s": 1.9487868310543488,
+      "total_s": 291.5,
+      "throttled": "throttled=0x0",
+      "temp_c": 50.634,
+      "ok": false
+    },
+    {
+      "quant": "Q2_K",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 200,
+      "memory_tokens": 92,
+      "cold": true,
+      "load_mode": "dio",
+      "prefill": true,
+      "stop_s": 0.6,
+      "load_s": 45.6,
+      "prefill_tokens": 240,
+      "prefill_s": 105.4,
+      "reread_tokens": 138,
+      "reread_s": 63.3,
+      "pp_tok_s": 2.18144104256442,
+      "total_s": 214.9,
+      "throttled": "throttled=0x0",
+      "temp_c": 51.121,
+      "ok": false
+    }
+  ]
+}

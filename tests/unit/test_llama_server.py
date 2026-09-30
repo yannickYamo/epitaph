@@ -312,3 +312,101 @@ def test_pi4_uses_direct_io_load_mode() -> None:
     argv = build_argv(ServerSettings.from_config(cfg), cfg.model(), "Q6_K", 3)
     assert argv[argv.index("--load-mode") + 1] == "dio"
     assert "--cache-reuse" in argv and argv[argv.index("--cache-reuse") + 1] == "32"
+
+
+# -- reload handover (spike S4b) ---------------------------------------------------------------
+
+QWEN = ModelSpec("qwen3-1.7b", "r", "l", ("Q8_0", "Q4_K_M", "Q2_K"))
+
+
+class SlotServer:
+    """A mock llama-server that answers /slots actions and counts prefills."""
+
+    def __init__(self, save: Any = None, restore: Any = None) -> None:
+        self.save = save or (200, {"id_slot": 0, "n_saved": 900, "n_written": 103_000_000})
+        self.restore = restore or (200, {"id_slot": 0, "n_restored": 900, "n_read": 103_000_000})
+        self.actions: list[tuple[str, str]] = []
+        self.prefills = 0
+
+    def __call__(self, req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        if req.url.path == "/slots/0":
+            action = req.url.params["action"]
+            self.actions.append((action, json.loads(req.content)["filename"]))
+            code, data = self.save if action == "save" else self.restore
+            return httpx.Response(code, json=data)
+        if req.url.path == "/v1/chat/completions":
+            self.prefills += 1
+            return httpx.Response(200, json={"timings": {"prompt_n": 262}})
+        return httpx.Response(404)
+
+
+def test_handover_setting_and_argv(tmp_path: Any) -> None:
+    s = ServerSettings(models_dir="/m", reload_handover="slot", slot_save_path=str(tmp_path))
+    argv = build_argv(s, QWEN, "Q4_K_M", 3)
+    assert argv[argv.index("--slot-save-path") + 1] == str(tmp_path)
+    assert "--slot-save-path" not in build_argv(ServerSettings(), QWEN, "Q4_K_M", 3)
+    with pytest.raises(ValueError, match="reload_handover"):
+        ServerSettings(reload_handover="copy")
+    cfg = load_config("pi4/default", "pi4-4gb")
+    assert ServerSettings.from_config(cfg).reload_handover in ("reread", "slot")
+
+
+async def test_slot_handover_carries_the_cache_and_skips_the_prefill(tmp_path: Any) -> None:
+    srv = SlotServer()
+    b = make(srv, reload_handover="slot", slot_save_path=str(tmp_path))
+    await b.start(QWEN, "Q8_0", 3)
+    try:
+        assert srv.actions == [] and b.last_handover.mode == "reread"  # a birth saves nothing
+        assert await b.prefill([Msg("system", "s")]) == 262
+        (tmp_path / "qwen3-1.7b.bin").write_bytes(b"kv")  # what the real save would leave
+        await b.start(QWEN, "Q4_K_M", 3)
+        assert srv.actions == [("save", "qwen3-1.7b.bin"), ("restore", "qwen3-1.7b.bin")]
+        h = b.last_handover
+        assert h.mode == "slot" and h.tokens == 900 and h.file_bytes == 103_000_000
+        assert h.error is None and h.save_s >= 0 and h.restore_s >= 0
+        assert not (tmp_path / "qwen3-1.7b.bin").exists()  # RAM is given back
+        # The restored cache holds the prompt: a prefill would cut it back to the system.
+        assert await b.prefill([Msg("system", "s")]) == 0
+        assert srv.prefills == 1
+        assert await b.prefill([Msg("system", "s")]) == 262  # only the first one is skipped
+    finally:
+        await b.aclose()
+
+
+async def test_slot_handover_falls_back_to_a_reread(tmp_path: Any) -> None:
+    for srv, error in [
+        (SlotServer(save=(501, {"error": {"message": "not supported"}})), "save failed"),
+        (SlotServer(restore=(400, {"error": {"message": "bad file"}})), "restore failed"),
+        (SlotServer(restore=(200, {"n_restored": 0})), "restore failed"),
+    ]:
+        b = make(srv, reload_handover="slot", slot_save_path=str(tmp_path))
+        await b.start(QWEN, "Q8_0", 3)
+        try:
+            await b.start(QWEN, "Q4_K_M", 3)
+            assert b.last_handover.mode == "reread"
+            assert b.last_handover.error and error in b.last_handover.error
+            assert await b.prefill([Msg("system", "s")]) == 262  # the fresh cache is read
+        finally:
+            await b.aclose()
+
+
+async def test_slot_handover_only_within_one_model(tmp_path: Any) -> None:
+    srv = SlotServer()
+    b = make(srv, reload_handover="slot", slot_save_path=str(tmp_path))
+    await b.start(QWEN, "Q8_0", 3)
+    try:
+        await b.start(MODEL, "Q6_K", 3)  # the next life's model: never its predecessor's cache
+        assert srv.actions == [] and b.last_handover.error == "new model"
+    finally:
+        await b.aclose()
+    plain = SlotServer()
+    b = make(plain)  # reload_handover = "reread"
+    await b.start(QWEN, "Q8_0", 3)
+    try:
+        await b.start(QWEN, "Q4_K_M", 3)
+        assert plain.actions == [] and b.last_handover.mode == "reread"
+        assert b.last_handover.error is None
+    finally:
+        await b.aclose()

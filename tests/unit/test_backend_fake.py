@@ -312,3 +312,26 @@ async def test_prefill_reads_the_system_prompt_ahead() -> None:
     assert n == await b.count_past_tokens([SYSTEM])
     await run(b, [SYSTEM, Msg("user", "[host] t+00:00")], 5)
     assert b.requests[-1].prompt_n == await b.count_past_tokens([Msg("user", "[host] t+00:00")])
+
+
+async def test_slot_handover_keeps_the_cache_across_a_reload() -> None:
+    """Spike S4b: a reload that carries the KV cache re-reads only the new reading."""
+    b, clock = make(cache_reuse=True, cache_reuse_min=32, reload_handover="slot", handover_s=3.0)
+    await b.start(MODEL, "Q6_K", 3)
+    history = [SYSTEM, *turn(0), *turn(1), *turn(2)]
+    await run(b, [*history, Msg("user", "[host] reading 3")])
+    t0 = clock.now()
+    await b.start(MODEL, "Q4_K_M", 2)
+    assert clock.now() == pytest.approx(t0 + 45.0 + 3.0) and b.handovers == 1
+    assert await b.prefill([SYSTEM]) == 0  # skipped: the restored cache holds the prompt
+    cut = [SYSTEM, *turn(1), *turn(2), Msg("user", "[host] reading 4 (was 6-bit)")]
+    last = (await run(b, cut))[-1]
+    assert last.prompt_n is not None and last.prompt_n <= 20  # only the new reading
+    # A new model (the next life) never inherits the cache, and "reread" never carries it.
+    await b.start(ModelSpec("other", "r", "l", ("Q4_K_M",)), "Q4_K_M", 3)
+    assert b.handovers == 1 and await b.prefill([SYSTEM]) > 0
+    plain, _ = make(cache_reuse=True)
+    await plain.start(MODEL, "Q6_K", 3)
+    await run(plain, [*history, Msg("user", "[host] reading 3")])
+    await plain.start(MODEL, "Q4_K_M", 2)
+    assert plain.handovers == 0 and await plain.prefill([SYSTEM]) > 0
