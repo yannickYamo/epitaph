@@ -34,6 +34,7 @@ from epitaph.rehearse import (
     parse_set,
     score_thought,
     thoughts_text,
+    with_ladder,
 )
 from epitaph.types import ModelSpec, Msg, Sampling
 from epitaph.verify import load_events, parse_life, verify_life
@@ -365,3 +366,26 @@ def test_parse_set_builds_nested_overrides() -> None:
     }
     with pytest.raises(ValueError):
         parse_set(["nothing"])
+
+
+def test_with_ladder_replaces_the_precision_ladder() -> None:
+    spec = ModelSpec("m", "src", "MIT", ("Q8_0", "Q4_K_M", "Q2_K"))
+    got = with_ladder(spec, "Q8_0, Q4_K_M,Q3_K_M")
+    assert got.ladder == ("Q8_0", "Q4_K_M", "Q3_K_M") and got.name == "m"
+    with pytest.raises(ValueError):
+        with_ladder(spec, " , ")
+
+
+def test_screen_runs_with_another_last_step(tmp_path: Path) -> None:
+    rc = main(
+        [
+            "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--persona", "persona", "--moments", "reload2", "--thoughts", "1",
+            "--ladder", "Q8_0,Q4_K_M,Q3_K_M", "--out", str(tmp_path),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    results = json.loads((folder / "screen.json").read_text())
+    assert "3-bit (was 4-bit)" in results[0]["thoughts"][0]["reading"]
+    assert "ladder Q8_0,Q4_K_M,Q3_K_M" in (folder / "screen.md").read_text()
