@@ -214,7 +214,11 @@ class PiCosts:
         """One line for reports: which files were read, or that only estimates exist."""
         if not self.files:
             return "no Pi measurements for this model: overlay estimates only (ESTIMATED)"
-        return f"measured: {', '.join(self.files)}"
+        keys = ", ".join(sorted(self.measured_pp | self.measured_tg))
+        return (
+            f"measured at step-threads {keys} ({', '.join(self.files)}); other steps and "
+            "thread counts are scaled from these or taken from the overlay's estimates"
+        )
 
 
 # ---------------------------------------------------------------------------------------
