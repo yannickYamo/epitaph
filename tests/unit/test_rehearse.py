@@ -156,6 +156,22 @@ def test_requests_are_charged_at_pi_rates_not_laptop_rates(worker: LaptopWorker)
     assert r["charges"][2].cached is not None  # the fake's reuse log is reported
 
 
+def test_a_laptop_server_that_quits_is_restarted_not_charged(worker: LaptopWorker) -> None:
+    async def body(clock: VirtualClock) -> tuple[PiClockBackend, list[Any], FakeBackend]:
+        b, inner = _backend(clock, worker)
+        await b.start(MODEL, "Q8_0", 3)
+        clock.start()
+        await b.prefill([SYSTEM])
+        inner.crash()  # the laptop server quits between two requests
+        chunks = [c async for c in b.chat([SYSTEM, READING], Sampling(0.7, 0.05), 20)]
+        return b, chunks, inner
+
+    b, chunks, inner = run_virtual(body)
+    assert b.revivals == 1 and b.alive and chunks[-1].done
+    assert [c.kind for c in b.charges] == ["load", "prefill", "prompt", "generate"]
+    assert b.charges[2].tokens == inner.requests[-1].prompt_n  # only the new reading
+
+
 def test_a_closed_stream_is_charged_only_for_what_was_shown(worker: LaptopWorker) -> None:
     async def body(clock: VirtualClock) -> tuple[float, float]:
         b, _ = _backend(clock, worker)
