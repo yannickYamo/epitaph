@@ -1,0 +1,23 @@
+# Plumbing check (BUILD_PLAN 5.3): 5 min, ladder step 1, no reloads or erosion. Verify level smoke.
+lifespan = "5:00"
+death = "none"                   # deadline death only
+verify_level = "smoke"
+
+[[keyframe]]
+at = "0:00"
+phase = "smoke"
+health = "nominal"
+recall = 512
+step = 1
+threads = 3
+cpu_share = 3.0
+temperature = 0.7
+min_p = 0.08
+max_tokens = 50
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 55
+jitter = 0.10
+hesitation = 0.0

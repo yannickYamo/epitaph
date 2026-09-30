@@ -1,0 +1,2 @@
+# Simulator profile: the Pi 4 default life on the fake clock and fake backend (BUILD_PLAN 5.3).
+extends = "pi4/default"

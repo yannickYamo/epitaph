@@ -1,0 +1,5 @@
+# Pi 5 (simulated only): the default life compressed to 10 minutes. "mm:ss" keyframes of the
+# parent scale; "end-" keyframes keep their distance from the end.
+extends = "pi5/default"
+lifespan = "10:00"
+verify_level = "full"

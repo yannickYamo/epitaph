@@ -1,0 +1,25 @@
+# Pi 5 (simulated only): homage to Latent Reflection; never forgets; cause=full (BUILD_PLAN 5.3).
+lifespan = "90:00"
+death = "none"
+unbounded = true
+ctx = 16384
+verify_level = "full"
+
+[[keyframe]]
+at = "0:00"
+phase = "unbounded"
+health = "nominal"
+recall = 1000000
+step = 1
+threads = 3
+cpu_share = 3.0
+temperature = 0.8
+min_p = 0.06
+max_tokens = 80
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 55
+jitter = 0.10
+hesitation = 0.0
