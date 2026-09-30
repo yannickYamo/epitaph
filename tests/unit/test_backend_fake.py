@@ -1,4 +1,4 @@
-"""The fake creature: speeds, prompt cache and cache reuse, and every fault hook (BUILD_PLAN 9 A4)."""
+"""The fake creature: speeds, prompt cache, cache reuse and every fault hook (BUILD_PLAN 9 A4)."""
 
 from __future__ import annotations
 
@@ -51,7 +51,9 @@ async def test_load_time_speed_and_timings() -> None:
     chunks = await run(b, [SYSTEM, Msg("user", "[host] t+00:00")], max_tokens=20)
     last = chunks[-1]
     assert last.done and last.predicted_n == 20
-    assert last.prompt_n == sum(len(m.content) // 4 + 4 for m in [SYSTEM, Msg("user", "[host] t+00:00")])
+    assert last.prompt_n == sum(
+        len(m.content) // 4 + 4 for m in [SYSTEM, Msg("user", "[host] t+00:00")]
+    )
     # 20 tokens at 2 tok/s after the prompt at 10 tok/s
     assert clock.now() == pytest.approx(45.0 + last.prompt_n / 10 + 10.0)
     assert b.status().alive and b.status().pid is not None

@@ -27,9 +27,7 @@ def fake_hub(files: dict[str, list[str]], gated: bool = False) -> mf.Getter:
         repo = url.split("/api/models/")[1]
         if "/tree/" in repo:
             repo = repo.split("/tree/")[0]
-            return [
-                {"path": f, "size": 10, "lfs": {"oid": SHA, "size": 1234}} for f in files[repo]
-            ]
+            return [{"path": f, "size": 10, "lfs": {"oid": SHA, "size": 1234}} for f in files[repo]]
         return {"gated": gated, "sha": "rev1"}
 
     return get
@@ -64,7 +62,7 @@ def test_resolve_pins_sha_size_and_revision() -> None:
 
 def test_resolve_missing_file_lists_what_exists() -> None:
     ref = mf.ref_for(MODELS, "llama", "Q2_K")
-    with pytest.raises(mf.ModelFileError, match="L-Q3_K_M.gguf"):
+    with pytest.raises(mf.ModelFileError, match=r"L-Q3_K_M\.gguf"):
         mf.resolve(ref, fake_hub({"unsloth/L-GGUF": ["L-Q3_K_M.gguf"]}))
 
 
@@ -83,7 +81,7 @@ def test_lock_round_trip(tmp_path: Path) -> None:
 
 
 def test_space_check_refuses_with_the_space_needed() -> None:
-    with pytest.raises(mf.ModelFileError, match="need 3.00 GB"):
+    with pytest.raises(mf.ModelFileError, match=r"need 3\.00 GB"):
         mf.check_space(free_bytes=4 * 10**9, needed=3 * 10**9, where="disk")
     mf.check_space(free_bytes=10 * 10**9, needed=3 * 10**9, where="disk")
 
