@@ -21,9 +21,10 @@ def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
     assert report.ok, format_report(report)
 
 
-def test_default_life_has_about_fifty_thoughts() -> None:
+def test_default_life_has_about_forty_thoughts() -> None:
+    # 38 on measured Qwen3 1.7B costs since the reloads lower the CPU share (review 2, F2).
     cfg = load_config("pi4/default", "pi4-4gb")
-    assert 40 <= estimate(cfg, load_costs(cfg)).thoughts <= 75
+    assert 35 <= estimate(cfg, load_costs(cfg)).thoughts <= 75
 
 
 def test_v5_schedule_would_fail_rule_b() -> None:
