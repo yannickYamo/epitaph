@@ -15,14 +15,19 @@ any monotonic origin). Drivers (terminal, pygame, e-ink, serial) feed events to 
   between thoughts, forgotten words fading through grey.
 - `compose_grid` gives an N x M character grid (LED matrix, small panel) with a charset
   map and a memory gauge instead of fading.
+- `verify_probe` replays a recorded life through the same model for `epitaph verify-life`
+  (split words, bright words near the end; BUILD_PLAN 10.3).
 """
 
 from __future__ import annotations
 
+import heapq
+import math
+import sys
 import unicodedata
-from collections.abc import Iterable
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field, replace
+from typing import Any, Literal, Protocol
 
 from epitaph.types import PROTOCOL_VERSION, WordState
 
@@ -149,6 +154,8 @@ class ViewSettings:
             fade_s=float(display.get("fade_seconds", 8)),
             blink_s=float(display.get("cursor_blink_ms", 530)) / 1000,
             birth_card=bool(display.get("birth_card", True)),
+            birth_card_s=float(display.get("birth_card_seconds", 4)),
+            death_card_s=float(display.get("death_card_seconds", 8)),
             silence_style=str(display.get("silence_style", "dark")),
         )
 
@@ -921,3 +928,172 @@ def gauge_bar(fraction: float | None, cols: int, charset: Charset | str = "unico
     full, empty = ("█", "░") if charset == "unicode" else ("#", "-")
     n = round((fraction or 0.0) * cols)
     return full * n + empty * (cols - n)
+
+
+# ---------------------------------------------------------------------------------------
+# verify-life probe (BUILD_PLAN 10.3)
+
+
+class ConfigLike(Protocol):
+    """The part of `epitaph.config.Config` the probe reads: dotted-key lookup."""
+
+    def get(self, dotted: str, default: Any = None) -> Any:
+        """The value at a dotted key such as "display.fade_seconds", or `default`."""
+        ...
+
+
+def life_times(events: Sequence[dict[str, Any]]) -> list[float]:
+    """The life-clock time of each event, never going backwards.
+
+    Events carry `t` (seconds since birth). Events before `birth` are placed at 0: the
+    simulator stamps `birth_loading` with the previous life's clock. An event without `t`
+    falls back to its wall time `ts` minus the birth's, then to the time before it.
+    """
+    birth_ts = next(
+        (float(e["ts"]) for e in events if e.get("type") == "birth" and _is_number(e.get("ts"))),
+        None,
+    )
+    out: list[float] = []
+    born, last = False, 0.0
+    for e in events:
+        born = born or e.get("type") == "birth"
+        t = last
+        if born and _is_number(e.get("t")):
+            t = float(e["t"])
+        elif born and birth_ts is not None and _is_number(e.get("ts")):
+            t = float(e["ts"]) - birth_ts
+        last = max(last, t)
+        out.append(last)
+    return out
+
+
+def _is_number(x: Any) -> bool:
+    return isinstance(x, int | float) and not isinstance(x, bool)
+
+
+class VerifyProbe:
+    """Lays out a recorded life for verify-life (the `verify.LayoutProbe` protocol).
+
+    The life is replayed through a `LifeView` on its own clock: each event is applied at
+    its life time `t`, and the view types every word with the event's `char_ms` and
+    `pause_after_ms`, exactly as a display fed live would. Nothing is skipped or caught up.
+
+    `cols` is the line width in characters and `mapper` the charset map (identity for the
+    flow layout). Both checks are independent of the screen's pixel size.
+    """
+
+    def __init__(
+        self,
+        cols: int,
+        settings: ViewSettings | None = None,
+        mapper: Callable[[str], str] | None = None,
+    ) -> None:
+        """Lay lines out `cols` characters wide, with the fade and card timing of `settings`."""
+        self.cols = max(1, int(cols))
+        base = settings or ViewSettings()
+        # a probe replays the whole life at its own cadence: no history bound, no catch-up
+        self.settings = replace(base, max_backlog_s=math.inf, max_words=sys.maxsize)
+        self.mapper = mapper or (lambda s: s)
+
+    def split_words(self, events: list[dict[str, Any]]) -> int:
+        """Words broken across lines when every thought of the life is laid out.
+
+        Every thought starts on a new line, so each is wrapped on its own. The layout only
+        breaks a word longer than a whole line; this counts such words.
+        """
+        by_turn: dict[int, list[tuple[ViewWord, str]]] = {}
+        for e in events:
+            if e.get("type") != "word" or not e.get("text"):
+                continue
+            text = str(e["text"])
+            vw = ViewWord(int(e.get("turn", 0)), int(e.get("i", 0)), text, ())
+            by_turn.setdefault(vw.turn, []).append((vw, self.mapper(text)))
+        split = 0
+        for words in by_turn.values():
+            placed, _, _ = flow_lines([words], self.cols)
+            split += len({id(p.word) for p in placed if p.split})
+        return split
+
+    def end_of_life(self, events: list[dict[str, Any]]) -> float:
+        """Life time when the last word has been typed after death (the screen's end).
+
+        That is `death_shown` (else `death`, else the last event), or later if the view was
+        still typing queued words then.
+        """
+        view = LifeView(self.settings)
+        end: float | None = None
+        times = life_times(events)
+        for e, t in zip(events, times, strict=True):
+            view.handle(e, t)
+            if e.get("type") == "death_shown":
+                end = t
+                break
+            if e.get("type") == "death":
+                end = t
+        if end is None:
+            end = times[-1] if times else 0.0
+        return max(end, view.tail)
+
+    def bright_words_last(self, events: list[dict[str, Any]], seconds: float) -> int:
+        """Most words at full brightness at once during the last `seconds` of the life.
+
+        A word is bright once its first letter is typed and until it is forgotten (then it
+        fades; see `LifeView.bright_words`). The count only rises when a word starts and
+        only falls at a `forget`, so it is sampled at the window's edges, at every word
+        start and just before every event inside the window.
+        """
+        if not events:
+            return 0
+        end = self.end_of_life(events)
+        lo = end - max(0.0, seconds)
+        view = LifeView(self.settings)
+        pending: list[float] = [lo, end]
+        best = 0
+
+        def sample_until(t: float) -> None:
+            nonlocal best
+            while pending and pending[0] <= t:
+                s = heapq.heappop(pending)
+                if lo <= s <= end:
+                    best = max(best, view.bright_words(s))
+
+        for e, t in zip(events, life_times(events), strict=True):
+            if t > end:
+                break
+            sample_until(t)
+            if lo <= t:
+                best = max(best, view.bright_words(t))
+            view.handle(e, t)
+            if e.get("type") == "word" and view.thoughts and view.thoughts[-1].words:
+                start = view.thoughts[-1].words[-1].start
+                if lo <= start <= end:
+                    heapq.heappush(pending, start)
+        sample_until(math.inf)
+        return best
+
+
+def verify_probe(cfg: ConfigLike) -> VerifyProbe:
+    """The layout probe `epitaph verify-life` uses, set up from the `[display]` config.
+
+    The flow layout wraps at `line_chars`; the grid at the configured grid's columns with
+    its charset map. Fading follows `fade_seconds`.
+    """
+    display = {
+        k: cfg.get(f"display.{k}")
+        for k in (
+            "fade_seconds",
+            "cursor_blink_ms",
+            "birth_card",
+            "birth_card_seconds",
+            "death_card_seconds",
+            "silence_style",
+        )
+        if cfg.get(f"display.{k}") is not None
+    }
+    settings = ViewSettings.from_config(display)
+    if str(cfg.get("display.layout", "flow")) == "grid":
+        raw = cfg.get("display.grid", [6, 16])
+        _, cols = derive_grid(None, None, (int(raw[0]), int(raw[1])))
+        charset = str(cfg.get("display.charset", "unicode"))
+        return VerifyProbe(cols, settings, lambda s: map_charset(s, charset))
+    return VerifyProbe(int(cfg.get("display.line_chars", 48)), settings)
