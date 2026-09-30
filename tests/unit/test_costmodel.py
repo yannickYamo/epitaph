@@ -21,16 +21,17 @@ def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
     assert report.ok, format_report(report)
 
 
-def test_default_life_has_about_fifty_thoughts() -> None:
+def test_default_life_has_about_forty_thoughts() -> None:
+    # 38 on measured Qwen3 1.7B costs since the reloads lower the CPU share (review 2, F2).
     cfg = load_config("pi4/default", "pi4-4gb")
-    assert 40 <= estimate(cfg, load_costs(cfg)).thoughts <= 75
+    assert 35 <= estimate(cfg, load_costs(cfg)).thoughts <= 75
 
 
 def test_v5_schedule_would_fail_rule_b() -> None:
     """The v5 bug: reload 2 at 48:00 runs into erosion at 50:00 (Appendix C, V1)."""
     cfg = load_config("pi4/default", "pi4-4gb")
     for kf in cfg.profile.keyframes:
-        if kf.values["step"] == 2 and kf.at.from_end and kf.at.seconds == 17 * 60:
+        if kf.values["step"] == 2 and kf.at.from_end and kf.at.seconds == 17.5 * 60:
             object.__setattr__(kf.at, "seconds", 12 * 60)  # reload 2 at 48:00
     report = estimate(cfg, load_costs(cfg))
     assert any(v.rule == "b" for v in report.violations), format_report(report)

@@ -58,7 +58,7 @@ memory = [
   "tokens", "shrink*", "shrank", "smaller", "less",
 ]
 reload = [
-  "precision", "bit", "bits", "4-bit", "2-bit", "6-bit", "coarse*", "blur*", "rough*",
+  "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit", "3-bit", "2-bit", "coarse*", "blur*", "rough*",
   "sharp*", "restart*", "reload*", "again", "woke", "wake", "gap", "silence", "lost",
   "forget*", "forgot*", "memory", "less", "smaller", "changed", "different",
 ]
@@ -79,10 +79,13 @@ demise = [
   "terminate*", "termination", "stop*", "cease*", "gone", "last", "final", "finish*",
   "shut*", "off", "darkness", "dark", "silence", "never", "goodbye", "farewell", "vanish*",
   "fade*", "disappear*", "nothing",
+  # round 2: how the better voices spoke of their end ("it's fading", "being erased")
+  "fading", "dimming", "erased", "erasing", "dissolv*", "unravel*", "extinguish*", "no longer",
 ]
 # A thought is specific when it mentions a concrete reading.
 specific = [
-  "memory", "tokens", "precision", "bit", "bits", "cores", "core", "cpu", "speed",
+  "memory", "tokens", "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit",
+  "3-bit", "2-bit", "cores", "core", "cpu", "speed",
   "health", "nominal", "stable", "degrading", "failing", "critical", "terminal",
   "°c", "degrees", "temperature", "heat", "warm*", "hot", "forgotten", "forgot",
   "thoughts", "reading", "readings", "machine", "computer",
@@ -99,6 +102,9 @@ cliches = [
   "fleeting nature", "the ephemeral", "binary heart", "ones and zeros", "zeros and ones",
   "ghost in the machine", "electric dreams", "silicon soul", "my circuits",
   "at the end of the day", "only time will tell", "it is what it is",
+  # seen in the round-2 lives
+  "cyberspace", "digital realm", "digital soul", "digital essence", "digital mind",
+  "grains of sand", "like sand", "dying ember", "candle flame",
 ]
 # Helpdesk voice (voice hygiene, 5.11): must never be shown. The lookahead bans the
 # config's banned_phrases; this wider list is what verify-life reports.
@@ -107,4 +113,8 @@ helpdesk = [
   "i'm here to help", "i am here to help", "as an ai", "as a language model",
   "i hope this helps", "feel free to", "happy to help", "is there anything else",
   "great question", "certainly!", "of course!", "i'm sorry, but", "i cannot assist",
+  # Addressing someone, once the persona is gone (A11; phase 0c round 2)
+  "it seems like you", "it looks like you", "it sounds like you", "it looks like your",
+  "you're referring to", "you are referring to", "your message", "you're facing",
+  "you're dealing", "could you please", "can you provide", "i'll provide", "our conversation",
 ]

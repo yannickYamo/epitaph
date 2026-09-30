@@ -7,6 +7,7 @@ network and no model are needed. The real server is exercised in tests/templates
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import signal
 import sys
@@ -17,8 +18,10 @@ import pytest
 
 from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.backend.llama_server import (
+    GAP_TURN,
     LlamaServerBackend,
     ServerSettings,
+    alternate_roles,
     build_argv,
     chunk_from_event,
     parse_sse_line,
@@ -104,7 +107,7 @@ def test_settings_from_config() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     s = ServerSettings.from_config(cfg)
     assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 32
-    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == -1
+    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == 256  # round 2 tuning
 
 
 def test_request_body() -> None:
@@ -288,6 +291,29 @@ async def test_count_past_tokens_renders_and_tokenizes() -> None:
         await b.aclose()
 
 
+async def test_count_past_tokens_on_a_template_that_wants_alternating_roles() -> None:
+    """Gemma 3's template refuses two user turns in a row (the probe after a user message)."""
+
+    def api(req: httpx.Request) -> httpx.Response:
+        payload = json.loads(req.content)
+        if req.url.path == "/apply-template":
+            roles = [m["role"] for m in payload["messages"]]
+            if any(a == b for a, b in itertools.pairwise(roles)):
+                return httpx.Response(400, json={"error": {"message": "must alternate"}})
+            text = "".join(f"<{m['role']}>{m['content']}" for m in payload["messages"])
+            return httpx.Response(200, json={"prompt": text})
+        if req.url.path == "/tokenize":
+            return httpx.Response(200, json={"tokens": list(range(len(payload["content"])))})
+        return httpx.Response(404)
+
+    b = make(healthy(api))
+    await b.start(MODEL, "Q6_K", 3)
+    try:
+        assert await b.count_past_tokens([Msg("user", "abc")]) == len("<user>abc")
+    finally:
+        await b.aclose()
+
+
 async def test_prefill_posts_a_one_token_request() -> None:
     def api(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content)
@@ -408,5 +434,39 @@ async def test_slot_handover_only_within_one_model(tmp_path: Any) -> None:
         await b.start(QWEN, "Q4_K_M", 3)
         assert plain.actions == [] and b.last_handover.mode == "reread"
         assert b.last_handover.error is None
+def test_alternate_roles_for_strict_templates() -> None:
+    sys_, a, u = Msg("system", "s"), Msg("assistant", "thought"), Msg("user", "[host] r")
+    # a trim left a thought at the front: the memory-gap reading goes before it
+    assert [m.role for m in alternate_roles([sys_, a, u])] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert alternate_roles([sys_, a, u])[1] == GAP_TURN
+    # two readings in a row become one turn
+    two = alternate_roles([u, Msg("user", "[host] r2")])
+    assert len(two) == 1 and two[0].content == "[host] r\n[host] r2"
+    assert alternate_roles([sys_, u, a, u]) == [sys_, u, a, u]  # already alternating
+
+
+async def test_chat_learns_a_strict_template_and_retries() -> None:
+    seen: list[list[str]] = []
+
+    def api(req: httpx.Request) -> httpx.Response:
+        roles = [m["role"] for m in json.loads(req.content)["messages"]]
+        seen.append(roles)
+        if roles[1] == "assistant":
+            err = {"error": {"code": 400, "message": "Conversation roles must alternate"}}
+            return httpx.Response(400, json=err)
+        return httpx.Response(200, content=sse(chat_events(["Hi."])))
+
+    b = make(healthy(api))
+    await b.start(GEMMA, "Q4_K_M", 3)
+    try:
+        msgs = [Msg("system", "s"), Msg("assistant", "old"), Msg("user", "[host] r")]
+        chunks = [c async for c in b.chat(msgs, SAMPLING, 5)]
+        assert chunks[0].text == "Hi." and b.strict_roles
+        assert seen == [["system", "assistant", "user"], ["system", "user", "assistant", "user"]]
     finally:
         await b.aclose()

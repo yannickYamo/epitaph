@@ -8,6 +8,13 @@ size = 689814784
 sha256 = "573199687e6a940d308e8bf0a1f4855e5987136a39b7cabca4427db74b769f47"
 revision = "116f76234503685a98f572982177b11d44ec8ff1"
 
+[files."gemma-3-1b-it".Q3_K_M]
+repo = "bartowski/google_gemma-3-1b-it-GGUF"
+file = "google_gemma-3-1b-it-Q3_K_M.gguf"
+size = 722416384
+sha256 = "9a65df94387ee1d2e1ad22f83df6f93b523d822294b727dd1b88d76d44dcf4c5"
+revision = "116f76234503685a98f572982177b11d44ec8ff1"
+
 [files."gemma-3-1b-it".Q4_K_M]
 repo = "bartowski/google_gemma-3-1b-it-GGUF"
 file = "google_gemma-3-1b-it-Q4_K_M.gguf"
@@ -48,6 +55,13 @@ repo = "unsloth/Llama-3.2-1B-Instruct-GGUF"
 file = "Llama-3.2-1B-Instruct-Q2_K.gguf"
 size = 580874272
 sha256 = "8b7091a92bc10d70392a91ebe06cd43e1f5048ae0162e88f8fbe8445447ceae8"
+revision = "b69aef112e9f895e6f98d7ae0949f72ff09aa401"
+
+[files."llama-3.2-1b-instruct".Q3_K_M]
+repo = "unsloth/Llama-3.2-1B-Instruct-GGUF"
+file = "Llama-3.2-1B-Instruct-Q3_K_M.gguf"
+size = 690843680
+sha256 = "38b98a4abebe441bbb52c6364a79abe026593516df25424e0ef2410d38db715e"
 revision = "b69aef112e9f895e6f98d7ae0949f72ff09aa401"
 
 [files."llama-3.2-1b-instruct".Q4_0]
@@ -125,6 +139,13 @@ repo = "bartowski/Qwen_Qwen3-1.7B-GGUF"
 file = "Qwen_Qwen3-1.7B-Q2_K.gguf"
 size = 879896992
 sha256 = "10bfbf421f9c9a631ec1294a6f4005b76d37ea3902d90408a1121315c4b07d21"
+revision = "dcb19155b962dbb6389f4691a982043a8e651022"
+
+[files."qwen3-1.7b".Q3_K_M]
+repo = "bartowski/Qwen_Qwen3-1.7B-GGUF"
+file = "Qwen_Qwen3-1.7B-Q3_K_M.gguf"
+size = 1073242528
+sha256 = "d544d30dbb7b2f608775d69c939a9b8d89c45df2be1a5ad1390ddc1bd7f8d6f5"
 revision = "dcb19155b962dbb6389f4691a982043a8e651022"
 
 [files."qwen3-1.7b".Q4_0]

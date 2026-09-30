@@ -33,7 +33,8 @@ from epitaph.costmodel import load_costs
 from epitaph.events import Event, make_event
 from epitaph.mind.memory import Memory
 from epitaph.mind.prompt import Persona, Reader, ReadingInput
-from epitaph.types import Cause, Sampling
+from epitaph.mind.sampling import sampling_for
+from epitaph.types import Cause
 
 
 @dataclass
@@ -200,7 +201,7 @@ async def run_life(
             turn += 1
             memory.append_host(reading, turn)
             msgs = memory.messages()
-            sampling = Sampling(temperature=k.temperature, min_p=k.min_p)
+            sampling = sampling_for(cfg.section("sampling"), k, cur[0])
             ev("gen_start", turn=turn)
             ev("thought_start", turn=turn)
             words: list[str] = []

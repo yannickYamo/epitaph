@@ -22,17 +22,17 @@ def test_recall_and_cpu_share_are_cut_at_the_reload(pi4_default: Config) -> None
     assert s.at(27.9 * 60).recall == 1000
     assert s.at(27.9 * 60).cpu_share == 3.0
     k = s.at(28 * 60)
-    # Rebased on measured Pi 4 costs (docs/PROFILES.md): recall 300 after reload 1, and the
-    # thread drop moved to reload 2.
-    assert (k.recall, k.step, k.threads, k.cpu_share) == (300, 1, 3, 3.0)
-    k2 = s.at(43 * 60)
-    assert (k2.recall, k2.step, k2.threads, k2.cpu_share) == (200, 2, 2, 2.0)
+    # Rebased on measured Pi 4 costs (docs/PROFILES.md): the thread drop is at reload 2, and
+    # each reload lowers the CPU share so generation never speeds up (review 2, F2).
+    assert (k.recall, k.step, k.threads, k.cpu_share) == (220, 1, 3, 2.0)
+    k2 = s.at(42.5 * 60)
+    assert (k2.recall, k2.step, k2.threads, k2.cpu_share) == (100, 2, 2, 1.5)
 
 
 def test_interpolation_between_keyframes(pi4_default: Config) -> None:
     s = Schedule(pi4_default.profile)
     mid = s.at(32 * 60)
-    assert 260 < mid.recall < 300
+    assert 190 < mid.recall < 220
     assert 0.85 < mid.temperature < 1.0
 
 
@@ -44,7 +44,7 @@ def test_stepped_fields_hold(pi4_default: Config) -> None:
 
 def test_v6_timeline(pi4_default: Config) -> None:
     s = Schedule(pi4_default.profile)
-    assert s.reload_times() == [1680, 2580]
+    assert s.reload_times() == [1680, 2550]
     assert s.erosion_times() == [2940, 3060, 3180, 3300, 3420]
     assert s.death_s == 3570
     assert s.at(3571).death_squeeze

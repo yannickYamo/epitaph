@@ -34,6 +34,7 @@ from epitaph.rehearse import (
     parse_set,
     score_thought,
     thoughts_text,
+    with_ladder,
 )
 from epitaph.types import ModelSpec, Msg, Sampling
 from epitaph.verify import load_events, parse_life, verify_life
@@ -78,6 +79,15 @@ def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
     assert "pi4-qwen3-1.7b-1-2.json" in costs.describe() and "1-2" in costs.describe()
     empty = PiCosts.from_bench(cfg, "no-such-model", tmp_path)
     assert not empty.any_measured and "ESTIMATED" in empty.describe()
+
+
+def test_an_estimated_bench_file_gives_rates_labelled_estimates(tmp_path: Path) -> None:
+    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    rec = {"step": 2, "threads": 2, "pp_tok_s": 3.0, "tg_tok_s": 2.5, "estimated": True}
+    (tmp_path / "pi4-qwen3-1.7b-2-2.json").write_text(json.dumps(rec))
+    costs = PiCosts.from_bench(cfg, "qwen3-1.7b", tmp_path)
+    tg = costs.tg(2, 2, 2.0)
+    assert tg.value == pytest.approx(2.5) and tg.source == "estimate"
 
 
 def test_worker_returns_results_and_raises_errors(worker: LaptopWorker) -> None:
@@ -144,6 +154,22 @@ def test_requests_are_charged_at_pi_rates_not_laptop_rates(worker: LaptopWorker)
     kinds = [c.kind for c in r["charges"]]
     assert kinds == ["load", "prefill", "prompt", "generate"]
     assert r["charges"][2].cached is not None  # the fake's reuse log is reported
+
+
+def test_a_laptop_server_that_quits_is_restarted_not_charged(worker: LaptopWorker) -> None:
+    async def body(clock: VirtualClock) -> tuple[PiClockBackend, list[Any], FakeBackend]:
+        b, inner = _backend(clock, worker)
+        await b.start(MODEL, "Q8_0", 3)
+        clock.start()
+        await b.prefill([SYSTEM])
+        inner.crash()  # the laptop server quits between two requests
+        chunks = [c async for c in b.chat([SYSTEM, READING], Sampling(0.7, 0.05), 20)]
+        return b, chunks, inner
+
+    b, chunks, inner = run_virtual(body)
+    assert b.revivals == 1 and b.alive and chunks[-1].done
+    assert [c.kind for c in b.charges] == ["load", "prefill", "prompt", "generate"]
+    assert b.charges[2].tokens == inner.requests[-1].prompt_n  # only the new reading
 
 
 def test_a_closed_stream_is_charged_only_for_what_was_shown(worker: LaptopWorker) -> None:
@@ -246,6 +272,10 @@ def test_life_folder_has_every_output(life_dir: Path) -> None:
     assert "pi4-qwen3-1.7b-0-3.json" in report and "verify-life --level rehearsal" in report
     hl = (life_dir / "highlights.md").read_text()
     assert "## First thoughts" in hl and "### after reload" in hl and "## The last 5" in hl
+    meta = json.loads((life_dir / "meta.json").read_text())
+    assert meta["type"] == "rehearsal" and meta["stage"] == "full"
+    assert meta["model"] == "qwen3-1.7b" and meta["persona"] == "persona"
+    assert meta["costs"] in ("measured", "estimated")
 
 
 def test_life_events_follow_the_contract(life_dir: Path) -> None:
@@ -382,3 +412,40 @@ def test_a_slot_handover_is_charged_instead_of_the_reread(tmp_path: Path) -> Non
     for h in handovers:  # the prefill after a restore is skipped: nothing is read
         after = [c for c in data["charges"] if c["t"] >= h["t"] and c["kind"] == "prefill"]
         assert after and after[0]["tokens"] == 0
+
+
+def test_with_ladder_replaces_the_precision_ladder() -> None:
+    spec = ModelSpec("m", "src", "MIT", ("Q8_0", "Q4_K_M", "Q2_K"))
+    got = with_ladder(spec, "Q8_0, Q4_K_M,Q3_K_M")
+    assert got.ladder == ("Q8_0", "Q4_K_M", "Q3_K_M") and got.name == "m"
+    with pytest.raises(ValueError):
+        with_ladder(spec, " , ")
+
+
+def test_screen_runs_with_another_last_step(tmp_path: Path) -> None:
+    rc = main(
+        [
+            "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--persona", "persona", "--moments", "reload2", "--thoughts", "1",
+            "--ladder", "Q8_0,Q4_K_M,Q3_K_M", "--out", str(tmp_path),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    results = json.loads((folder / "screen.json").read_text())
+    assert "3-bit (was 4-bit)" in results[0]["thoughts"][0]["reading"]
+    assert "ladder Q8_0,Q4_K_M,Q3_K_M" in (folder / "screen.md").read_text()
+
+
+def test_bare_mode_raw_continues_the_text_once_the_persona_is_gone(tmp_path: Path) -> None:
+    rc = main(
+        [
+            "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--persona", "persona", "--moments", "erosion_end", "--thoughts", "1",
+            "--set", 'prompt.bare_mode="raw"', "--out", str(tmp_path),
+        ]
+    )  # fmt: skip
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    log = (folder / "screen.json").read_text()
+    assert json.loads(log)[0]["thoughts"][0]["text"]
