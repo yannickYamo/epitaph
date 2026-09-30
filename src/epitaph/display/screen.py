@@ -303,14 +303,18 @@ class ScreenDriver:
         else:
             rects = []
             if status != self._status:
-                rects.append(self._paint_band(self._status_band()))
+                rects.append(self._paint_band(self._status_rect(self._status, status)))
                 if status:
                     self._draw_status(status)
             old = self._rows or {}
             for r in sorted(set(rows) | set(old)):
-                if rows.get(r) != old.get(r):
-                    rects.append(self._paint_band(self._row_band(r, g)))
-                    self._draw_row(r, rows.get(r, ()), g, frame)
+                new, before = rows.get(r, ()), old.get(r, ())
+                if new != before:
+                    x0, x1 = self._extent(set(new) ^ set(before), g)
+                    y0, h = self._row_band(r, g)[1::2]
+                    rect = self._paint_band((x0, y0, x1 - x0, h))
+                    rects.append(rect)
+                    self._draw_row(r, new, g, frame, rect)
         self._rows, self._scene, self._status = rows, scene, status
         self.dirty = self._to_window(rects)
         return True
@@ -342,6 +346,16 @@ class ScreenDriver:
         m = self.metrics
         assert m is not None
         return (0, 0, self.surface.get_width(), max(1, round(m.margin_y + m.strip_h)))
+
+    def _status_rect(self, *texts: str | None) -> Rect:
+        """Where the status strip showing any of `texts` is drawn, inside `_status_band`."""
+        m = self.metrics
+        assert m is not None
+        px = self._status_px()
+        w = max((self._glyphs(px, t, self.theme.status).get_width() for t in texts if t), default=0)
+        r = self.pg.Rect(m.margin_x, m.margin_y, w + 1, self.font(px).get_height())
+        band = r.clip(self._status_band())
+        return (band.x, band.y, band.w, band.h)
 
     def _to_window(self, rects: list[Rect] | None) -> list[Rect] | None:
         """Copy the painted logical rectangles to the window (rotating them if needed).
@@ -406,15 +420,38 @@ class ScreenDriver:
             self.surface.blit(g, ((m.width - g.get_width()) / 2, y))
             y += size + gap
 
-    def _draw_row(self, row: int, items: tuple[RowItem, ...], g: _Geometry, frame: Frame) -> None:
+    def _extent(self, items: set[RowItem], g: _Geometry) -> tuple[int, int]:
+        """The horizontal pixel span covering `items` as drawn (a margin of 1 pixel)."""
+        width = self.surface.get_width()
+        x0, x1 = width, 0
+        for kind, col, text, colour in items:
+            x = round(g.left + col * g.cell_w)
+            if kind == "text":
+                end = x + self._glyphs(g.px, text, colour).get_width()
+            elif kind == "cursor":
+                end = x + round(g.cell_w)
+            else:  # the gauge spans the row
+                x, end = 0, width
+            x0, x1 = min(x0, x), max(x1, end)
+        return max(0, x0 - 1), min(width, x1 + 1)
+
+    def _draw_row(
+        self,
+        row: int,
+        items: tuple[RowItem, ...],
+        g: _Geometry,
+        frame: Frame,
+        clip: Rect | None = None,
+    ) -> None:
         """Draw one text row's words, gauge and cursor (see `_rows`) at cell positions.
 
-        Drawing is clipped to the row's band, so a font taller than the row (small grids)
-        never paints into a neighbour that a partial repaint would not redraw.
+        Drawing is clipped to the row's band (and to `clip`), so a font taller than the
+        row (small grids) never paints into pixels a partial repaint does not clear.
         """
         font_h = self.font(g.px).get_height()
         y = g.top + row * g.line_h + (g.line_h - font_h) / 2
-        self.surface.set_clip(self._row_band(row, g))
+        band = self.pg.Rect(self._row_band(row, g))
+        self.surface.set_clip(band.clip(clip) if clip is not None else band)
         try:
             self._draw_items(items, y, font_h, g, frame)
         finally:

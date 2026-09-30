@@ -65,11 +65,15 @@ class ViewWord:
     start: float = 0.0
     state: WordState = "live"
     forgotten_at: float | None = None
+    _typing: tuple[tuple[int, ...], float] | None = field(default=None, repr=False, compare=False)
 
     @property
     def typing_s(self) -> float:
         """Seconds from the first letter to the last, excluding the pause after."""
-        return sum(self.char_ms) / 1000
+        cached = self._typing
+        if cached is None or cached[0] is not self.char_ms:  # char_ms is replaced, not mutated
+            cached = self._typing = (self.char_ms, sum(self.char_ms) / 1000)
+        return cached[1]
 
     @property
     def end(self) -> float:
@@ -394,6 +398,30 @@ class LifeView:
         if not ends:
             return now - (self.birth_at or 0.0)
         return max(0.0, now - max(ends))
+
+    def next_change(self, now: float) -> float:
+        """The earliest time after `now` when a letter appears, typing stops or the cursor
+        blinks; `math.inf` when none is due.
+
+        Drivers sleep until then instead of redrawing a still screen. Slow changes (a fade,
+        the status strip's clock, the end of a card) are not listed: drivers also redraw at
+        least a few times a second (`app.drive`'s `max_idle_s`).
+        """
+        due = math.inf
+        for w in self._recent():
+            if w.start > now:
+                due = min(due, w.start)
+            elif now < w.end:
+                acc = w.start
+                for ms in w.char_ms:
+                    acc += ms / 1000
+                    if acc > now:
+                        due = min(due, acc)
+                        break
+        if due == math.inf and self.cursor(now) in ("on", "off") and self.s.blink_s > 0:
+            idle = self.idle_since(now)
+            due = now + self.s.blink_s - idle % self.s.blink_s
+        return due
 
     def life_t(self, now: float) -> float | None:
         """Seconds since birth at `now`, extrapolated from the last event's `t` while alive.
