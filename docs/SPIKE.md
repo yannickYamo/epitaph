@@ -569,12 +569,17 @@ the speed the line gives for the fresh cache's smaller mark (1.559 and 1.576 tok
 the same size. A restart clears nothing else; there is no state to reset. (The ARM clock's
 600 MHz minimum in that run is the governor idling during the loads; `get_throttled` 0x0.)
 
-**For the cost model:** every bench file now carries `tg_tok_s_late` (the line at n_kv 1792:
-system + recall 1280 + a reading + a thought, padded to 256), `late_after_s = 1200` and
-`tg_ctx_model {a_s, b_s_per_token}` (`tools/spike/late_speed.py`; Qwen3 1.7B step 0 from the soak,
-the rest from each file's birth and deep rates). The late speed is 76-87% of the deep rate. A
-time-based ease overcharges the minutes after a reload, when the context is short again;
-CONTRACT_CHANGES A18 proposes charging by context instead.
+**For the cost model:** every round-2 bench file carries `tg_ctx_model {a_s, b_s_per_token}`
+(the line; Qwen3 1.7B step 0 from the soak, the rest from each file's birth and deep rates), and
+the step-0 files also `tg_tok_s_late` (the line at n_kv 1792: system + recall 1280 + a reading +
+a thought, padded to 256) with `late_after_s = 1200` (`tools/spike/late_speed.py`). The late speed
+is 77-89% of the deep rate. Only step 0 gets it because only step 0 runs at that context (after
+reload 1 the recall is 300 at most), while the cost model applies the lowest late ratio to every
+step. A time-based ease still overcharges the minutes after a reload, when the context is short
+again; CONTRACT_CHANGES A18 proposes charging by context instead. The adopted
+`bench/pi4-qwen3-1.7b-*.json` keep round 1's late value (1.424, over 30 min) until the integrator
+adopts the round-2 files from `bench/measured/` (F9); on those, `pi4/default` has 39 thoughts
+instead of 40 and still passes.
 
 ### What the numbers do to the profiles
 
