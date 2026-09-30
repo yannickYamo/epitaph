@@ -81,6 +81,7 @@ class ScreenDriver:
         self.metrics: Metrics | None = None
         self.last_frame: Frame | None = None
         self._cache: dict[tuple[int, str, Rgb], Any] = {}
+        self._sig: tuple[Any, ...] | None = None
         self._fonts: dict[int, Any] = {}
         self.font_path: Path | None = None
 
@@ -114,6 +115,7 @@ class ScreenDriver:
         self.surface = pg.Surface(logical) if self.rotate else self.window
         self._cache.clear()
         self._fonts.clear()
+        self._sig = None
         self.font_path = _font_path(self.theme)
         m = flow_metrics(
             *logical,
@@ -175,7 +177,7 @@ class ScreenDriver:
     def screenshot(self, path: str) -> None:
         pg = self._ensure()
         if self.last_frame is None:
-            self.draw(self.clock())
+            self.draw(self.clock(), force=True)
         pg.image.save(self.window, path)
 
     def render(self, now: float | None = None) -> None:
@@ -185,8 +187,8 @@ class ScreenDriver:
                 self.closed = True
             elif ev.type == pg.VIDEORESIZE and not self.rotate:
                 self._setup(self.window.get_size())
-        self.draw(self.clock() if now is None else now)
-        pg.display.flip()
+        if self.draw(self.clock() if now is None else now):
+            pg.display.flip()
 
     # -- drawing ----------------------------------------------------------------------------
 
@@ -200,20 +202,37 @@ class ScreenDriver:
             self._cache[key] = surf
         return surf
 
-    def draw(self, now: float) -> Any:
-        """Draw the view at `now` onto the window. Returns the window surface."""
-        pg = self._ensure()
+    def compose(self, now: float) -> Frame:
+        """The frame for `now` (flow or grid), without drawing it."""
         assert self.metrics is not None
         m = self.metrics
-        th = self.theme
-        surf = self.surface
-        surf.fill(th.bg)
         if self.layout == "grid":
-            frame = self._draw_grid(now)
-        else:
-            frame = compose_flow(self.view, now, m.cols, m.rows, self.status_strip)
-            self.last_frame = frame
-            if not frame.dark:
+            rows, cols, *_ = self._grid_geometry()
+            return compose_grid(self.view, now, rows, cols, self.charset)
+        return compose_flow(self.view, now, m.cols, m.rows, self.status_strip)
+
+    def draw(self, now: float, force: bool = False) -> bool:
+        """Paint the view at `now`. Returns False (and paints nothing) when the frame is
+        the same as the last one painted, so a still screen costs no drawing or flip."""
+        pg = self._ensure()
+        assert self.metrics is not None
+        frame = self.compose(now)
+        self.last_frame = frame
+        sig = _signature(frame)
+        if not force and sig == self._sig:
+            return False
+        self._sig = sig
+        m = self.metrics
+        surf = self.surface
+        surf.fill(self.theme.bg)
+        if not frame.dark:
+            if self.layout == "grid":
+                _, _, margin, cell_w, line_h, px = self._grid_geometry()
+                if frame.card is not None:
+                    self._draw_card(frame.card[1], px)
+                else:
+                    self._draw_cells(frame, margin, margin, cell_w, line_h, px)
+            else:
                 if frame.status:
                     self._draw_status(frame.status)
                 if frame.card is not None:
@@ -224,7 +243,7 @@ class ScreenDriver:
                     self._draw_cells(frame, left, top, m.cell_w, m.line_h, m.font_px)
         if self.rotate:
             self.window.blit(pg.transform.rotate(surf, self.rotate), (0, 0))
-        return self.window
+        return True
 
     def _draw_status(self, text: str) -> None:
         m = self.metrics
@@ -291,25 +310,31 @@ class ScreenDriver:
             self.surface, th.gauge, (round(x), y0, round(width * (fraction or 0.0)), bar_h)
         )
 
-    def _draw_grid(self, now: float) -> Frame:
+    def _grid_geometry(self) -> tuple[int, int, int, float, float, int]:
+        """rows, cols, margin, cell width, line height and font size for the grid."""
         th = self.theme
         w, h = self.surface.get_size()
         margin = max(4, round(min(w, h) * 0.04))
         rows, cols = derive_grid(
             w - 2 * margin, h - 2 * margin, self.grid, self.min_font_px, th.advance
         )
-        frame = compose_grid(self.view, now, rows, cols, self.charset)
-        self.last_frame = frame
-        if frame.dark:
-            return frame
         cell_w = (w - 2 * margin) / cols
         line_h = (h - 2 * margin) / rows
         px = int(min(cell_w / th.advance, line_h / 1.25))
-        if frame.card is not None:
-            self._draw_card(frame.card[1], px)
-            return frame
-        self._draw_cells(frame, margin, margin, cell_w, line_h, px)
-        return frame
+        return rows, cols, margin, cell_w, line_h, px
+
+
+def _signature(frame: Frame) -> tuple[Any, ...]:
+    card = (frame.card[0], tuple(frame.card[1])) if frame.card is not None else None
+    return (
+        tuple(frame.spans),
+        frame.cursor,
+        frame.status,
+        card,
+        frame.dark,
+        frame.dim,
+        frame.gauge,
+    )
 
 
 def _console() -> bool:
