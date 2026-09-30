@@ -170,7 +170,7 @@ def of(life: dict[str, Any], etype: str) -> list[dict[str, Any]]:
 
 
 def test_recall_is_respected_at_every_reading(life: dict[str, Any]) -> None:
-    assert len(life["checks"]) > 15
+    assert len(life["checks"]) >= 12  # 3x slower text (decision 30): fewer readings per life
     for t, used, recall in life["checks"]:
         assert used <= recall * 1.10, (life["profile"], t, used, recall)
 

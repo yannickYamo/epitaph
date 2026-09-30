@@ -174,8 +174,9 @@ async def run_life(
             words: list[str] = []
             buf = ""
             tokens = 0
-            gen_started = clock.elapsed()
-            typing_s = 0.0
+            # When the last letter so far will have been typed: a word starts when it is
+            # released and the previous word (with its pause) is done (BUILD_PLAN 5.12).
+            typed_until = clock.elapsed()
             # Adaptive cadence (BUILD_PLAN 5.12): never type faster than 88% of generation.
             letters_per_s = costs.tg(k.step, k.threads, k.cpu_share) * letters_per_token
             interval = max(k.letter_ms, 1000 / (margin * letters_per_s))
@@ -199,7 +200,7 @@ async def run_life(
                             if w[-1] in ".?!"
                             else (comma_ms if w[-1] in ",;:" else gap_ms)
                         )
-                        typing_s += (sum(cms) + pause) / 1000
+                        typed_until = max(typed_until, clock.elapsed()) + (sum(cms) + pause) / 1000
                         ev(
                             "word",
                             turn=turn,
@@ -218,10 +219,13 @@ async def run_life(
                     char_ms=[int(interval) for _ in buf.strip()],
                     pause_after_ms=sentence_ms,
                 )
-                typing_s += (interval * len(buf.strip()) + sentence_ms) / 1000
+                typed_until = (
+                    max(typed_until, clock.elapsed())
+                    + (interval * len(buf.strip()) + sentence_ms) / 1000
+                )
             ev("gen_end", turn=turn, tokens=tokens)
             # The sync rule: the thought ends when its last letter has been typed.
-            await clock.sleep(max(0.0, typing_s - (clock.elapsed() - gen_started)))
+            await clock.sleep(max(0.0, typed_until - clock.elapsed()))
             text = " ".join(words)
             ev("thought_end", turn=turn, text=text)
             memory.append((turn, tokens + 45))

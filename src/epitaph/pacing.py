@@ -219,7 +219,7 @@ class Pacer:
     def from_config(cls, cfg: Config, clock: LifeClock, seed: int = 0) -> Pacer:
         out = cfg.section("output")
         rev = cfg.section("reveal")
-        hes = list(rev.get("hesitation_ms", [400, 1200]))
+        hes = list(rev.get("hesitation_ms", [1200, 3600]))
         return cls(
             clock,
             banned=[str(p) for p in cfg.get("prompt.banned_phrases", [])],
@@ -230,9 +230,9 @@ class Pacer:
             rate_margin=float(rev.get("rate_margin", 0.88)),
             rate_window_s=float(rev.get("rate_window_s", 60)),
             min_rate_sample_s=float(rev.get("min_rate_sample_s", 3.0)),
-            word_gap_ms=int(rev.get("word_gap_ms", 90)),
-            comma_pause_ms=int(rev.get("comma_pause_ms", 250)),
-            sentence_pause_ms=int(rev.get("sentence_pause_ms", 700)),
+            word_gap_ms=int(rev.get("word_gap_ms", 270)),
+            comma_pause_ms=int(rev.get("comma_pause_ms", 750)),
+            sentence_pause_ms=int(rev.get("sentence_pause_ms", 2100)),
             hesitation_ms=(int(hes[0]), int(hes[1])),
             hesitation_inside_from=float(rev.get("hesitation_inside_from", 0.1)),
         )
