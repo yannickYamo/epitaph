@@ -104,7 +104,7 @@ def test_settings_from_config() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     s = ServerSettings.from_config(cfg)
     assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 32
-    assert s.load_timeout_s == 300
+    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == -1
 
 
 def test_request_body() -> None:
@@ -113,6 +113,9 @@ def test_request_body() -> None:
     assert b["messages"] == [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
     assert b["chat_template_kwargs"] == {"enable_thinking": False}
     assert b["dry_multiplier"] == 0.8 and "grammar" not in b
+    assert "dry_penalty_last_n" not in b  # the server's default unless asked
+    assert request_body([], SAMPLING, 1, dry_penalty_last_n=-1)["dry_penalty_last_n"] == -1
+    assert ServerSettings().dry_penalty_last_n == -1  # whole context: DRY sees past thoughts
     raw = request_body(None, Sampling(0.7, 0.05, latin_only=True), 20, prompt="Dear")
     assert raw["prompt"] == "Dear" and raw["n_predict"] == 20 and "grammar" in raw
 
