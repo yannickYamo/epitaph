@@ -6,8 +6,7 @@ import asyncio
 
 import pytest
 
-from epitaph.backend.base import CreatureDied
-from epitaph.backend.errors import ContextFull
+from epitaph.backend.base import ContextFull, CreatureDied
 from epitaph.backend.fake import SIGKILL, SIGSEGV, FakeBackend, FakeFaults
 from epitaph.clock import FakeClock
 from epitaph.costmodel import Costs

@@ -27,8 +27,7 @@ from typing import Any
 
 import httpx
 
-from epitaph.backend.base import CreatureDied
-from epitaph.backend.errors import BackendError, ContextFull
+from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
 _PROBE = Msg("user", "x")

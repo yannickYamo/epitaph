@@ -1,17 +1,10 @@
-"""Backend errors beyond the contract's CreatureDied (proposed for base.py, CONTRACT_CHANGES #1)."""
+"""Compatibility re-export: `ContextFull` and `BackendError` now live in `backend/base.py`.
+
+Import them from `epitaph.backend.base`; this module stays so older imports keep working.
+"""
 
 from __future__ import annotations
 
+from epitaph.backend.base import BackendError, ContextFull
 
-class ContextFull(RuntimeError):
-    """The prompt no longer fits the context (`unbounded` dies of this: cause=full)."""
-
-    def __init__(self, tokens: int, ctx: int) -> None:
-        """`tokens` is the prompt size and `ctx` the context size, both in tokens."""
-        super().__init__(f"context full: {tokens} tokens > ctx {ctx}")
-        self.tokens = tokens
-        self.ctx = ctx
-
-
-class BackendError(RuntimeError):
-    """The server answered with an error, or a stream broke while the process lives on."""
+__all__ = ["BackendError", "ContextFull"]

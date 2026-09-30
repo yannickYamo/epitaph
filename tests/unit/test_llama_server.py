@@ -15,8 +15,7 @@ from typing import Any
 import httpx
 import pytest
 
-from epitaph.backend.base import CreatureDied
-from epitaph.backend.errors import BackendError, ContextFull
+from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.backend.llama_server import (
     LlamaServerBackend,
     ServerSettings,
