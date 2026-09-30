@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -232,6 +232,27 @@ def download(ref: FileRef, root: Path | None = None, log: Callable[[str], None] 
     return dest
 
 
+def pick_host(candidates: Sequence[str] = ("pi-eth", "pi"), timeout: float = 20.0) -> str:
+    """The first ssh alias in `candidates` that answers (BUILD_PLAN F12).
+
+    Model files are large, so the cable (`pi-eth`) comes first and Wi-Fi (`pi`) is the
+    fallback. Raises ModelFileError when none answers.
+    """
+    for host in candidates:
+        try:
+            ok = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, "true"],
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if ok.returncode == 0:
+            return host
+    raise ModelFileError(f"the Pi answers on none of {', '.join(candidates)}")
+
+
 def pi_free_bytes(host: str = "pi-eth") -> int:
     """Free bytes on the Pi's model disk, read over ssh (creates PI_DIR if missing)."""
     out = subprocess.run(
@@ -280,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--models", default="all", help="comma list, or 'all'")
     ap.add_argument("--quants", default="step0", help="step0 | ladder | Q4_0,... (mixable)")
     ap.add_argument("--class", dest="hw_class", default="pi4")
-    ap.add_argument("--host", default="pi-eth")
+    ap.add_argument("--host", help="ssh alias for the Pi (default: pi-eth, else pi)")
     ap.add_argument("--no-verify", action="store_true", help="skip the sha256 check on the Pi")
     args = ap.parse_args(argv)
 
@@ -319,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
             refs = [pinned(m, q) for m, q in pairs]
             for r in refs:
                 t0 = time.monotonic()
+                args.host = args.host or pick_host()
                 push(r, args.host, verify=not args.no_verify)
                 print(f"pushed {r.pi_path()} in {time.monotonic() - t0:.0f}s")
     except ModelFileError as e:
