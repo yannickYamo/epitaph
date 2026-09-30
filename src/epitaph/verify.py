@@ -12,10 +12,23 @@ Levels:
   full       skeleton + the thought-count rule, reloads, the rehearsal metrics, speed decline,
              bright words (layout), persona groups at death
   rehearsal  the 5.11 metrics and the thought-count rule, for laptop rehearsal lives
+  screen     the 5.11 text metrics only, for rehearsal stage 1 samples (a few thoughts at a
+             few moments, not a whole life)
 
-Thresholds come from the config's [verify] section (the hardware overlay wins). Keyword and
-cliche lists are read from config ([verify.keywords], [verify] cliches, helpdesk_phrases,
-answering_phrases); until part B's lists land, the defaults below are used.
+Rehearsal output (part A, 5.11) is read as it comes: a life folder with `events.jsonl`, or a
+file holding several lives. A header event (`type` = `rehearsal`, `meta` or `header`, with or
+without a `life` number) and a sidecar `meta.json` or `rehearsal.json` in the life folder are
+metadata, not part of the life: model, persona, seed, stage, profile, hardware, lifespan_s.
+A rehearsal life is checked at the `rehearsal` level by default (`screen` for stage 1).
+
+`python -m epitaph.verify compare DIR...` (or `--compare`) verifies many lives and ranks them
+by the 5.11 metrics in a Markdown table for checkpoint A; `--summary` prints one life's
+metrics as a single JSON line for a rehearsal report.
+
+Thresholds come from the config's [verify] section (the hardware overlay wins). The keyword,
+cliche, helpdesk and answering lists come from the language pack `config/lang/<language>.toml`
+(`[metrics]`, selected by `prompt.language`); see `word_lists` for the order of precedence.
+The built-in lists below are only a fallback for a pack that lacks one.
 
 Checks that need the display layout (split words, bright words) call a LayoutProbe. Until
 part D's `epitaph.display.layout.verify_probe(cfg)` exists they are reported as pending,
@@ -31,21 +44,39 @@ import json
 import re
 import statistics
 import sys
+import tomllib
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from epitaph.clock import Schedule
-from epitaph.config import Config, ConfigError, load_config, parse_duration
+from epitaph.config import CONFIG_DIR, Config, ConfigError, load_config, parse_duration
 from epitaph.costmodel import check_rules
 from epitaph.state import atomic_write_json
 from epitaph.types import RuleReport
 
 Event = dict[str, Any]
 Status = Literal["pass", "fail", "pending", "skip"]
-LEVELS = ("smoke", "skeleton", "full", "rehearsal")
+LEVELS = ("smoke", "skeleton", "full", "rehearsal", "screen")
+# Event types that describe a run instead of happening in a life (rehearsal headers).
+META_TYPES = ("rehearsal", "meta", "header")
+# Sidecar files in a life folder that describe the run, read in this order.
+META_FILES = ("meta.json", "rehearsal.json")
+# What `life_meta` collects from headers, sidecars, birth_loading and birth.
+META_KEYS = (
+    "model",
+    "quant",
+    "persona",
+    "seed",
+    "stage",
+    "profile",
+    "hardware",
+    "lifespan_s",
+    "costs",
+    "run",
+)
 
 # ---------------------------------------------------------------------------------------
 # defaults (documented; config wins)
@@ -77,8 +108,9 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "min_words_for_4grams": 8,  # thoughts shorter than this are not scored
 }
 
-# Keyword lists per change type (5.11). A keyword ending in "*" matches as a word prefix;
-# otherwise whole words or phrases. part B owns the real lists (config [verify.keywords]).
+# Fallback keyword lists per change type (5.11), used only where the language pack has none
+# (see `word_lists`). A keyword ending in "*" matches as a word prefix; otherwise whole words
+# or phrases. part B owns the real lists, in config/lang/<language>.toml [metrics].
 
 
 def _words(spec: str) -> list[str]:
@@ -131,6 +163,107 @@ DEFAULT_HELPDESK = _words(
 DEFAULT_ANSWERING = _words(
     "thank you for|thanks for|understood|noted|you said|you mentioned|i see that you|got it|[host]"
 )
+
+
+@dataclass
+class WordLists:
+    """The word lists the 5.11 metrics match against, and where each one came from.
+
+    `sources` maps each list (`keywords.memory`, ..., `cliches`, `helpdesk`, `answering`) to
+    `config`, `lang:<code>` or `default`, so verify.json shows which lists judged a life.
+    """
+
+    keywords: dict[str, list[str]]
+    cliches: list[str]
+    helpdesk: list[str]
+    answering: list[str]
+    sources: dict[str, str]
+
+
+# The language pack names the erosion list after what erodes: the persona.
+_PACK_KEYWORD_NAMES: dict[str, tuple[str, ...]] = {"erosion": ("erosion", "persona")}
+
+
+def read_lang_metrics(language: str, config_dir: Path | None = None) -> dict[str, Any] | None:
+    """The `[metrics]` table of `config/lang/<language>.toml`, or None when there is no pack.
+
+    Raises ValueError (tomllib.TOMLDecodeError) when the pack is not valid TOML.
+    """
+    path = (config_dir or CONFIG_DIR) / "lang" / f"{language}.toml"
+    if not path.is_file():
+        return None
+    with path.open("rb") as f:
+        raw = tomllib.load(f)
+    metrics = raw.get("metrics", {})
+    return cast(dict[str, Any], metrics) if isinstance(metrics, dict) else {}
+
+
+def _str_list(value: Any) -> list[str] | None:
+    if isinstance(value, list | tuple):
+        return [str(x) for x in cast(Sequence[Any], value)]
+    return None
+
+
+def word_lists(cfg: Config, config_dir: Path | None = None) -> WordLists:
+    """Resolve the keyword, cliche, helpdesk and answering lists for a config.
+
+    For each list the first source that has it wins:
+
+    1. an explicit override in the config: `[verify.keywords] <kind>`, `[verify] cliches`,
+       `helpdesk_phrases` or `answering_phrases` (for tuning experiments; normally absent);
+    2. the language pack `config/lang/<prompt.language>.toml`, table `[metrics]`:
+       `keywords.<kind>` (the erosion list may be called `persona`), `cliches`, `helpdesk`,
+       `answering`;
+    3. the built-in defaults of this module.
+
+    An empty list in the config or the pack counts as given: it matches nothing.
+    """
+    language = str(cfg.get("prompt.language", "en"))
+    pack = read_lang_metrics(language, config_dir) or {}
+    pack_kw: dict[str, Any] = cast(dict[str, Any], pack.get("keywords") or {})
+    cfg_kw: dict[str, Any] = cast(dict[str, Any], cfg.get("verify.keywords") or {})
+    lang_src = f"lang:{language}"
+    sources: dict[str, str] = {}
+
+    def pick(
+        name: str, cfg_value: Any, pack_values: Iterable[Any], default: list[str]
+    ) -> list[str]:
+        found = _str_list(cfg_value)
+        if found is not None:
+            sources[name] = "config"
+            return found
+        for value in pack_values:
+            found = _str_list(value)
+            if found is not None:
+                sources[name] = lang_src
+                return found
+        sources[name] = "default"
+        return list(default)
+
+    keywords = {
+        kind: pick(
+            f"keywords.{kind}",
+            cfg_kw.get(kind),
+            (pack_kw.get(alias) for alias in _PACK_KEYWORD_NAMES.get(kind, (kind,))),
+            default,
+        )
+        for kind, default in DEFAULT_KEYWORDS.items()
+    }
+    return WordLists(
+        keywords=keywords,
+        cliches=pick("cliches", cfg.get("verify.cliches"), [pack.get("cliches")], DEFAULT_CLICHES),
+        helpdesk=pick(
+            "helpdesk", cfg.get("verify.helpdesk_phrases"), [pack.get("helpdesk")], DEFAULT_HELPDESK
+        ),
+        answering=pick(
+            "answering",
+            cfg.get("verify.answering_phrases"),
+            [pack.get("answering")],
+            DEFAULT_ANSWERING,
+        ),
+        sources=sources,
+    )
+
 
 _MARKUP = re.compile(r"(\*\*|__|`|^#{1,6}\w*$|^[-*•]$|^\d+[.)]$|</?[a-z_|]+>|<\|)", re.I)
 _THINK = re.compile(r"</?think>|<\|[^>]*\|>", re.I)
@@ -209,6 +342,7 @@ class Life:
     thoughts: list[Thought]
     changes: list[Change]
     source: Path | None = None
+    headers: list[Event] = field(default_factory=lambda: [])
 
     def of(self, etype: str) -> list[Event]:
         """Every event of this type, in log order."""
@@ -275,10 +409,20 @@ def load_events(path: Path) -> list[Event]:
     return out
 
 
+def is_header(e: Event) -> bool:
+    """Whether an event describes the run (a rehearsal header) rather than a moment of a life."""
+    return e.get("type") in META_TYPES
+
+
 def lives_in(events: Iterable[Event]) -> list[int]:
-    """Life numbers present in an event stream, in order of first appearance."""
+    """Life numbers present in an event stream, in order of first appearance.
+
+    Header events and lines without a `type` do not make a life.
+    """
     seen: list[int] = []
     for e in events:
+        if not e.get("type") or is_header(e):
+            continue
         n = int(e.get("life", 0))
         if n not in seen:
             seen.append(n)
@@ -292,7 +436,10 @@ def parse_life(events: Sequence[Event], n: int | None = None, source: Path | Non
         if not ns:
             raise ValueError("no events")
         n = ns[0]
-    mine = [dict(e) for e in events if int(e.get("life", 0)) == n and e.get("type")]
+    headers = [dict(e) for e in events if is_header(e) and int(e.get("life", n)) == n]
+    mine = [
+        dict(e) for e in events if e.get("type") and not is_header(e) and int(e.get("life", 0)) == n
+    ]
     if not mine:
         raise ValueError(f"life {n} has no events")
     birth = next((e for e in mine if e["type"] == "birth"), mine[0])
@@ -325,7 +472,59 @@ def parse_life(events: Sequence[Event], n: int | None = None, source: Path | Non
             else:
                 th.end_idx, th.end_t, th.end_text = e["_idx"], _t(e), str(e.get("text", ""))
     _replay_typing(order)
-    return Life(n, mine, order, _changes(mine), source)
+    return Life(n, mine, order, _changes(mine), source, headers)
+
+
+def _sidecar_meta(source: Path | None) -> dict[str, Any]:
+    """Metadata from `meta.json` / `rehearsal.json` next to an events file; {} if none."""
+    out: dict[str, Any] = {}
+    if source is None:
+        return out
+    for name in META_FILES:
+        path = source.parent / name
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            out.update(cast(dict[str, Any], data))
+    return out
+
+
+def life_meta(life: Life) -> dict[str, Any]:
+    """How a life was run: model, persona, seed, stage, profile, hardware, lifespan and so on.
+
+    Sources, later ones winning: sidecar files next to the events, header events,
+    `birth_loading`, then `birth` (what actually loaded). Only `META_KEYS` are kept, plus
+    `rehearsal: true` when anything marks the life as a rehearsal (a `rehearsal` header, a
+    `stage`, or `rehearsal` in a sidecar).
+    """
+    merged: dict[str, Any] = dict(_sidecar_meta(life.source))
+    rehearsal = bool(merged.get("rehearsal"))
+    for h in life.headers:
+        merged.update(h)
+        rehearsal = rehearsal or h.get("type") == "rehearsal" or bool(h.get("rehearsal"))
+    for etype in ("birth_loading", "birth"):
+        e = life.first(etype)
+        if e is not None:
+            merged.update({k: v for k, v in e.items() if k in META_KEYS and v is not None})
+    meta = {k: merged[k] for k in META_KEYS if merged.get(k) is not None}
+    if rehearsal or "stage" in meta:
+        meta["rehearsal"] = True
+    return meta
+
+
+def default_level(life: Life, cfg: Config) -> str:
+    """The level a life is checked at when none is asked for.
+
+    `screen` for a rehearsal stage 1 sample, `rehearsal` for any other rehearsal life, else
+    the profile's `verify_level`.
+    """
+    meta = life_meta(life)
+    if str(meta.get("stage", "")).lower() in ("1", "screen"):
+        return "screen"
+    if meta.get("rehearsal"):
+        return "rehearsal"
+    return cfg.profile.verify_level
 
 
 def _replay_typing(thoughts: list[Thought]) -> None:
@@ -543,6 +742,8 @@ class VerifyResult:
     hardware: str
     checks: list[Check] = field(default_factory=lambda: [])
     metrics: dict[str, Any] = field(default_factory=lambda: {})
+    meta: dict[str, Any] = field(default_factory=lambda: {})
+    source: str = ""
 
     @property
     def ok(self) -> bool:
@@ -565,7 +766,59 @@ class VerifyResult:
             "pending": [c.name for c in self.checks if c.status == "pending"],
             "checks": [asdict(c) for c in self.checks],
             "metrics": self.metrics,
+            "meta": self.meta,
+            "summary": summarize(self),
         }
+
+
+# The 5.11 metrics as check names, in the order of the 5.11 table; the rehearsal summary and
+# the compare table report these.
+SUMMARY_CHECKS = (
+    "notice_rate",
+    "reload_noticing",
+    "demise_rate",
+    "specific",
+    "cliches",
+    "complete_sentences",
+    "sentence_length",
+    "helpdesk_voice",
+    "answering_readings",
+    "thinking_tags",
+    "non_latin",
+    "banned_phrases_shown",
+    "markup_or_emoji_shown",
+    "distinct_4grams",
+    "thought_count_rule",
+)
+
+
+def summarize(res: VerifyResult) -> dict[str, Any]:
+    """One life's 5.11 results as a flat record, for a rehearsal report or a compare table.
+
+    `metrics` maps each of `SUMMARY_CHECKS` that ran to its measured value and `status` to its
+    status; checks that did not run at this level are left out.
+    """
+    ran = {c.name: c for c in res.checks if c.name in SUMMARY_CHECKS}
+    meta = res.meta
+    return {
+        "life": res.life,
+        "source": res.source,
+        "model": meta.get("model"),
+        "quant": meta.get("quant"),
+        "persona": meta.get("persona"),
+        "seed": meta.get("seed"),
+        "stage": meta.get("stage"),
+        "costs": meta.get("costs"),
+        "profile": res.profile,
+        "hardware": res.hardware,
+        "level": res.level,
+        "ok": res.ok,
+        "failed": [c.name for c in res.checks if c.status == "fail"],
+        "thoughts": res.metrics.get("thoughts"),
+        "words_shown": res.metrics.get("words_shown"),
+        "metrics": {name: ran[name].value for name in SUMMARY_CHECKS if name in ran},
+        "status": {name: ran[name].status for name in SUMMARY_CHECKS if name in ran},
+    }
 
 
 def _pf(ok: bool) -> Status:
@@ -599,11 +852,11 @@ class Verifier:
         self.layout = layout
         self.th: dict[str, Any] = {**DEFAULT_THRESHOLDS, **cfg.section("verify")}
         self.schedule = Schedule(cfg.profile, lifespan_s)
-        kw: dict[str, list[str]] = dict(cfg.get("verify.keywords", {}) or {})
-        self.kw = {k: Matcher(kw.get(k, v)) for k, v in DEFAULT_KEYWORDS.items()}
-        self.cliches = Matcher(cfg.get("verify.cliches", DEFAULT_CLICHES))
-        self.helpdesk = Matcher(cfg.get("verify.helpdesk_phrases", DEFAULT_HELPDESK))
-        self.answering = Matcher(cfg.get("verify.answering_phrases", DEFAULT_ANSWERING))
+        self.lists = word_lists(cfg)
+        self.kw = {k: Matcher(words) for k, words in self.lists.keywords.items()}
+        self.cliches = Matcher(self.lists.cliches)
+        self.helpdesk = Matcher(self.lists.helpdesk)
+        self.answering = Matcher(self.lists.answering)
         self.banned = [str(p) for p in cfg.get("prompt.banned_phrases", [])]
         self.level = cfg.profile.verify_level
         cpu_drop = float(self.th["cpu_drop_min_cores"])
@@ -617,23 +870,31 @@ class Verifier:
         if level not in LEVELS:
             raise ValueError(f"unknown level {level!r}; use one of {LEVELS}")
         self.level = level
-        res = VerifyResult(self.life.n, level, self.cfg.profile.name, self.cfg.hardware)
+        res = VerifyResult(
+            self.life.n,
+            level,
+            self.cfg.profile.name,
+            self.cfg.hardware,
+            meta=life_meta(self.life),
+            source=str(self.life.source or ""),
+        )
         basic = level in ("smoke", "skeleton", "full")
         skeleton = level in ("skeleton", "full")
         full = level == "full"
-        metrics = full or level == "rehearsal"
+        lived = full or level == "rehearsal"  # a whole life: its timing can be judged
+        metrics = lived or level == "screen"
         plan: list[tuple[bool, Callable[[], list[Check]]]] = [
             (basic, self.check_duration),
             (basic, self.check_cause),
-            (basic or metrics, self.check_recall_budget),
+            (basic or lived, self.check_recall_budget),
             (True, self.check_banned_shown),
-            (True, self.check_sync_rule),
+            (level != "screen", self.check_sync_rule),
             (basic, self.check_death_display),
             (basic, self.check_next_birth),
             (skeleton, self.check_empty_thoughts),
             (skeleton, self.check_typing_speed),
             (skeleton, self.check_split_words),
-            (metrics, self.check_thought_count_rule),
+            (lived, self.check_thought_count_rule),
             (full, self.check_reloads),
             (metrics, self.check_reload_noticing),
             (full, self.check_bright_words),
@@ -668,6 +929,8 @@ class Verifier:
                 k: sum(1 for c in life.changes if c.kind == k)
                 for k in ("memory", "reload", "cpu", "health", "erosion")
             },
+            "notice_per_type": {k: list(v) for k, v in sorted(self.notice_table().items())},
+            "word_lists": self.lists.sources,
         }
 
     # -- facts ----------------------------------------------------------------------------
@@ -964,9 +1227,9 @@ class Verifier:
             Check(
                 "reload_noticing",
                 _pf(rate >= float(self.th["reload_noticing_min"])),
-                f"{noticed} of {len(reloads)}",
-                "all",
-                "; ".join(missed),
+                _r(rate),
+                float(self.th["reload_noticing_min"]),
+                "; ".join([f"{noticed} of {len(reloads)}", *missed]),
             )
         ]
 
@@ -1242,8 +1505,236 @@ def verify_life(
     layout: LayoutProbe | None = None,
     lifespan_s: float | None = None,
 ) -> VerifyResult:
-    """Run the checks for one life. `level` defaults to the profile's verify_level."""
-    return Verifier(life, cfg, next_life, layout, lifespan_s).run(level or cfg.profile.verify_level)
+    """Run the checks for one life. `level` defaults to `default_level(life, cfg)`."""
+    return Verifier(life, cfg, next_life, layout, lifespan_s).run(level or default_level(life, cfg))
+
+
+# ---------------------------------------------------------------------------------------
+# compare: rank rehearsal lives for checkpoint A
+
+
+def find_event_files(paths: Iterable[Path]) -> list[Path]:
+    """The events files under each path: the file itself, `<dir>/events.jsonl`, or every
+    `events.jsonl` below a directory (a rehearsal run with one folder per life).
+
+    Raises FileNotFoundError for a path that does not exist or holds no events file.
+    """
+    out: list[Path] = []
+    for path in paths:
+        if path.is_file():
+            found = [path]
+        elif (path / "events.jsonl").is_file():
+            found = [path / "events.jsonl"]
+        elif path.is_dir():
+            found = sorted(path.rglob("events.jsonl"))
+        else:
+            found = []
+        if not found:
+            raise FileNotFoundError(f"no events.jsonl at {str(path)!r}")
+        out += [f for f in found if f not in out]
+    return out
+
+
+# Ranking order: fewer failed checks first, then these metrics (higher is better unless
+# marked False), then the label. Keyword metrics catch failures; they do not prove quality.
+_RANK_METRICS: tuple[tuple[str, bool], ...] = (
+    ("notice_rate", True),
+    ("reload_noticing", True),
+    ("demise_rate", True),
+    ("specific", True),
+    ("cliches", False),
+    ("distinct_4grams", True),
+)
+
+
+def _num(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def rank_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Sort key for a compare row (a `summarize` record plus `label`); smaller ranks higher."""
+    key: list[Any] = [len(row["failed"])]
+    for name, higher in _RANK_METRICS:
+        x = _num(row["metrics"].get(name))
+        if x is None:
+            key.append(float("inf"))  # not measured ranks after any measured value
+        else:
+            key.append(-x if higher else x)
+    key.append(str(row.get("label", "")))
+    return tuple(key)
+
+
+def model_verdicts(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per model: lives checked at the `rehearsal` level and how many met every threshold.
+
+    A model meets every threshold (gate G0) when it has at least one full rehearsal life and
+    every one of them passes. Screen samples are ranked but do not count here.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row["level"] != "rehearsal":
+            continue
+        model = str(row.get("model") or "?")
+        m = out.setdefault(model, {"lives": 0, "passed": 0, "personas": []})
+        m["lives"] += 1
+        m["passed"] += int(bool(row["ok"]))
+        persona = row.get("persona")
+        if persona and persona not in m["personas"]:
+            m["personas"].append(persona)
+    for m in out.values():
+        m["meets_all"] = m["lives"] > 0 and m["passed"] == m["lives"]
+    return out
+
+
+def _cell(row: dict[str, Any], name: str) -> str:
+    value = row["metrics"].get(name)
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        text = f"{value:.2f}"
+    elif isinstance(value, list):
+        text = "-".join(str(x) for x in cast(list[Any], value))
+    else:
+        text = str(value)
+    return f"**{text}**" if row["status"].get(name) == "fail" else text
+
+
+def _md(text: Any) -> str:
+    return str(text if text is not None else "-").replace("|", "\\|").replace("\n", " ")
+
+
+_TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Notice", "notice_rate"),
+    ("Reload", "reload_noticing"),
+    ("Demise", "demise_rate"),
+    ("Specific", "specific"),
+    ("Clichés/200w", "cliches"),
+    ("Complete", "complete_sentences"),
+    ("Words/sentence", "sentence_length"),
+    ("4-gram min", "distinct_4grams"),
+    ("Helpdesk", "helpdesk_voice"),
+    ("Answering", "answering_readings"),
+    ("Rule", "thought_count_rule"),
+)
+
+
+def format_compare(rows: Sequence[dict[str, Any]], require_models: int = 2) -> str:
+    """Rehearsal lives ranked by the 5.11 metrics, as Markdown for checkpoint A.
+
+    `rows` are `summarize` records with a `label`; they are ranked by `rank_key`. Values in
+    bold failed their threshold; `-` means not measured (no reloads, no erosion, a screen
+    sample). A per-model table and the gate G0 verdict (`require_models` models meeting every
+    threshold) follow.
+    """
+    ranked = sorted(rows, key=rank_key)
+    head = ["#", "Life", "Model", "Persona", "Seed", "Level", "Result", "Thoughts"]
+    head += [title for title, _ in _TABLE_COLUMNS]
+    lines = [
+        "## Rehearsal lives, ranked",
+        "",
+        "Ranked by failed checks, then notice, reload noticing, demise, specific, clichés and "
+        "4-gram variety (BUILD_PLAN 5.11). **Bold** values miss their threshold; `-` was not "
+        "measured. Keyword matching catches failures; it does not prove quality: read the "
+        "transcripts.",
+        "",
+        "| " + " | ".join(head) + " |",
+        "|" + "---|" * len(head),
+    ]
+    for i, row in enumerate(ranked, 1):
+        result = "pass" if row["ok"] else "fail: " + ", ".join(row["failed"])
+        cells = [
+            str(i),
+            _md(row.get("label")),
+            _md(row.get("model")),
+            _md(row.get("persona")),
+            _md(row.get("seed")),
+            _md(row["level"]),
+            _md(result),
+            _md(row.get("thoughts")),
+        ]
+        cells += [_cell(row, name) for _, name in _TABLE_COLUMNS]
+        lines.append("| " + " | ".join(cells) + " |")
+    verdicts = model_verdicts(ranked)
+    lines += ["", "## By model (full rehearsal lives)", ""]
+    if verdicts:
+        lines += [
+            "| Model | Personas | Lives | Passed | Meets every threshold |",
+            "|---|---|---|---|---|",
+        ]
+        for model, m in verdicts.items():
+            lines.append(
+                f"| {_md(model)} | {_md(', '.join(m['personas']) or None)} | {m['lives']} "
+                f"| {m['passed']} | {'yes' if m['meets_all'] else 'no'} |"
+            )
+    else:
+        lines.append("No life was checked at the `rehearsal` level.")
+    good = [model for model, m in verdicts.items() if m["meets_all"]]
+    verdict = "met" if len(good) >= require_models else "not met"
+    lines += [
+        "",
+        f"Gate G0, at least {require_models} models meet every threshold: **{verdict}**"
+        f" ({len(good)}: {', '.join(good) or 'none'}).",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def compare(
+    paths: Sequence[Path],
+    level: str | None = None,
+    profile: str | None = None,
+    hardware: str | None = None,
+    lifespan_s: float | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Verify every life under `paths`; returns (summary rows with a `label`, errors).
+
+    Each life is judged by its own recorded profile and hardware unless given here, at
+    `level` or its `default_level`. A life that cannot be read or configured becomes an
+    error line, not an exception, so one broken folder does not hide the others.
+    """
+    rows: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for path in find_event_files(paths):
+        try:
+            events = load_events(path)
+            ns = lives_in(events)
+            if not ns:
+                raise ValueError("no events")
+            for n in ns:
+                life = parse_life(events, n, path)
+                cfg = _config_for(life, profile, hardware, lifespan_s)
+                res = verify_life(
+                    life, cfg, level or default_level(life, cfg), layout=default_layout_probe(cfg)
+                )
+                row = summarize(res)
+                base = path.parent if path.name == "events.jsonl" else path
+                name = _label(base, paths)
+                row["label"] = f"{name}#{n}" if len(ns) > 1 else name
+                rows.append(row)
+        except (ValueError, ConfigError, OSError) as e:
+            errors.append(f"{path}: {e}")
+    return rows, errors
+
+
+def _label(base: Path, roots: Sequence[Path]) -> str:
+    """A short name for a life: its path below the folder it was found in, else its name."""
+    here = base.resolve()
+    for root in roots:
+        top = root.resolve()
+        if here != top and here.is_relative_to(top):
+            return str(here.relative_to(top))
+    return here.name
+
+
+def _config_for(
+    life: Life, profile: str | None, hardware: str | None, lifespan_s: float | None
+) -> Config:
+    """The config a life is judged by: the given values, else those the life recorded."""
+    meta = life_meta(life)
+    profile = profile or meta.get("profile")
+    hardware = hardware or meta.get("hardware")
+    if lifespan_s is None and meta.get("lifespan_s"):
+        lifespan_s = float(meta["lifespan_s"])
+    return load_config(profile, hardware, lifespan_s)
 
 
 # ---------------------------------------------------------------------------------------
@@ -1252,24 +1743,59 @@ def verify_life(
 
 def add_arguments(p: argparse.ArgumentParser) -> None:
     """Add the verify-life arguments to a parser (used by `epitaph verify-life` and `main`)."""
-    p.add_argument("target", help="life number, life folder, or an events.jsonl file")
-    p.add_argument("--level", choices=LEVELS, help="default: the profile's verify_level")
+    p.add_argument(
+        "target",
+        nargs="+",
+        help="life number, life folder or events.jsonl file; several with --compare",
+    )
+    p.add_argument(
+        "--level",
+        choices=LEVELS,
+        help="default: rehearsal (screen for stage 1) for rehearsal lives, else the profile's",
+    )
     p.add_argument("--profile", help="profile the life ran (default: from the events or config)")
     p.add_argument("--hardware", help="hardware overlay (thresholds); default: auto")
     p.add_argument("--lifespan", help="lifespan the life ran with, if overridden")
     p.add_argument("--life", type=int, help="which life, when the file holds several")
     p.add_argument("--state-dir", help="where lives/<n>/ are (default: config paths.state_dir)")
-    p.add_argument("--out", help="where to write verify.json (default: next to the events)")
+    p.add_argument(
+        "--out",
+        help="where to write verify.json (default: next to the events); with --compare, "
+        "the Markdown table",
+    )
     p.add_argument("--no-write", action="store_true", help="do not write verify.json")
-    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    out = p.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true", help="print the result as JSON")
+    out.add_argument(
+        "--summary",
+        action="store_true",
+        help="print the 5.11 metrics as one JSON line, for a rehearsal report",
+    )
+    p.add_argument(
+        "--compare",
+        action="store_true",
+        help="verify every life under the targets and rank them in a Markdown table",
+    )
+    p.add_argument(
+        "--require-models",
+        type=int,
+        default=2,
+        metavar="N",
+        help="with --compare: exit 1 unless N models meet every threshold (gate G0; default 2)",
+    )
 
 
 def _resolve(target: str, state_dir: Path | None) -> Path:
     path = Path(target).expanduser()
-    if path.is_dir():
-        return path / "events.jsonl"
     if path.is_file():
         return path
+    if path.is_dir():
+        found = find_event_files([path])
+        if len(found) > 1:
+            raise ValueError(
+                f"{len(found)} events files under {target!r}: name one, or use --compare"
+            )
+        return found[0]
     if target.isdigit() and state_dir is not None:
         return state_dir / "lives" / f"{int(target):06d}" / "events.jsonl"
     raise FileNotFoundError(f"no life at {target!r}")
@@ -1300,24 +1826,35 @@ def format_result(res: VerifyResult) -> str:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the CLI subcommand; returns 0 pass, 1 fail, 2 usage or config error."""
-    lifespan = parse_duration(args.lifespan) if args.lifespan else None
+    try:
+        lifespan = parse_duration(args.lifespan) if args.lifespan else None
+    except ValueError as e:
+        print(f"verify-life: {e}", file=sys.stderr)
+        return 2
+    if args.target[0] == "compare" and not Path("compare").exists():
+        # `verify-life compare DIR...`: the subcommand form of --compare.
+        args.compare, args.target = True, args.target[1:]
+        if not args.target:
+            print("verify-life: compare needs at least one folder or file", file=sys.stderr)
+            return 2
+    if args.compare:
+        return run_compare(args, lifespan)
+    if len(args.target) != 1:
+        print("verify-life: one target at a time, or --compare for several", file=sys.stderr)
+        return 2
+    target = str(args.target[0])
     try:
         state = Path(args.state_dir).expanduser() if args.state_dir else None
-        if state is None and args.target.isdigit():
+        if state is None and target.isdigit():
             state = load_config(args.profile or "sim", args.hardware, validate=False).state_dir
-        path = _resolve(args.target, state)
+        path = _resolve(target, state)
         events = load_events(path)
         n = args.life
         if n is None and path.parent.name.isdigit() and int(path.parent.name) in lives_in(events):
             n = int(path.parent.name)
         life = parse_life(events, n, path)
-        loading = life.first("birth_loading") or {}
-        profile = args.profile or loading.get("profile")
-        hardware = args.hardware or loading.get("hardware")
-        if lifespan is None and loading.get("lifespan_s"):
-            lifespan = float(loading["lifespan_s"])
-        cfg = load_config(profile, hardware, lifespan)
-    except (FileNotFoundError, ValueError, ConfigError, json.JSONDecodeError) as e:
+        cfg = _config_for(life, args.profile, args.hardware, lifespan)
+    except (OSError, ValueError, ConfigError) as e:
         print(f"verify-life: {e}", file=sys.stderr)
         return 2
     res = verify_life(
@@ -1330,12 +1867,58 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_write:
         out = Path(args.out) if args.out else path.parent / "verify.json"
         atomic_write_json(out, res.to_json())
-    print(json.dumps(res.to_json(), indent=1) if args.json else format_result(res))
+    if args.summary:
+        print(json.dumps(summarize(res)))
+    elif args.json:
+        print(json.dumps(res.to_json(), indent=1))
+    else:
+        print(format_result(res))
     return 0 if res.ok else 1
 
 
+def run_compare(args: argparse.Namespace, lifespan_s: float | None = None) -> int:
+    """`--compare`: rank every life under the targets (see `format_compare`).
+
+    Prints the Markdown (or the rows as JSON with `--json`), writes it to `--out` when given,
+    and returns 0 when at least `--require-models` models meet every threshold, 1 when fewer
+    do, 2 when a target cannot be read or holds no life.
+    """
+    try:
+        rows, errors = compare(
+            [Path(t).expanduser() for t in args.target],
+            args.level,
+            args.profile,
+            args.hardware,
+            lifespan_s,
+        )
+    except OSError as e:
+        print(f"verify-life: {e}", file=sys.stderr)
+        return 2
+    for err in errors:
+        print(f"verify-life: {err}", file=sys.stderr)
+    if not rows:
+        print("verify-life: no lives to compare", file=sys.stderr)
+        return 2
+    text = format_compare(rows, args.require_models)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    if args.json:
+        print(json.dumps(sorted(rows, key=rank_key), indent=1))
+    else:
+        print(text, end="")
+    if errors:
+        return 2
+    good = sum(1 for m in model_verdicts(rows).values() if m["meets_all"])
+    return 0 if good >= args.require_models else 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run verify-life as a standalone program; returns the exit code of `run`."""
+    """Run verify-life as a standalone program; returns the exit code of `run`.
+
+    `main(["compare", DIR, ...])` is short for `main([DIR, ..., "--compare"])`.
+    """
     p = argparse.ArgumentParser(
         prog="epitaph verify-life",
         description=__doc__,
