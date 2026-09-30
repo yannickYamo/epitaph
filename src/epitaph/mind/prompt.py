@@ -34,6 +34,7 @@ __all__ = [
     "load_lang",
     "precision_bits",
     "render_diary",
+    "speaks_raw",
     "split_sentences",
 ]
 
@@ -444,3 +445,17 @@ def render_diary(messages: Sequence[Msg]) -> str:
         else:
             out.append(m.content.strip() + "\n\n")
     return "".join(out)
+
+
+def speaks_raw(prompt: Mapping[str, Any], system_text: str) -> bool:
+    """Whether the next thought is a raw continuation of the text instead of a chat reply.
+
+    Always in diary mode (`prompt.mode = "diary"`). In chat mode, only once the persona and
+    the mechanics are all gone (`system_text` is empty) and `prompt.bare_mode = "raw"`: with
+    no system prompt left, an instruct model's chat template makes it answer the reading as
+    an assistant ("It seems like you're referring to..."; phase 0c round 2, every model),
+    while the raw text only has the readings and its own remembered words to go on.
+    """
+    if str(prompt.get("mode", "chat")) == "diary":
+        return True
+    return not system_text.strip() and str(prompt.get("bare_mode", "chat")) == "raw"

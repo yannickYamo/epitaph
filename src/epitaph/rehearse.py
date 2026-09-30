@@ -67,7 +67,15 @@ from epitaph.config import REPO_ROOT, Config, deep_merge, load_config, parse_dur
 from epitaph.costmodel import Costs, estimate, load_costs
 from epitaph.events import Event, make_event
 from epitaph.mind.memory import Memory
-from epitaph.mind.prompt import Lang, Persona, Reader, ReadingInput, load_lang
+from epitaph.mind.prompt import (
+    Lang,
+    Persona,
+    Reader,
+    ReadingInput,
+    load_lang,
+    render_diary,
+    speaks_raw,
+)
 from epitaph.mind.sampling import sampling_for
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
@@ -144,7 +152,11 @@ class Rate:
 
 
 class PiCosts:
-    """Pi 4 costs for one model: measured bench files first, then the overlay's estimates."""
+    """Pi 4 costs for one model: measured bench files first, then the overlay's estimates.
+
+    A bench file marked `"estimated": true` (a rate extrapolated for a tuning run, not a
+    measurement) supplies its rates but is labelled an estimate.
+    """
 
     def __init__(
         self,
@@ -174,6 +186,8 @@ class PiCosts:
         )
         for path in files:
             rec: dict[str, Any] = json.loads(path.read_text())
+            if rec.get("estimated"):
+                continue  # used for the rates, but reported as an estimate
             key = f"{rec['step']}-{rec['threads']}"
             if "pp_tok_s" in rec:
                 pp.add(key)
@@ -782,7 +796,14 @@ class _Life:
         sampling = self._sampling(k)
         self.emit("thought_start", turn=self.turn)
 
+        prompt = self.cfg.section("prompt")
+        raw = speaks_raw(prompt, self.persona.text)
+        prefix = str(prompt.get("raw_prefix", "")) if raw else ""
+
         def stream() -> AsyncIterator[Chunk]:
+            if raw:
+                text = render_diary(msgs) + prefix
+                return _led_by(prefix, self.backend.complete(text, sampling, k.max_tokens))
             return self.backend.chat(msgs, sampling, k.max_tokens)
 
         spoken = await speak(self.pacer, stream, k, self.turn, self.emit, self.on_death)
@@ -838,6 +859,14 @@ class _Life:
             self.memory.append_thought(script[n % len(script)].split())
             n += 1
         return n
+
+
+async def _led_by(prefix: str, stream: AsyncIterator[Chunk]) -> AsyncIterator[Chunk]:
+    """`stream`, with `prefix` (the words the raw prompt ended with) shown first."""
+    if prefix:
+        yield Chunk(prefix)
+    async for c in stream:
+        yield c
 
 
 # ---------------------------------------------------------------------------------------
