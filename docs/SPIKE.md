@@ -75,8 +75,8 @@ re-read. "Share" = re-read tokens ÷ prompt tokens.
 Findings:
 
 1. **Warm front trims and erosion steps are cheap with `--cache-reuse 256`** (2-7% re-read) for
-   every candidate. Without it they re-read 82-91%. `trim_to = 0.85` stands; `cache_reuse = 256`
-   stays.
+   every candidate. Without it they re-read 82-91%. `trim_to = 0.85` stands; cache reuse stays on
+   (256 works; 32 is better, see S2t).
 2. **Gemma 3 needs `--swa-full`**: without it nothing is ever reused (100%); with it, like the
    others. `swa_full = "auto"` with `sliding_window = true` in models.toml is right. It costs KV
    RAM (see S1a).
@@ -156,6 +156,12 @@ buffers, repacked tensors); with `--load-mode none` the whole model is anonymous
 - Q4_0 is not faster than Q4_K_M on the A72 (Llama 3B pp 3.19 vs 3.35, tg 1.92 vs 1.83): no
   dot-product instructions, so the Q4_0 repack gains nothing. Lower quants barely help pp (Q2_K
   2.98): prompt speed is compute-bound, generation is memory-bound.
+- Threads (Qwen3 1.7B): 3 → 2 threads cuts prompt speed by about a third (5.9 → 4.0-4.1) but
+  generation hardly moves (Q8_0 1.65 → 1.60 at depth). On the Pi 4 the thread drop at reload 1
+  is not a visible slowdown; the CPU share (S3c) and precision do that work.
+- The ladder (Qwen3 1.7B, 2 threads): Q8_0 → Q4_K_M → Q2_K generation 1.6 → 2.1 → 2.0 tokens/s,
+  load 52 → 33 → 24 s. Lower precision is faster, not slower, until Q2_K: the loss the model
+  is told about is real, but the display will not show it as slowness.
 - Thermal and power: `get_throttled=0x0` on every run, 51-55 °C.
 
 With the system prompt read during the load (`prefill`, added to both backends: 262 tokens are
@@ -183,8 +189,6 @@ without tricks and is clean in S6; its reload re-read fits S4's budget). Llama 3
 and the other 3-4B stay candidates for the rehearsal, but on the Pi 4 they need the S4 fallback
 (post-reload recall about 200 at reload 1 and 100 at reload 2, or no reload with precision
 falling another way). Integrator's call at checkpoint A.
-
-
 
 ### S4: reload to the first token
 
