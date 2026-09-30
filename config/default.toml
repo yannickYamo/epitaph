@@ -142,6 +142,10 @@ mechanics_tokens = 70
 letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters per word; rehearsal measures it
 letters_per_word = 4.7
 cache_reuse_works = true         # set from spike S2
+# Review 2, F2: generation must never speed up across a reload. "fail" makes it a rule like
+# (a)-(d); "warn" only prints it. "warn" until the pi4 profiles rebased for F2 (ws/v-voice)
+# are merged; the integrator sets "fail" in that merge (docs/QUESTIONS.md, E #12).
+speed_monotonic = "warn"
 
 [paths]
 state_dir = "auto"               # auto = /var/lib/epitaph on the Pi, ~/.local/share/epitaph elsewhere
