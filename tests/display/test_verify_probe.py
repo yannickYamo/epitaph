@@ -190,6 +190,7 @@ def test_verify_probe_reads_the_display_config() -> None:
     assert probe.cols == 40
     assert probe.settings.fade_s == 3.0
     assert probe.settings.birth_card_s == 2.0
+    assert probe.settings.death_card_s == 8.0  # default.toml
     assert v.default_layout_probe(cfg).__class__ is VerifyProbe
 
 
