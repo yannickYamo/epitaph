@@ -1,15 +1,24 @@
 # Raspberry Pi 4, 4 GB: the primary, tested target (BUILD_PLAN 3.2). Machine settings only.
 class = "pi4"
 
-[backend]
-ctx = 2048
-
 [output]
 trim_to = 0.85                   # 0.6 if spike S2 shows cache reuse fails
+
+[backend]
+# Spike S3: weights loaded with O_DIRECT into anonymous memory. No page-cache copy (plain
+# --load-mode none holds a second 1.3 GB copy in the cache), and the death limit kills in
+# 0.35 s. llama.cpp b11277 replaced --no-mmap with --load-mode (contract proposal 3).
+ctx = 2048
+mmap = false
+load_mode = "dio"
 
 [body]
 token_gap_timeout_s = 120
 squeeze = "death_only"
+death_mode = "oom"               # S3: 15 of 15 kills within 1.4 s with the limit below anon
+death_fraction = 0.5             # memory.max = 0.5 x the creature's anonymous memory
+cpu_share = true                 # S3c: speed follows cpu.max; worst token gap 2.8 s at 0.7 cores
+cpu_period_us = 100000
 
 [verify]
 max_reload_silence_s = 180
