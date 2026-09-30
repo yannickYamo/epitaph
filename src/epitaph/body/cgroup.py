@@ -99,6 +99,21 @@ def wrap_argv(argv: list[str], procs_file: Path | None, cpus: str) -> list[str]:
     return out + list(argv)
 
 
+def drop_page_cache(path: str | Path) -> None:
+    """Evict a file's clean pages from the page cache (no root needed).
+
+    Page-cache pages stay charged to the cgroup that first read them. A model file cached by
+    an rsync, a checksum or a bench is therefore not in the creature's memory.current, and
+    the death limit cannot touch it (spike S3). The backend calls this before spawning an
+    mmap creature, so the creature reads, and is charged for, its own weights.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    finally:
+        os.close(fd)
+
+
 def own_cgroup(proc_cgroup: Path = Path("/proc/self/cgroup")) -> str:
     """This process's cgroup v2 path, e.g. "/system.slice/epitaph-controller.service"."""
     for line in proc_cgroup.read_text().splitlines():

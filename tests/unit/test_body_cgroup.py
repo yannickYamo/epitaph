@@ -15,6 +15,7 @@ from epitaph.body.cgroup import (
     CgroupError,
     CgroupSettings,
     PlainBody,
+    drop_page_cache,
     make_body,
     own_cgroup,
     read_flat_keyed,
@@ -324,3 +325,10 @@ def test_never_adopts_a_foreign_scope(tmp_path: Path) -> None:
     with pytest.raises(CgroupError, match="not an epitaph"):
         CgroupBody.delegated(fs=tmp_path / "cg", proc_cgroup=tmp_path / "self")
     assert not (root / "supervisor").exists()
+
+
+def test_drop_page_cache(tmp_path: Path) -> None:
+    f = tmp_path / "model.gguf"
+    f.write_bytes(b"x" * 8192)
+    drop_page_cache(f)  # advisory: must not fail or change the file
+    assert f.read_bytes() == b"x" * 8192
