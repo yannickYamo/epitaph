@@ -17,8 +17,10 @@ import pytest
 
 from epitaph.backend.base import BackendError, ContextFull, CreatureDied
 from epitaph.backend.llama_server import (
+    GAP_TURN,
     LlamaServerBackend,
     ServerSettings,
+    alternate_roles,
     build_argv,
     chunk_from_event,
     parse_sse_line,
@@ -335,3 +337,41 @@ def test_pi4_uses_direct_io_load_mode() -> None:
     argv = build_argv(ServerSettings.from_config(cfg), cfg.model(), "Q6_K", 3)
     assert argv[argv.index("--load-mode") + 1] == "dio"
     assert "--cache-reuse" in argv and argv[argv.index("--cache-reuse") + 1] == "32"
+
+
+def test_alternate_roles_for_strict_templates() -> None:
+    sys_, a, u = Msg("system", "s"), Msg("assistant", "thought"), Msg("user", "[host] r")
+    # a trim left a thought at the front: the memory-gap reading goes before it
+    assert [m.role for m in alternate_roles([sys_, a, u])] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert alternate_roles([sys_, a, u])[1] == GAP_TURN
+    # two readings in a row become one turn
+    two = alternate_roles([u, Msg("user", "[host] r2")])
+    assert len(two) == 1 and two[0].content == "[host] r\n[host] r2"
+    assert alternate_roles([sys_, u, a, u]) == [sys_, u, a, u]  # already alternating
+
+
+async def test_chat_learns_a_strict_template_and_retries() -> None:
+    seen: list[list[str]] = []
+
+    def api(req: httpx.Request) -> httpx.Response:
+        roles = [m["role"] for m in json.loads(req.content)["messages"]]
+        seen.append(roles)
+        if roles[1] == "assistant":
+            err = {"error": {"code": 400, "message": "Conversation roles must alternate"}}
+            return httpx.Response(400, json=err)
+        return httpx.Response(200, content=sse(chat_events(["Hi."])))
+
+    b = make(healthy(api))
+    await b.start(GEMMA, "Q4_K_M", 3)
+    try:
+        msgs = [Msg("system", "s"), Msg("assistant", "old"), Msg("user", "[host] r")]
+        chunks = [c async for c in b.chat(msgs, SAMPLING, 5)]
+        assert chunks[0].text == "Hi." and b.strict_roles
+        assert seen == [["system", "assistant", "user"], ["system", "user", "assistant", "user"]]
+    finally:
+        await b.aclose()
