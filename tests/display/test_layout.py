@@ -493,3 +493,24 @@ def test_a_simulated_life_plays_through_the_view(sim_events: list[dict[str, Any]
     assert v.mode == "silence" and v.death.get("cause") == "oom"
     last_t = float(sim_events[-1].get("t", 0.0))
     assert v.card(last_t + 1e4) is None and v.dark(last_t + 1e4)
+
+
+def test_only_visible_thoughts_are_laid_out_and_the_screen_is_the_same() -> None:
+    """compose_flow wraps from the newest thought back; it must match a full layout."""
+    rng = random.Random(7)
+    v = LifeView()
+    born(v)
+    for turn in range(1, 40):
+        text = " ".join("x" * rng.randint(1, 9) for _ in range(rng.randint(1, 30)))
+        thought(v, turn, text, 0.0)
+    for cols, rows in ((48, 11), (20, 30), (33, 3)):
+        seqs = [[(w, w.text) for w in th.words] for th in v.thoughts]
+        placed, nlines, _ = flow_lines(seqs, cols)
+        full = [[" "] * cols for _ in range(nlines)]
+        for p in placed:
+            full[p.line][p.col : p.col + len(p.text)] = list(p.text)
+        want = ["".join(r).rstrip() for r in full][-rows:]
+        f = compose_flow(v, 1e6, cols, rows)
+        got = f.text_rows()
+        # the cursor may sit on a virtual line under the text
+        assert got in (want, [*want[1:], ""]), (cols, rows)

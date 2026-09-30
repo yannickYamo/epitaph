@@ -222,3 +222,9 @@ def test_make_driver_from_config_and_sizes() -> None:
 def test_settings_from_config() -> None:
     s = ViewSettings.from_config({"fade_seconds": 3, "cursor_blink_ms": 400, "birth_card": False})
     assert (s.fade_s, s.blink_s, s.birth_card) == (3.0, 0.4, False)
+
+
+def test_theme_modules() -> None:
+    from epitaph.display.themes import plain, segment16
+
+    assert plain.THEME.name == "plain" and segment16.THEME.name == "segment16"

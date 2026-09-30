@@ -718,14 +718,36 @@ def flow_lines(
     return placed, (line + 1 if started else 0), after
 
 
-def _started(view: LifeView, now: float, keep: set[str] | None = None) -> list[Thought]:
+def _started(
+    view: LifeView,
+    now: float,
+    keep: set[str] | None = None,
+    cols: int | None = None,
+    rows: int = 0,
+    mapper: Any = None,
+    blank_between: bool = True,
+) -> list[Thought]:
+    """Thoughts with the words typed so far, oldest first.
+
+    With `cols`, only the newest thoughts that can reach the screen are kept: every
+    thought starts on its own line, so they can be wrapped one by one from the end, and
+    a frame costs what is visible, not the whole history.
+    """
     out: list[Thought] = []
-    for th in view.thoughts:
+    lines = 0
+    for th in reversed(view.thoughts):
         words = [w for w in th.words if w.start <= now]
         if keep is not None:
             words = [w for w in words if w.state_at(now, view.s.fade_s) in keep]
-        if words:
-            out.append(Thought(th.turn, words, th.ended))
+        if not words:
+            continue
+        out.append(Thought(th.turn, words, th.ended))
+        if cols is not None:
+            texts = [(w, mapper(w.text) if mapper else w.text) for w in words]
+            lines += flow_lines([texts], cols)[1] + (1 if blank_between and lines else 0)
+            if lines > rows + 1:
+                break
+    out.reverse()
     return out
 
 
@@ -798,7 +820,15 @@ def compose_flow(
     `Frame.status` and each driver draws it in its own place (smaller, above the text)."""
     status = view.status_line(now) if status_strip else None
     return _compose(
-        view, now, cols, rows, _started(view, now), lambda s: s, True, status, view.gauge()
+        view,
+        now,
+        cols,
+        rows,
+        _started(view, now, cols=cols, rows=rows),
+        lambda s: s,
+        True,
+        status,
+        view.gauge(),
     )
 
 
@@ -813,7 +843,15 @@ def compose_grid(
     """An N x M character grid: live and inherited words only, mapped to the charset, and
     a memory gauge (bottom row) in place of fading."""
     text_rows = rows - 1 if gauge_row and rows >= 3 else rows
-    thoughts = _started(view, now, keep={"live", "inherited"})
+    thoughts = _started(
+        view,
+        now,
+        {"live", "inherited"},
+        cols,
+        text_rows,
+        lambda s: map_charset(s, charset),
+        blank_between=False,
+    )
     frame = _compose(
         view,
         now,
