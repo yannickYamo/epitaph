@@ -6,13 +6,18 @@ on the Pi. This script runs the cost model for each (profile, model) pair with t
 bench files and says which of the rates and load times the profile needs are measured and
 which still come from the overlay's estimates.
 
+`--strict` is the gate: it fails a pair that still uses an estimated cost, and it judges the
+review-2 F2 rule (no reload speeds generation up) as a failure even while
+`[estimate] speed_monotonic` in the config only warns.
+
 Usage (from the repository root, with src/ on PYTHONPATH):
 
     python .github/scripts/estimate_measured.py                    # bench/, every model in it
     python .github/scripts/estimate_measured.py --bench bench/measured
     python .github/scripts/estimate_measured.py --models qwen3-1.7b gemma-3-4b-it --strict
 
-Exit status: 0 when every pair passes (and, with --strict, uses measured costs only), 1
+Exit status: 0 when every pair passes (and, with --strict, uses measured costs only and never
+speeds up at a reload), 1
 otherwise, 2 on a usage error such as a bench directory without any file for the class.
 """
 
@@ -78,7 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--profiles", nargs="+", default=PI4_PROFILES)
     p.add_argument("--models", nargs="+", help="default: every model with a bench file")
     p.add_argument(
-        "--strict", action="store_true", help="fail when a needed cost is still an estimate"
+        "--strict",
+        action="store_true",
+        help="fail when a needed cost is still an estimate or a reload speeds generation up",
     )
     args = p.parse_args(argv)
 
@@ -94,7 +101,10 @@ def main(argv: list[str] | None = None) -> int:
     print("|---|---|---|---|---|")
     for profile in args.profiles:
         for model in models:
-            cfg = load_config(profile, args.hardware, overrides={"life": {"models": [model]}})
+            overrides: dict[str, Any] = {"life": {"models": [model]}}
+            if args.strict:
+                overrides["estimate"] = {"speed_monotonic": "fail"}
+            cfg = load_config(profile, args.hardware, overrides=overrides)
             report = estimate(cfg, load_costs(cfg, model, bench))
             have_rates, have_loads = measured_keys(bench, hw_class, model)
             need_rates, need_steps = used_keys(cfg)

@@ -243,6 +243,24 @@ def retext(
     return out
 
 
+def slowing(events: list[Event]) -> list[Event]:
+    """Make generation speed never rise: every `gen_end` and `vitals` `tok_s` becomes the
+    lowest seen so far in the stream (review 2, F2's `speed_monotonic`).
+
+    For tests about something else that record a life on a profile, so they do not depend on
+    how the profile's CPU share is tuned at each reload."""
+    out: list[Event] = []
+    low: dict[str, float] = {}
+    for e in events:
+        e = dict(e)
+        rate = e.get("tok_s")
+        if e["type"] in ("gen_end", "vitals") and isinstance(rate, int | float) and rate > 0:
+            low[e["type"]] = min(float(rate), low.get(e["type"], float(rate)))
+            e["tok_s"] = low[e["type"]]
+        out.append(e)
+    return out
+
+
 def replace_first(events: list[Event], etype: str, **fields: Any) -> list[Event]:
     """Change fields of the first event of a type."""
     out = [dict(e) for e in events]
