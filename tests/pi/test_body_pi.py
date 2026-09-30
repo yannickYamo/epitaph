@@ -23,7 +23,7 @@ def run(*argv: str, timeout: float = 900) -> subprocess.CompletedProcess[str]:
 
 def test_bootstrap_has_no_drift() -> None:
     """The Pi still matches step 0 (pi_bootstrap --check changes nothing)."""
-    out = run("tools/pi_bootstrap.sh", "--check", "pi")
+    out = run("tools/pi_bootstrap.sh", "--check")  # `pi`, else the cable
     assert out.returncode == 0, out.stdout + out.stderr
     assert "drift: 0" in out.stdout
 
