@@ -320,6 +320,16 @@ class FakeBackend:
             text = " ".join(words)
         return text
 
+    async def prefill(self, messages: list[Msg]) -> int:
+        """Read messages into the cache at prompt speed (see LlamaServerBackend.prefill)."""
+        if not self.alive:
+            raise CreatureDied(self.status())
+        blocks, todo, _ = self._plan(messages)
+        pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
+        await self._tick(todo / pp)
+        self._cache.blocks = blocks
+        return todo
+
     async def chat(
         self, messages: list[Msg], sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:

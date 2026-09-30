@@ -127,6 +127,13 @@ size = 879896992
 sha256 = "10bfbf421f9c9a631ec1294a6f4005b76d37ea3902d90408a1121315c4b07d21"
 revision = "dcb19155b962dbb6389f4691a982043a8e651022"
 
+[files."qwen3-1.7b".Q4_0]
+repo = "bartowski/Qwen_Qwen3-1.7B-GGUF"
+file = "Qwen_Qwen3-1.7B-Q4_0.gguf"
+size = 1231813024
+sha256 = "c470091d31c4ada174ee5c2547daa020e930593cbca5ca8ca385ce8ff59a2fdf"
+revision = "dcb19155b962dbb6389f4691a982043a8e651022"
+
 [files."qwen3-1.7b".Q4_K_M]
 repo = "bartowski/Qwen_Qwen3-1.7B-GGUF"
 file = "Qwen_Qwen3-1.7B-Q4_K_M.gguf"

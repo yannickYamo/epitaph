@@ -304,3 +304,12 @@ async def test_erosion_removal_keeps_reuse() -> None:
     msgs = [one, *history, Msg("user", "[host] a"), Msg("user", "[host] b")]
     await run(b, msgs)
     assert b.requests[-1].prompt_n < 0.25 * await b.count_past_tokens(msgs)
+
+
+async def test_prefill_reads_the_system_prompt_ahead() -> None:
+    b, _ = make()
+    await b.start(MODEL, "Q6_K", 3)
+    n = await b.prefill([SYSTEM])
+    assert n == await b.count_past_tokens([SYSTEM])
+    await run(b, [SYSTEM, Msg("user", "[host] t+00:00")], 5)
+    assert b.requests[-1].prompt_n == await b.count_past_tokens([Msg("user", "[host] t+00:00")])

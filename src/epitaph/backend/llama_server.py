@@ -379,6 +379,26 @@ class LlamaServerBackend:
             "/completion", request_body(None, sampling, max_tokens, prompt=prompt), chat=False
         )
 
+    async def prefill(self, messages: list[Msg]) -> int:
+        """Read these messages into the prompt cache without showing anything; returns the
+        tokens processed. Used after a load to read the system prompt during the birth card
+        or the reload silence, so the first thought only reads its reading (S1b: the system
+        prompt alone is about 100 s of prompt processing for a 3B on the Pi 4)."""
+        if not self._alive():
+            raise CreatureDied(self.status())
+        body = request_body([*messages, _PROBE], Sampling(temperature=0.0, min_p=0.0), 1)
+        body["stream"] = False
+        try:
+            r = await self.client().post("/v1/chat/completions", json=body)
+        except httpx.TransportError as e:
+            await self._settle()
+            if not self._alive():
+                raise CreatureDied(self.status()) from e
+            raise BackendError(f"prefill failed: {e!r}") from e
+        if r.status_code != 200:
+            raise _error_from(r.json().get("error", r.text))
+        return int(r.json().get("timings", {}).get("prompt_n") or 0)
+
     async def _render_count(self, messages: list[Msg]) -> int:
         c = self.client()
         r = await c.post(
