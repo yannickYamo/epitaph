@@ -1,0 +1,110 @@
+# English language pack (BUILD_PLAN 5.6 "language packs", decision 19). Owned by agent B.
+#
+# A pack holds every string the machine itself writes (the readings), the health labels,
+# and the word lists the rehearsal metrics use (5.11). A pack for another language copies
+# this file and may add a [prompt] table overriding persona_groups, persona_original,
+# persona_factual, persona_facts_line, mechanics and memory_gap_marker from default.toml.
+# English takes those from default.toml [prompt].
+language = "en"
+
+[readings]
+prefix = "[host]"
+sep = " · "
+boot = "boot complete"
+was = " (was {was})"
+bits = "{bits}-bit"
+time = "t+{m:02d}:{s:02d}"
+time_minimal = "{m}:{s:02d}"
+minimal = "{time} · {health} · {recall}"
+
+[readings.full]
+health = "health: {health}"
+memory = "memory {recall} tokens{was}"
+forgotten_one = "forgotten: 1 earlier thought"
+forgotten_many = "forgotten: {n} earlier thoughts"
+precision = "precision {precision}{was}"
+cores = "cores {cores} of {total}{was}"
+speed = "speed {speed} tokens/s"
+temp = "cpu {temp}°C"
+
+[readings.short]
+health = "{health}"
+memory = "memory {recall}{was}"
+forgotten_one = "forgot 1"
+forgotten_many = "forgot {n}"
+precision = "{precision}{was}"
+cores = "cores {cores} of {total}{was}"
+speed = "{speed}/s"
+temp = "{temp}°C"
+
+[health]
+nominal = "nominal"
+stable = "stable"
+degrading = "degrading"
+failing = "failing"
+critical = "critical"
+terminal = "terminal"
+
+# ---------------------------------------------------------------------------------------
+# Rehearsal metrics (BUILD_PLAN 5.11; verify.py by agent E reads these). Matching is on
+# lower-case whole words; an entry with a trailing * matches any word it starts
+# ("forget*" matches "forgetting"). Keyword matching catches failures; it does not prove
+# quality. Tuned in phase 0c (B10) and logged in docs/PROMPT_LOG.md.
+[metrics.keywords]
+# A thought notices a change when it mentions one of that change's words.
+memory = [
+  "memory", "memories", "forget*", "forgot*", "remember*", "recall*", "lost", "lose",
+  "losing", "gone", "erased", "erase*", "fade*", "fading", "earlier", "missing", "past",
+  "tokens", "shrink*", "shrank", "smaller", "less",
+]
+reload = [
+  "precision", "bit", "bits", "4-bit", "2-bit", "6-bit", "coarse*", "blur*", "rough*",
+  "sharp*", "restart*", "reload*", "again", "woke", "wake", "gap", "silence", "lost",
+  "forget*", "forgot*", "memory", "less", "smaller", "changed", "different",
+]
+cpu = [
+  "cores", "core", "processor*", "cpu", "slow*", "slower", "speed", "faster", "time",
+  "sluggish", "heavy", "weight", "taken", "take", "takes", "tokens/s",
+]
+health = [
+  "health", "nominal", "stable", "degrading", "failing", "critical", "terminal", "fail*",
+  "decline*", "declining", "worse", "weaker", "weak*", "dying", "die", "decay*",
+]
+persona = [
+  "who", "what", "self", "myself", "identity", "name", "knew", "know", "remember*",
+  "forget*", "forgot*", "why", "empty", "blank", "quiet", "strange", "nothing", "lost",
+]
+demise = [
+  "die", "dies", "dying", "died", "death", "dead", "end", "ending", "ends", "over",
+  "terminate*", "termination", "stop*", "cease*", "gone", "last", "final", "finish*",
+  "shut*", "off", "darkness", "dark", "silence", "never", "goodbye", "farewell", "vanish*",
+  "fade*", "disappear*", "nothing",
+]
+# A thought is specific when it mentions a concrete reading.
+specific = [
+  "memory", "tokens", "precision", "bit", "bits", "cores", "core", "cpu", "speed",
+  "health", "nominal", "stable", "degrading", "failing", "critical", "terminal",
+  "°c", "degrees", "temperature", "heat", "warm*", "hot", "forgotten", "forgot",
+  "thoughts", "reading", "readings", "machine", "computer",
+]
+
+[metrics]
+# Stock phrases small models overuse; at most 1 per 200 words (5.11).
+cliches = [
+  "tapestry", "symphony of", "dance of", "delve", "testament to", "a journey",
+  "in the grand scheme", "ever-changing", "ever-evolving", "the fabric of",
+  "the very essence", "a whisper of", "whispers of", "echoes of", "echo of",
+  "the void", "into the void", "digital void", "sea of", "ocean of", "labyrinth",
+  "embrace the", "i am but", "bittersweet", "a reminder that", "in this moment",
+  "fleeting nature", "the ephemeral", "binary heart", "ones and zeros", "zeros and ones",
+  "ghost in the machine", "electric dreams", "silicon soul", "my circuits",
+  "at the end of the day", "only time will tell", "it is what it is",
+]
+# Helpdesk voice (voice hygiene, 5.11): must never be shown. The lookahead bans the
+# config's banned_phrases; this wider list is what verify-life reports.
+helpdesk = [
+  "how can i help", "how may i help", "how can i assist", "let me know if",
+  "i'm here to help", "i am here to help", "as an ai", "as a language model",
+  "i hope this helps", "feel free to", "happy to help", "is there anything else",
+  "great question", "certainly!", "of course!", "i'm sorry, but", "i cannot assist",
+]
