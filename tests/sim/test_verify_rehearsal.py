@@ -274,7 +274,7 @@ def test_compare_ranks_and_judges_g06(run_dir: Path, tmp_path: Path, capsys) -> 
     assert "fail: " in ranked[-1]
     assert "| qwen3-1.7b | original, v6 | 2 | 2 | yes |" in text
     assert "| gemma-3-4b-it | - | 1 | 0 | no |" in text
-    assert "G0.6 (at least 2 models meet every threshold): **met**" in text
+    assert "Gate G0, at least 2 models meet every threshold: **met**" in text
     # A third model required: not met, exit 1.
     assert v.main(["compare", str(run_dir), "--require-models", "3"]) == 1
     assert "**not met**" in capsys.readouterr().out

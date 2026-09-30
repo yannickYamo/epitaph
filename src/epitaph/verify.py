@@ -1567,7 +1567,7 @@ def rank_key(row: dict[str, Any]) -> tuple[Any, ...]:
 def model_verdicts(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Per model: lives checked at the `rehearsal` level and how many met every threshold.
 
-    A model meets every threshold (G0.6) when it has at least one full rehearsal life and
+    A model meets every threshold (gate G0) when it has at least one full rehearsal life and
     every one of them passes. Screen samples are ranked but do not count here.
     """
     out: dict[str, dict[str, Any]] = {}
@@ -1623,7 +1623,7 @@ def format_compare(rows: Sequence[dict[str, Any]], require_models: int = 2) -> s
 
     `rows` are `summarize` records with a `label`; they are ranked by `rank_key`. Values in
     bold failed their threshold; `-` means not measured (no reloads, no erosion, a screen
-    sample). A per-model table and the G0.6 verdict (`require_models` models meeting every
+    sample). A per-model table and the gate G0 verdict (`require_models` models meeting every
     threshold) follow.
     """
     ranked = sorted(rows, key=rank_key)
@@ -1672,7 +1672,7 @@ def format_compare(rows: Sequence[dict[str, Any]], require_models: int = 2) -> s
     verdict = "met" if len(good) >= require_models else "not met"
     lines += [
         "",
-        f"G0.6 (at least {require_models} models meet every threshold): **{verdict}**"
+        f"Gate G0, at least {require_models} models meet every threshold: **{verdict}**"
         f" ({len(good)}: {', '.join(good) or 'none'}).",
     ]
     return "\n".join(lines) + "\n"
@@ -1777,7 +1777,7 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         type=int,
         default=2,
         metavar="N",
-        help="with --compare: exit 1 unless N models meet every threshold (G0.6; default 2)",
+        help="with --compare: exit 1 unless N models meet every threshold (gate G0; default 2)",
     )
 
 
