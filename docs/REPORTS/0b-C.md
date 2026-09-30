@@ -43,7 +43,7 @@ was `0x0` before and after every load test in this round.
 
 | Command | Result |
 |---|---|
-| `make check` | green: ruff, pyright 0 errors, 86 passed / 2 deselected, total coverage 90%, sim and estimate PASS on every Pi 4 profile. Body coverage: `cgroup.py` 98%, `vitals.py` 98% |
+| `make check` | green: ruff, pyright 0 errors, 86 passed / 2 deselected, total coverage 92%, sim and estimate PASS on every Pi 4 profile. Body coverage: `cgroup.py` 98%, `vitals.py` 98% |
 | `pi_lock run C -- pi_bootstrap.sh --check / --state / --apply --no-reboot / --state / --apply / --state` | `changed: 0, drift: 0, failed: 0`; no reboot; the three state dumps are **identical** |
 | Drift test: timezone set to UTC and the journald drop-in deleted by hand, then `--apply` | `--check` reported both as DRIFT (rc 1); `--apply` gave `changed: 2`; effective state equal to the reference |
 | `s3_run.sh s3b` (Pi) | every step ok: 0.033 s OOM kill, 0.016 s `cgroup.kill`, nft blocks the creature's outbound traffic and allows the supervisor and localhost |
