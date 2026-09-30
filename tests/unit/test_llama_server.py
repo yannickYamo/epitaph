@@ -139,7 +139,10 @@ def test_sse_parsing() -> None:
 async def test_start_stream_and_timings() -> None:
     def api(req: httpx.Request) -> httpx.Response:
         assert req.url.path == "/v1/chat/completions"
-        assert json.loads(req.content)["messages"][0]["role"] == "system"
+        body = json.loads(req.content)
+        assert body["messages"][0]["role"] == "system"
+        # -1 (the whole context) is sent as ctx: b11277 rejects negative values
+        assert body["dry_penalty_last_n"] == 2048
         return httpx.Response(200, content=sse(chat_events(["I ", "am ", "here."])))
 
     body = SleeperBody()
@@ -162,6 +165,7 @@ async def test_start_stream_and_timings() -> None:
 async def test_complete_stream() -> None:
     def api(req: httpx.Request) -> httpx.Response:
         assert req.url.path == "/completion"
+        assert json.loads(req.content)["dry_penalty_last_n"] == 2048
         evs = [{"content": "a"}, {"content": "b", "stop": True, "timings": {"predicted_n": 2}}]
         return httpx.Response(200, content=sse(evs))
 
