@@ -12,7 +12,7 @@ import pytest
 
 from epitaph import verify as v
 from epitaph.config import CONFIG_DIR, load_config
-from tests.helpers import read_events, retext, write_events
+from tests.helpers import read_events, retext, slowing, write_events
 
 GOOD = (
     "My memory holds 900 tokens now, and something earlier is gone. "
@@ -25,7 +25,9 @@ PROFILE = "pi4/compressed-2700"
 
 @pytest.fixture
 def compressed(recorded_life) -> list[dict[str, Any]]:
-    return read_events(recorded_life(PROFILE) / "lives" / "000001" / "events.jsonl")
+    """A simulated life on PROFILE whose speed never rises across a reload (`slowing`): these
+    tests are about the rehearsal tools, not about how the profile is tuned."""
+    return slowing(read_events(recorded_life(PROFILE) / "lives" / "000001" / "events.jsonl"))
 
 
 def voiced(events: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:

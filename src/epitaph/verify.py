@@ -10,8 +10,10 @@ Levels:
              display, next birth
   skeleton   smoke + empty thoughts, typing speed, whole words (layout)
   full       skeleton + the thought-count rule, reloads, the rehearsal metrics, speed decline,
-             bright words (layout), persona groups at death
-  rehearsal  the 5.11 metrics and the thought-count rule, for laptop rehearsal lives
+             speed never rising across a reload, bright words (layout), persona groups at
+             death
+  rehearsal  the 5.11 metrics, the thought-count rule and speed never rising across a reload,
+             for laptop rehearsal lives
   screen     the 5.11 text metrics only, for rehearsal stage 1 samples (a few thoughts at a
              few moments, not a whole life)
 
@@ -87,6 +89,8 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "wpm_writing_range": [8, 220],
     "max_bright_words_last_2min": 40,
     "max_speed_ratio_end_vs_start": 0.40,
+    "speed_monotonic_tolerance": 0.05,  # review 2, F2: noise allowed before a rise fails
+    "speed_monotonic_thoughts": 2,  # thoughts averaged on each side of a reload
     "min_notice_rate": 0.6,
     "min_demise_rate_after_erosion": 0.4,
     "min_specific_ratio_before_erosion": 0.5,
@@ -279,6 +283,7 @@ class Thought:
     """One thought as shown: its words, when it was requested, typed and ended.
 
     Times are life-clock seconds; `shown_start` and `shown_end` come from the typing replay.
+    `tok_s` is the generation speed its `gen_end` reported, None when it reported none.
     """
 
     turn: int
@@ -291,6 +296,7 @@ class Thought:
     vitals: Event | None = None
     shown_start: float | None = None
     shown_end: float | None = None
+    tok_s: float | None = None
 
     @property
     def text(self) -> str:
@@ -471,8 +477,17 @@ def parse_life(events: Sequence[Event], n: int | None = None, source: Path | Non
                 th.words.append(e)
             else:
                 th.end_idx, th.end_t, th.end_text = e["_idx"], _t(e), str(e.get("text", ""))
+        elif et == "gen_end":
+            th = thoughts.get(int(e.get("turn", -1)))
+            if th is not None and _positive(e.get("tok_s")):
+                th.tok_s = float(e["tok_s"])
     _replay_typing(order)
     return Life(n, mine, order, _changes(mine), source, headers)
+
+
+def _positive(value: Any) -> bool:
+    """Whether an event field holds a usable rate: a number above zero (not a bool)."""
+    return isinstance(value, int | float) and not isinstance(value, bool) and value > 0
 
 
 def _sidecar_meta(source: Path | None) -> dict[str, Any]:
@@ -789,6 +804,7 @@ SUMMARY_CHECKS = (
     "markup_or_emoji_shown",
     "distinct_4grams",
     "thought_count_rule",
+    "speed_monotonic",
 )
 
 
@@ -899,6 +915,7 @@ class Verifier:
             (metrics, self.check_reload_noticing),
             (full, self.check_bright_words),
             (full, self.check_speed_decline),
+            (lived, self.check_speed_monotonic),
             (metrics, self.check_readability),
             (metrics, self.check_notice_rate),
             (metrics, self.check_demise_rate),
@@ -1288,6 +1305,66 @@ class Verifier:
             )
         ]
 
+    def thought_speeds(self) -> list[float | None]:
+        """Generation speed of each thought in `life.thoughts` order (None when unknown).
+
+        `gen_end.tok_s` when the life records any; otherwise `vitals.tok_s`. A vitals event
+        reports the last measured speed (the reading's "speed", 5.4), which is the previous
+        thought's: thought i takes it from the vitals written before thought i+1, if that
+        vitals came after thought i started.
+        """
+        ths = self.life.thoughts
+        if any(th.tok_s is not None for th in ths):
+            return [th.tok_s for th in ths]
+        out: list[float | None] = []
+        for th, nxt in itertools.zip_longest(ths, ths[1:]):
+            vit = nxt.vitals if nxt is not None else None
+            ok = vit is not None and int(vit["_idx"]) > th.gen_idx and _positive(vit.get("tok_s"))
+            out.append(float(vit["tok_s"]) if ok and vit is not None else None)
+        return out
+
+    def check_speed_monotonic(self) -> list[Check]:
+        """Generation never speeds up across a reload (review 2, F2).
+
+        For each reload, the mean speed of up to `speed_monotonic_thoughts` thoughts just
+        after it (before the next reload) may exceed the mean of as many thoughts just before
+        it (after the previous reload) by at most `speed_monotonic_tolerance`. The value is
+        the highest after/before ratio. Skipped without reloads; a reload with no timed
+        thought on one side (death during the silence) is listed and not judged.
+        """
+        tol = float(self.th["speed_monotonic_tolerance"])
+        k = max(1, int(self.th["speed_monotonic_thoughts"]))
+        limit = 1.0 + tol
+        reloads = self.life.of("reload")
+        if not reloads:
+            return [Check("speed_monotonic", "skip", limit=limit, detail="no reloads")]
+        speeds = self.thought_speeds()
+        bounds = [-1, *(int(e["_idx"]) for e in reloads), len(self.life.events)]
+        timed = [
+            (th.gen_idx, s)
+            for th, s in zip(self.life.thoughts, speeds, strict=True)
+            if s is not None
+        ]
+        ratios: list[float] = []
+        notes: list[str] = []
+        for i, e in enumerate(reloads):
+            lo, at, hi = bounds[i], bounds[i + 1], bounds[i + 2]
+            before = [s for idx, s in timed if lo < idx < at][-k:]
+            after = [s for idx, s in timed if at < idx < hi][:k]
+            where = f"reload at {_t(e) / 60:.1f} min"
+            if not before or not after:
+                notes.append(f"{where}: not compared (no timed thought on one side)")
+                continue
+            b, a = statistics.fmean(before), statistics.fmean(after)
+            ratios.append(a / b)
+            notes.append(f"{where}: {b:.2f} -> {a:.2f} tok/s ({a / b - 1:+.0%})")
+        if not ratios:
+            if not timed:
+                return [Check("speed_monotonic", "fail", None, limit, "no tokens/s samples")]
+            return [Check("speed_monotonic", "skip", limit=limit, detail="; ".join(notes))]
+        worst = max(ratios)
+        return [Check("speed_monotonic", _pf(worst <= limit), _r(worst), limit, "; ".join(notes))]
+
     def check_persona_at_death(self) -> list[Check]:
         """Every persona group and the mechanics text were gone by the last erosion step.
 
@@ -1615,6 +1692,7 @@ _TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("Helpdesk", "helpdesk_voice"),
     ("Answering", "answering_readings"),
     ("Rule", "thought_count_rule"),
+    ("Speed after/before reload", "speed_monotonic"),
 )
 
 
