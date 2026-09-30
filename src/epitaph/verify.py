@@ -68,6 +68,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "max_death_display_delay_s": 90,
     "duration_tolerance_s": 60,  # 10.3: lifespan +- 60 s
     "recall_tolerance": 0.10,  # 10.3: recall + 10%
+    "sync_tolerance_s": 0.5,  # typing replay vs gen_start (rounding of char_ms)
     "next_birth_margin_s": 300,  # 10.3: silence + load + 5 min
     "reload_noticing_min": 1.0,  # 5.11: 2 of 2
     "notice_window_thoughts": 2,  # 5.11: one of the next two thoughts
@@ -710,7 +711,10 @@ class Verifier:
         ]
 
     def check_sync_rule(self) -> list[Check]:
-        """Every gen_start after the last word (and the end) of the previous thought."""
+        """Every gen_start after the previous thought's last word was shown (5.7 step 7):
+        after its word and thought_end events, and after its last letter was typed on the
+        replayed display timeline (within `sync_tolerance_s`)."""
+        tol = float(self.th["sync_tolerance_s"])
         bad: list[str] = []
         for prev, cur in itertools.pairwise(self.life.thoughts):
             if prev.end_idx < 0 and prev.words:
@@ -719,10 +723,10 @@ class Verifier:
             last_idx = max(prev.last_word_idx, prev.end_idx)
             if cur.gen_idx < last_idx:
                 bad.append(f"turn {cur.turn} requested before turn {prev.turn} was shown")
-            elif prev.words and cur.gen_t + 1e-6 < _t(prev.words[-1]):
+            elif prev.shown_end is not None and cur.gen_t + tol < prev.shown_end:
                 bad.append(
                     f"turn {cur.turn} gen_start at {cur.gen_t:.1f}s before turn "
-                    f"{prev.turn}'s last word at {_t(prev.words[-1]):.1f}s"
+                    f"{prev.turn}'s last word was typed at {prev.shown_end:.1f}s"
                 )
         return [Check("sync_rule", _pf(not bad), len(bad), 0, "; ".join(bad[:5]))]
 

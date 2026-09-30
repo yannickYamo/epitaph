@@ -27,17 +27,17 @@ summary, a file, a commit, or a CI run.
 |---|---|---|---|---|
 | S0.1 | Laptop tools: tesseract, qemu-user-static, podman | `tesseract --version; qemu-aarch64-static --version; podman --version` | open | |
 | S0.2 | SD backup exists and restore was tested | `ls ~/epitaph-backups/step0-*/` (sha256 files); PI_FACTS "restore tested" | open | PI_FACTS says tested |
-| S0.3 | Passwordless sudo | `ssh pi 'sudo -n true && echo ok'` | open | |
+| S0.3 | Passwordless sudo | `ssh pi 'sudo -n true && echo ok'` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): `sudo -n true` ok |
 | S0.4 | No password in the repo or scratch files | `git grep -nIi -e 'passw' -- ':!docs/BUILD_PLAN.md'` reviewed by hand; scratch file gone | open | |
-| S0.5 | Wi-Fi carries the default route; cable `never-default` | `ssh pi 'ip route show default'` shows `wlan0` | open | |
+| S0.5 | Wi-Fi carries the default route; cable `never-default` | `ssh pi 'ip route show default'` shows `wlan0` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): `default via <router-ip> dev wlan0 … metric 600`, the only default route |
 | S0.6 | SSH over Wi-Fi with the cable unplugged | Yannick unplugs the cable; `ssh pi 'hostname'` | open | needs Yannick |
-| S0.7 | cloud-init disabled; hostname `epitaph` survives two reboots | `ssh pi 'test -f /etc/cloud/cloud-init.disabled && hostname'` after each reboot | open | |
-| S0.8 | `memory` in `cgroup.controllers` (else `death_mode = deadline` recorded) | `ssh pi 'cat /sys/fs/cgroup/cgroup.controllers'` | open | |
-| S0.9 | Console boot | `ssh pi 'systemctl get-default'` = `multi-user.target` | open | |
-| S0.10 | Hardware watchdog on | `ssh pi 'systemctl show -p RuntimeWatchdogUSec --value'` = `1min` | open | |
-| S0.11 | NTP synced | `ssh pi 'timedatectl show -p NTPSynchronized --value'` = `yes` | open | |
+| S0.7 | cloud-init disabled; hostname `epitaph` survives two reboots | `ssh pi 'test -f /etc/cloud/cloud-init.disabled && hostname'` after each reboot | open | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): disabled, hostname `epitaph` (one boot seen; second reboot not by E) |
+| S0.8 | `memory` in `cgroup.controllers` (else `death_mode = deadline` recorded) | `ssh pi 'cat /sys/fs/cgroup/cgroup.controllers'` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): `cpuset cpu io memory pids` |
+| S0.9 | Console boot | `ssh pi 'systemctl get-default'` = `multi-user.target` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock) |
+| S0.10 | Hardware watchdog on | `ssh pi 'systemctl show -p RuntimeWatchdogUSec --value'` = `1min` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock) |
+| S0.11 | NTP synced | `ssh pi 'timedatectl show -p NTPSynchronized --value'` = `yes` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock) |
 | S0.12 | Key-only SSH over Wi-Fi; password allowed over the cable only | `ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password pi true` refused | open | |
-| S0.13 | Official 5.1 V / 3 A supply: no under-voltage | `ssh pi 'vcgencmd get_throttled'` = `0x0` under load (S1c logs it) | open | |
+| S0.13 | Official 5.1 V / 3 A supply: no under-voltage | `ssh pi 'vcgencmd get_throttled'` = `0x0` under load (S1c logs it) | open | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): `0x0`, 0 under-voltage lines in dmesg, uptime 26 min, 42.8 °C, right after A's build job released the lock; sustained load is S1c |
 | S0.14 | Repo, `.pi.env`, PI_FACTS, locks exist before agents start | `ls tools/pi_lock.sh tools/laptop_lock.sh docs/PI_FACTS.md; test -f .pi.env` | open | |
 
 ## G0: end of phase 0c, checkpoint A (BUILD_PLAN 8.4)
