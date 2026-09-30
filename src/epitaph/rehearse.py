@@ -130,6 +130,7 @@ DEFAULT_BENCH = REPO_ROOT / "bench" / "measured"
 DEFAULT_MODELS_DIR = "~/epitaph-models"
 LAPTOP_PORT = 8093  # not the controller's 8081, so a rehearsal never meets a dev server
 STAGES = ("screen", "life")
+MAX_REVIVALS = 3  # laptop server restarts per life before a loss counts as a crash
 MOMENTS = ("birth", "reload1", "reload2", "erosion_end")
 PERSONAS = ("persona", "persona_original", "persona_factual")
 
@@ -280,10 +281,20 @@ class TokenCounter:
     worker) how many tokens the text adds as one chat message, and caches the answers.
     """
 
-    def __init__(self, worker: LaptopWorker, backend: Backend) -> None:
-        """Count through `backend`, which lives on `worker`'s loop."""
+    def __init__(
+        self,
+        worker: LaptopWorker,
+        backend: Backend,
+        on_lost: Callable[[], None] | None = None,
+    ) -> None:
+        """Count through `backend`, which lives on `worker`'s loop.
+
+        `on_lost` restarts the laptop server when a count finds it gone; the count is then
+        tried once more (a harness fault, not a death: see `PiClockBackend.revive`).
+        """
         self.worker = worker
         self.backend = backend
+        self.on_lost = on_lost
         self.cache: dict[str, int] = {}
 
     def __call__(self, text: str) -> int:
@@ -292,9 +303,21 @@ class TokenCounter:
             return 0
         n = self.cache.get(text)
         if n is None:
-            n = self.worker.call(self.backend.count_past_tokens([Msg("user", text)]))
+            n = self._count(text)
             self.cache[text] = n
         return n
+
+    def _count(self, text: str) -> int:
+        def ask() -> int:
+            return self.worker.call(self.backend.count_past_tokens([Msg("user", text)]))
+
+        if self.on_lost is None:
+            return ask()
+        try:
+            return ask()
+        except (BackendError, CreatureDied):
+            self.on_lost()
+            return ask()
 
 
 # ---------------------------------------------------------------------------------------
@@ -362,6 +385,9 @@ class PiClockBackend:
         self._status = CreatureStatus(alive=False)
         self._kill_at: float | None = None  # absolute clock time
         self._timer: asyncio.TimerHandle | None = None
+        self._model: ModelSpec | None = None
+        self.revivals = 0  # laptop server restarts after it quit on its own (harness faults)
+        self._rewarm = False
 
     # -- time ------------------------------------------------------------------------------
 
@@ -437,6 +463,7 @@ class PiClockBackend:
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
         """Restart the laptop server at `quant`, then charge the Pi's load time for its step."""
         self.alive = False
+        self._model = model
         self.worker.call(self.inner.start(model, quant, self.laptop_threads or threads))
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
@@ -454,6 +481,28 @@ class PiClockBackend:
         self.alive = False
         self.worker.call(self.inner.stop(hard))
         self._status = CreatureStatus(alive=False, pid=self._status.pid)
+
+    def revive(self) -> None:
+        """Restart the laptop server at the same quant after it quit on its own.
+
+        The laptop server sometimes exits mid-life for reasons of its own (phase 0c round 2:
+        a clean shutdown between two requests, twice in five lives). That is the harness, not
+        the creature, so nothing is charged: the Pi would not have noticed. Before the next
+        request, everything but its new reading is read into the new server's cache,
+        uncharged, so that request re-reads only what is new, as on the old server.
+        """
+        if self._model is None or self.quant is None:
+            raise BackendError("the laptop server quit before it was started")
+        self.revivals += 1
+        self._rewarm = True
+        self.worker.call(
+            self.inner.start(self._model, self.quant, self.laptop_threads or self.threads)
+        )
+
+    def _rewarm_with(self, messages: Sequence[Msg]) -> None:
+        if self._rewarm and len(messages) > 1:
+            self.worker.call(self.inner.prefill(list(messages[:-1])))
+        self._rewarm = False
 
     def set_cpu_share(self, share: float) -> None:
         """The CPU share (cores) the Pi creature has now; speeds scale with it."""
@@ -488,12 +537,17 @@ class PiClockBackend:
     ) -> AsyncIterator[Chunk]:
         if not self.alive:
             raise CreatureDied(self.status())
+        self._rewarm_with(messages)
         try:
             chunks = self.worker.call(_collect(request()))
-        except CreatureDied as e:  # the laptop server itself died: a crash, not the schedule
-            self.alive = False
-            self._status = e.status
-            raise
+        except CreatureDied as e:  # the laptop server itself died: not the schedule
+            if self.revivals >= MAX_REVIVALS:
+                self.alive = False
+                self._status = e.status
+                raise
+            self.revive()
+            self._rewarm_with(messages)
+            chunks = self.worker.call(_collect(request()))
         final = chunks[-1] if chunks and chunks[-1].done else Chunk("", done=True)
         tokens = [c for c in chunks if not c.done and c.text]
         prompt_n = final.prompt_n
@@ -580,6 +634,7 @@ class RehearsedLife:
     thoughts: int = 0
     laptop_s: float = 0.0
     seeded_turns: int = 0
+    revivals: int = 0  # laptop server restarts (harness faults, not deaths)
 
 
 class _Life:
@@ -927,7 +982,8 @@ async def run_life(
         out.events.append(e)
         emit(e)
 
-    life = _Life(cfg, clock, backend, TokenCounter(worker, inner), record, seed=seed)
+    counter = TokenCounter(worker, inner, on_lost=backend.revive)
+    life = _Life(cfg, clock, backend, counter, record, seed=seed)
     wall = time.monotonic()
     k = life.sch.at(0)
     try:
@@ -950,6 +1006,7 @@ async def run_life(
     silence = float(cfg.get("life.silence_seconds", 90))
     life.emit("silence", seconds=silence, style=str(cfg.get("display.silence_style", "dark")))
     out.charges = backend.charges
+    out.revivals = backend.revivals
     out.cause = life.dead or "crash"
     out.thoughts = life.turn
     out.laptop_s = time.monotonic() - wall
@@ -1061,7 +1118,8 @@ async def screen_moment(
         threads_batch=_threads_batch(cfg),
     )
     out = RehearsedLife()
-    life = _Life(cfg, clock, backend, TokenCounter(worker, inner), out.events.append, seed=seed)
+    counter = TokenCounter(worker, inner, on_lost=backend.revive)
+    life = _Life(cfg, clock, backend, counter, out.events.append, seed=seed)
     wall = time.monotonic()
     sch = life.sch
     k0 = sch.at(0)
@@ -1099,6 +1157,7 @@ async def screen_moment(
         rows.append({"t": vit["t"], "reading": vit["reading"], "text": text, "previous": past[-1:]})
     backend.arm_death(None)
     out.charges = backend.charges
+    out.revivals = backend.revivals
     out.thoughts = life.turn
     out.laptop_s = time.monotonic() - wall
     return out, rows
@@ -1512,6 +1571,7 @@ def write_life_outputs(
         f"- the cost model on the same costs: {est.thoughts} thoughts "
         f"({'PASS' if est.ok else 'FAIL'})",
         f"- reload silences (load + prefill): {silences}",
+        f"- laptop server restarts (harness faults, not charged, not deaths): {life.revivals}",
         f"- Pi time by kind: {json.dumps(summary['by_kind'])}",
         f"- prompt tokens reused from the laptop cache: {summary['cache_reused_share']}",
         f"- thoughts that mostly repeat the previous one (4-gram overlap >= 0.5): "
