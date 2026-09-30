@@ -39,7 +39,9 @@ A reload is the life's largest loss, but each second of it is a blank screen.
 |---|---|---|
 | On the schedule fitted to the fastest model, memory re-read | 17 | 455 s and 437 s |
 | Same schedule, memory carried across reloads | 21 | 127 s and 110 s |
-| Its own schedule (ADR-022), memory carried across reloads | **26**, every rule met | **120 s and 113 s** |
+| Its own schedule (ADR-022), memory carried across reloads (cost model) | **26**, every rule met | **120 s and 113 s** |
+| Same, rehearsed with the real model: the reload cut ended inside a turn and threw the carried cache away | 26 | about 300 s (411 tokens re-read) |
+| Reload cut on a turn boundary (the fix the rehearsal found) | **29** | **101 s and 116 s** (78 tokens read) |
 
 ### Silence before the first thought
 
