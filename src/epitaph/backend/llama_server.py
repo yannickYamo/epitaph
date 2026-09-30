@@ -59,9 +59,9 @@ class ServerSettings:
     # after a reload to 2 generation threads cuts the reload silence (pp scales with threads,
     # generation barely does on the Pi 4).
     threads_batch: int | None = None
-    # Tokens DRY scans for repeats; -1 = the whole context. llama.cpp b11277 defaults to 64,
-    # which never reaches the previous thought, so a small model can repeat it word for word
-    # (rehearsal 0c: Qwen3 1.7B copied its last thought for 20 turns).
+    # Tokens DRY scans for repeats; -1 = the whole context (sent as `ctx`: b11277 rejects -1).
+    # The server's default is 64, which never reaches the previous thought, so a small model
+    # can repeat it word for word (rehearsal 0c: Qwen3 1.7B copied its last thought 20 times).
     dry_penalty_last_n: int | None = -1
     load_timeout_s: float = 300.0
     stop_timeout_s: float = 10.0
@@ -430,7 +430,7 @@ class LlamaServerBackend:
         """
         return self._stream(
             "/v1/chat/completions",
-            request_body(messages, sampling, max_tokens, None, self.s.dry_penalty_last_n),
+            request_body(messages, sampling, max_tokens, None, self._dry_last_n()),
             chat=True,
         )
 
@@ -438,9 +438,13 @@ class LlamaServerBackend:
         """Stream a raw completion of `prompt` from /completion (diary mode); errors as chat()."""
         return self._stream(
             "/completion",
-            request_body(None, sampling, max_tokens, prompt, self.s.dry_penalty_last_n),
+            request_body(None, sampling, max_tokens, prompt, self._dry_last_n()),
             chat=False,
         )
+
+    def _dry_last_n(self) -> int | None:
+        n = self.s.dry_penalty_last_n
+        return self.s.ctx if n == -1 else n
 
     async def prefill(self, messages: list[Msg]) -> int:
         """Read messages into the prompt cache without generating; return the tokens processed.
