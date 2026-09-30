@@ -55,32 +55,48 @@ def test_hysteresis_trims_oldest_turns_first_to_recall_times_trim_to() -> None:
     assert not m.fit(50, 0.8)
 
 
-def test_word_level_trim_inside_the_oldest_kept_turn() -> None:
+def test_reload_cut_goes_to_the_word_inside_the_oldest_kept_turn() -> None:
     m = mem_with(3)  # 30
-    f = m.fit(29, 0.9)  # target 26 incl. marker 4 -> past turns 22
+    f = m.cut_for_reload(29, 0.9)  # target 26 incl. marker 4 -> past turns 22
     # turn 1 cannot go whole (30 - 10 + 4 = 24 < 26), so its reading goes, then 6 words
     assert f.items == [{"turn": 1, "upto_i": 5}]
     first = m.turns[0]
     assert first.turn == 1 and first.reading is None and first.words == ["t1w6", "t1w7"]
     assert m.used() == 26
     assert m.take_forgotten() == 1
-    # a later trim of the same thought continues the word indices
-    f2 = m.fit(25, 1.0)
+    # a later cut of the same thought continues the word indices
+    f2 = m.cut_for_reload(25, 1.0)
     assert f2.items == [{"turn": 1, "upto_i": 6}]
-    f3 = m.fit(24, 1.0)
+    f3 = m.cut_for_reload(24, 1.0)
     assert f3.items == [{"turn": 1, "all": True}]
     assert m.take_forgotten() == 0  # already counted as forgotten once
+    # no reading since the loss: the marker waits at the end for the next one
     msgs = m.past_messages()
-    assert msgs[0] == Msg("user", "[host] earlier memory lost", kind="marker")
+    assert msgs[-1] == Msg("user", "[host] earlier memory lost", kind="marker")
+    assert m.gap_turn is None
+    assert not m.cut_for_reload(100)  # under recall: nothing to cut
 
 
-def test_partial_word_trim_reports_upto_i_across_trims() -> None:
-    m = mem_with(2, thought_words=20)  # 44
-    f1 = m.fit(43, 1.0)  # target 43 incl marker: 44 + 4 - 2 (reading) = 46 -> drop 3 words
-    assert f1.items == [{"turn": 1, "upto_i": 2}]
-    f2 = m.fit(40, 1.0)
-    assert f2.items == [{"turn": 1, "upto_i": 5}]
-    assert m.turns[0].words[0] == "t1w6"
+def test_live_trim_cuts_on_turn_boundaries() -> None:
+    """A cut inside a kept thought would put new tokens in front of the whole memory and
+    defeat the server's cache reuse, so a live trim takes whole turns instead."""
+    m = mem_with(3)  # 30
+    f = m.fit(29, 0.9)  # target 26: turn 1 goes whole (one turn deeper than the target)
+    assert f.items == [{"turn": 1, "all": True}]
+    assert m.used() == 24 and [t.turn for t in m.turns] == [2, 3]
+    # when dropping only the oldest reading is enough, only the reading goes
+    f2 = m.fit(23, 1.0)
+    assert f2.items == [] and m.turns[0].reading is None and m.used() == 22
+    assert m.turns[0].words == words(8, "t2w")
+
+
+def test_live_trim_cuts_words_only_in_the_last_turn() -> None:
+    m = mem_with(1, thought_words=20)  # 22
+    f1 = m.fit(20, 1.0)  # 22 + marker 4: reading goes, then 4 words
+    assert f1.items == [{"turn": 1, "upto_i": 3}]
+    f2 = m.fit(17, 1.0)
+    assert f2.items == [{"turn": 1, "upto_i": 6}]
+    assert m.turns[0].words[0] == "t1w7"
 
 
 def test_newest_reading_and_current_thought_are_never_trimmed() -> None:
@@ -107,25 +123,64 @@ def test_reload_cut_is_reported_by_the_next_reading() -> None:
     assert m.forgotten_total == n
 
 
-def test_marker_precedes_the_oldest_remembered_message_and_roles_alternate() -> None:
+def test_marker_rides_on_the_first_reading_after_the_loss() -> None:
+    """Decision A3: never in front of kept turns, so the server's cache reuse holds."""
     m = mem_with(4)
     m.set_system("persona")
     m.fit(25, 1.0)
+    after_loss = m.messages()
     m.append_host("r now", turn=5)
+    assert m.gap_turn == 5
     msgs = m.messages()
     roles = [x.role for x in msgs]
     assert roles[0] == "system"
     assert all(a != b for a, b in itertools.pairwise(roles))
-    assert msgs[1].content.startswith("[host] earlier memory lost")
-    assert msgs[-1].role == "user" and msgs[-1].content.endswith("r now")
+    assert "[host] earlier memory lost" not in msgs[1].content  # kept turns are untouched
+    assert msgs[-1] == Msg("user", "[host] earlier memory lost\nr now", 5, "reading")
+    # the kept turns render exactly as the server last read them: only the reading is new
+    assert msgs[:-1] == after_loss[:-1]
 
 
-def test_marker_joins_a_kept_reading() -> None:
+def test_marker_stays_with_its_turn_while_older_turns_go() -> None:
     m = mem_with(3)
-    m.fit(24, 1.0)  # turn 1 goes whole; turn 2 keeps its reading
+    m.fit(24, 1.0)  # turn 1 goes; the marker belongs to the next reading
+    m.append_host("r r", turn=4)
+    m.append_thought(words(8, "t4w"))
+    before = m.messages()
+    assert before[-2].content == "[host] earlier memory lost\nr r" and before[-2].turn == 4
+    m.fit(14, 1.0)  # turns 2 and 3 go; turn 4 keeps its reading: nothing moves
     msgs = m.messages()
     assert msgs[0].content == "[host] earlier memory lost\nr r"
     assert msgs[0].kind == "reading"
+    assert msgs == before[-2:]
+
+
+def test_marker_leaves_with_its_reading_and_returns_on_the_next() -> None:
+    m = mem_with(3)
+    m.fit(24, 1.0)
+    m.append_host("r r", turn=4)
+    m.append_thought(words(8, "t4w"))
+    m.fit(12, 1.0)  # turns 2 and 3 go and turn 4 loses its reading, the marker with it
+    msgs = m.messages()
+    assert [x.role for x in msgs] == ["assistant", "user"] and msgs[0].turn == 4
+    assert msgs[1].kind == "marker"  # waiting at the end for the next reading
+    assert m.gap and m.gap_turn is None and m.used() == 8 + m.marker_tokens
+    m.append_host("r last", turn=5)
+    assert m.gap_turn == 5
+    assert m.messages()[-1].content == "[host] earlier memory lost\nr last"
+    m.append_thought(["x"])
+    m.fit(2, 1.0)  # everything goes; the marker waits for the next reading
+    assert m.turns == [] and m.messages() == [
+        Msg("user", "[host] earlier memory lost", kind="marker")
+    ]
+
+
+def test_marker_with_a_trim_while_a_reading_waits() -> None:
+    m = mem_with(3)
+    m.append_host("r r", turn=4)
+    m.fit(20, 1.0)
+    assert m.gap_turn == 4
+    assert m.messages()[-1].content == "[host] earlier memory lost\nr r"
 
 
 def test_empty_thoughts_and_merging() -> None:
@@ -171,7 +226,7 @@ def test_external_token_counts_and_proportional_word_trim() -> None:
     m.append_host("[host] reading", turn=2, tokens=10)
     m.append_thought(words(4), tokens=10)
     assert m.used() == 130
-    m.fit(100, 1.0)
+    m.cut_for_reload(100, 1.0)
     assert m.used() <= 100
     assert m.turns[0].turn == 1 and 0 < len(m.turns[0].words) < 40
 
@@ -193,3 +248,12 @@ def test_set_system_reports_change_and_order_errors() -> None:
 def test_messages_without_system() -> None:
     m = mem_with(1)
     assert [x.kind for x in m.messages()] == ["reading", "thought"]
+
+
+def test_last_turn_can_lose_every_word() -> None:
+    m = Memory(counter=per_word, marker="[host] earlier memory lost")
+    m.append_host("r", turn=1)
+    m.append_thought(["a", "b"], tokens=100)  # two heavy words: half the tokens each
+    f = m.fit(50, 1.0)
+    assert f.items == [{"turn": 1, "all": True}] and m.turns == []
+    assert m.used() == m.marker_tokens
