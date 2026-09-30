@@ -6,9 +6,10 @@ so the time per token grows about linearly with them (S1c round 2: tokens/s agai
 slot's n_past and the cache's high-water mark). With a birth thought (short context) and a
 deep one (long context) in a bench file, the line through the two
     seconds per token = a + b * context
-gives the speed at any context. After trims the cache keeps holes below its high-water mark
-(llama.cpp's n_kv = the highest used cell + 1, padded to 256; nothing compacts it), so the late
-speed is taken at the full context (--ctx, 2048 on the Pi 4).
+gives the speed at any context. Attention runs over n_kv = the highest used cell + 1, padded to
+256. After a trim the freed cells are refilled from the front (find_slot restarts at cell 0), so
+n_kv stays at the largest context the life has held: on the Pi 4 default that is the system
+prompt + recall 1280 + a reading + a thought, about 1700 tokens, so n_kv = 1792 (--ctx).
 
 Writes into each file: tg_tok_s_late, late_after_s (when the memory has grown to it; the cost
 model eases the rate down over that time), late_ctx, and tg_ctx_model {a, b} for a cost model
@@ -42,7 +43,7 @@ def context_line(rec: dict[str, Any]) -> tuple[float, float] | None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--ctx", type=int, default=2048, help="context for the late speed")
+    ap.add_argument("--ctx", type=int, default=1792, help="context (n_kv) for the late speed")
     ap.add_argument("--after-s", type=float, default=1200, help="when the memory is full")
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args()
@@ -66,8 +67,8 @@ def main() -> None:
             rec["late_after_s"] = args.after_s
             rec["late_note"] = (
                 "S1c round 2 (F8): generation slows with the context attention runs over; "
-                "tg_tok_s_late is the birth/deep line at the full context (the KV cache keeps "
-                "holes up to its high-water mark), reached as the memory fills."
+                "tg_tok_s_late is the birth/deep line at the largest context of a life "
+                "(n_kv 1792: system + recall 1280 + reading + thought), reached as the memory fills."
             )
             path.write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n")
 
