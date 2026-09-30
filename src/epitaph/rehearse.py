@@ -141,6 +141,11 @@ class Rate:
     source: RateSource
 
 
+# Spike S4b on the Pi 4: slot save plus restore through /dev/shm, per reload.
+PI4_SLOT_FIXED_S = 0.5
+PI4_SLOT_BYTES_PER_S = 200e6
+
+
 class PiCosts:
     """Pi 4 costs for one model: measured bench files first, then the overlay's estimates."""
 
@@ -204,6 +209,12 @@ class PiCosts:
     def load(self, step: int) -> Rate:
         """Seconds to load the model at this ladder step (a cold load, as measured)."""
         return Rate(self.costs.load(step), "measured" if step in self.measured_load else "estimate")
+
+    def handover(self, file_bytes: int) -> Rate:
+        """Seconds a slot handover adds to a reload on the Pi: save plus restore of a KV
+        cache file of `file_bytes` in /dev/shm (spike S4b)."""
+        seconds = PI4_SLOT_FIXED_S + file_bytes / PI4_SLOT_BYTES_PER_S
+        return Rate(seconds, "measured")
 
     @property
     def any_measured(self) -> bool:
@@ -289,7 +300,7 @@ class TokenCounter:
 class Charge:
     """One cost put on the life clock: what, when (life seconds), how much and at what rate."""
 
-    kind: Literal["load", "prefill", "prompt", "generate"]
+    kind: Literal["load", "handover", "prefill", "prompt", "generate"]
     t: float
     tokens: int
     seconds: float
@@ -387,7 +398,7 @@ class PiClockBackend:
 
     def _charge(
         self,
-        kind: Literal["load", "prefill", "prompt", "generate"],
+        kind: Literal["load", "handover", "prefill", "prompt", "generate"],
         tokens: int,
         seconds: float,
         rate: Rate,
@@ -432,6 +443,14 @@ class PiClockBackend:
             rate = self.costs.load(self.step)
             self._charge("load", 0, rate.value, rate)
             await self._spend(rate.value)
+            handover = getattr(self.inner, "last_handover", None)
+            if getattr(handover, "mode", None) == "slot":
+                # The KV cache came over (reload_handover = "slot"): the save and restore
+                # happen around the load; the next request reads only what the cut left new.
+                size = int(getattr(handover, "file_bytes", 0))
+                rate = self.costs.handover(size)
+                self._charge("handover", int(getattr(handover, "tokens", 0)), rate.value, rate)
+                await self._spend(rate.value)
 
     async def stop(self, hard: bool = False) -> None:
         """Stop the laptop server; a deliberate stop is not a death."""
@@ -853,7 +872,14 @@ def _make_inner(
     kind: str, cfg: Config, costs: PiCosts, settings: ServerSettings, seed: int
 ) -> Backend:
     if kind == "fake":
-        return FakeBackend(FakeClock(), costs.costs, seed=seed, ctx=cfg.ctx)
+        return FakeBackend(
+            FakeClock(),
+            costs.costs,
+            seed=seed,
+            ctx=cfg.ctx,
+            reload_handover=settings.reload_handover,
+            handover_s=0.0,  # the fake runs on its own clock; PiClockBackend charges the Pi's
+        )
     return LlamaServerBackend(settings)
 
 

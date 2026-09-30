@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from epitaph.backend.base import ContextFull, CreatureDied
+from epitaph.backend.llama_server import Handover
 from epitaph.costmodel import Costs
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
@@ -60,6 +61,10 @@ class FakeBackendClock(Protocol):
         """Let s seconds pass on this clock."""
         ...
 
+
+# f16 KV cache bytes per token of a 1.7-3B candidate (S4b: 28 layers x 8 KV heads x 128 x 2 x
+# 2 bytes = 112 KiB for Qwen3 1.7B and Llama 3.2 3B); sizes the fake's slot file.
+KV_BYTES_PER_TOKEN = 114_688
 
 SIGKILL = int(_signal.SIGKILL)
 SIGSEGV = int(_signal.SIGSEGV)
@@ -158,6 +163,7 @@ class FakeBackend:
         self.reload_handover = reload_handover
         self.handover_s = handover_s
         self.handovers = 0  # reloads that carried the cache
+        self.last_handover = Handover()  # as LlamaServerBackend reports it
         self._model: str | None = None
         self._restored = False
 
@@ -173,6 +179,7 @@ class FakeBackend:
         carry = self.reload_handover == "slot" and self.alive and self._model == model.name
         kept = self._cache if carry else _Cache()
         self._restored = False
+        self.last_handover = Handover()
         self.alive = False
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
@@ -199,6 +206,8 @@ class FakeBackend:
             self._cache = kept
             self._restored = True
             self.handovers += 1
+            tokens = sum(n for _, n in kept.blocks)
+            self.last_handover = Handover("slot", tokens, tokens * KV_BYTES_PER_TOKEN)
         self.alive = True
         self._last = CreatureStatus(alive=True, pid=FAKE_PID)
 
