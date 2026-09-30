@@ -362,3 +362,13 @@ def test_result_json_shape() -> None:
     text = v.format_result(res)
     assert text.startswith("life 1 (pi4/skeleton-1200, pi4-4gb) level skeleton: PASS")
     assert "PENDING no_split_words" in text
+
+
+def test_sync_rule_waits_for_the_last_letter() -> None:
+    """The request may not start while the previous thought's last word is still typing."""
+    b = good_skeleton()
+    last1 = [e for e in b.events if e["type"] == "word" and e["turn"] == 1][-1]
+    last1["char_ms"] = [2000] * len(last1["text"])  # typed long after the next gen_start
+    res = run(b)
+    assert status(res, "sync_rule") == "fail"
+    assert "was typed at" in res.by_name("sync_rule").detail
