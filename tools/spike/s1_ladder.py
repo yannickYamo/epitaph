@@ -82,6 +82,8 @@ def one_server(
         rec["birth"] = birth
         rec["birth_thought_s"] = round(birth["wall_s"], 1)
         rec["tg_tok_s_birth"] = round(birth["predicted_per_s"], 3)
+        rec["birth_prompt_tokens"] = birth["prompt_tokens"]
+        rec["gen"] = args.gen
         deep = srv.chat(memory_messages(system, args.fill), max_tokens=args.gen, ignore_eos=True)
         rec["deep"] = deep
         if "error" in deep:
