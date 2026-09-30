@@ -104,7 +104,7 @@ def test_settings_from_config() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     s = ServerSettings.from_config(cfg)
     assert s.ctx == 2048 and s.port == 8081 and s.cache_reuse == 32
-    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == -1
+    assert s.load_timeout_s == 300 and s.dry_penalty_last_n == 256  # round 2 tuning
 
 
 def test_request_body() -> None:
@@ -284,6 +284,29 @@ async def test_count_past_tokens_renders_and_tokenizes() -> None:
         n = await b.count_past_tokens([Msg("user", "abc"), Msg("assistant", "de")])
         assert n == len("<user>abc<assistant>de")
         assert await b.count_past_tokens([]) == 0
+    finally:
+        await b.aclose()
+
+
+async def test_count_past_tokens_on_a_template_that_wants_alternating_roles() -> None:
+    """Gemma 3's template refuses two user turns in a row (the probe after a user message)."""
+
+    def api(req: httpx.Request) -> httpx.Response:
+        payload = json.loads(req.content)
+        if req.url.path == "/apply-template":
+            roles = [m["role"] for m in payload["messages"]]
+            if any(a == b for a, b in zip(roles, roles[1:], strict=False)):
+                return httpx.Response(400, json={"error": {"message": "must alternate"}})
+            text = "".join(f"<{m['role']}>{m['content']}" for m in payload["messages"])
+            return httpx.Response(200, json={"prompt": text})
+        if req.url.path == "/tokenize":
+            return httpx.Response(200, json={"tokens": list(range(len(payload["content"])))})
+        return httpx.Response(404)
+
+    b = make(healthy(api))
+    await b.start(MODEL, "Q6_K", 3)
+    try:
+        assert await b.count_past_tokens([Msg("user", "abc")]) == len("<user>abc")
     finally:
         await b.aclose()
 

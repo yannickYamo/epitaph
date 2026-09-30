@@ -490,9 +490,14 @@ class LlamaServerBackend:
         if not self._alive():
             raise CreatureDied(self.status())
         try:
-            return await self._render_count([*messages, _PROBE]) - await self._render_count(
-                [_PROBE]
-            )
+            try:
+                return await self._render_count([*messages, _PROBE]) - await self._render_count(
+                    [_PROBE]
+                )
+            except httpx.HTTPStatusError:
+                # Strict templates (Gemma 3) refuse two user turns in a row: count the
+                # messages alone, which adds the few template tokens of an empty chat.
+                return await self._render_count(messages)
         except httpx.TransportError as e:
             await self._settle()
             if not self._alive():
