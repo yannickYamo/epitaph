@@ -19,7 +19,7 @@ pause_s = 3
 persona_groups = 5
 mechanics = true
 readings = "full"
-letter_ms = 55
+letter_ms = 165
 jitter = 0.10
 hesitation = 0.0
 
@@ -39,6 +39,6 @@ temperature = 1.2
 max_tokens = 40
 pause_s = 6
 readings = "short"
-letter_ms = 90
+letter_ms = 270
 jitter = 0.25
 hesitation = 0.08

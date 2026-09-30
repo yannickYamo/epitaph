@@ -9,8 +9,8 @@ token_gap_timeout_s = 90
 
 [verify]
 max_reload_silence_s = 120
-wpm_birth_range = [120, 180]
-wpm_writing_range = [30, 220]
+wpm_birth_range = [40, 60]
+wpm_writing_range = [10, 75]
 first_word_after_boot_s = 180
 
 [costs]

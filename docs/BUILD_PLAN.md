@@ -277,13 +277,15 @@ stateDiagram-v2
 
 | t | Letter interval floor | Jitter | Hesitation chance per word |
 |---|---|---|---|
-| 0:00 | 55 ms | 10% | 0% |
-| 28:00 | 60 ms | 15% | 2% |
-| 36:00 | 70 ms | 20% | 5% |
-| 43:00 | 90 ms | 25% | 8% |
-| 51:00 | 120 ms | 30% | 12% |
-| 55:00 | 170 ms | 35% | 16% |
-| 57:00 | 240 ms | 40% | 20% |
+| 0:00 | 165 ms | 10% | 0% |
+| 28:00 | 180 ms | 15% | 2% |
+| 36:00 | 210 ms | 20% | 5% |
+| 43:00 | 270 ms | 25% | 8% |
+| 51:00 | 360 ms | 30% | 12% |
+| 55:00 | 510 ms | 35% | 16% |
+| 57:00 | 720 ms | 40% | 20% |
+
+Decision 30 (Yannick, 2026-09-29, after watching the first display test): the whole rhythm is three times slower than first planned (letters, word gaps, punctuation pauses, hesitations).
 
 **The thought-count rule.** A profile may run on the Pi only if, under the **cost model**, it gives:
 
@@ -511,16 +513,16 @@ Keyword matching catches failures; it does not prove quality. Yannick's read at 
   - The first thought uses the bench estimate for that model, step, threads and CPU share.
   - Typing at 88% of the rate keeps a small buffer, so letters neither burst nor starve.
 - **Random jitter** per letter, seeded per life so a life replays exactly.
-- **Word gap** 90 ms; 250 ms after a comma, semicolon or colon; 700 ms after a full stop, question or exclamation mark.
-- **Occasional hesitations** (400-1,200 ms, chance from 5.3), sometimes inside a word late in life.
+- **Word gap** 270 ms; 750 ms after a comma, semicolon or colon; 2,100 ms after a full stop, question or exclamation mark (decision 30: three times the first values).
+- **Occasional hesitations** (1,200-3,600 ms, chance from 5.3), sometimes inside a word late in life.
 
 The `word` event carries `char_ms` and `pause_after_ms`. `reveal = "word"` shows whole words with the same pauses; e-ink shows each word whole.
 
 **Readability rules** (verify-life and test D13):
 
 - **Speed** (per overlay):
-  - Pi 4: 45-180 words per minute at birth; 8-220 while writing.
-  - Pi 5: 120-180 at birth; 30-220 while writing.
+  - Pi 4: 15-60 words per minute at birth; 3-75 while writing (decision 30).
+  - Pi 5: 40-60 at birth; 10-75 while writing.
 - **Whole words**, never split across lines.
 - **Line length** about 48 characters; font sized from the screen width, never below `min_font_px`.
 - **Contrast** at least 12:1; forgotten text fades through grey and stays readable while fading.
@@ -1322,6 +1324,7 @@ Defaults in brackets. Work proceeds on the defaults.
 27. Gate reviews [`/code-review high`; `a second review` only if you add it to the laptop].
 28. Persona G3 wording ["Your processors will be taken from you." instead of "Your cores will be switched off."].
 29. RAM on the Pi 4 [taken only at death; no gradual squeeze on this SD card].
+30. Reveal speed [decided: three times slower than the first cadence: 165 ms per letter at birth, 720 ms at the end, pauses tripled].
 
 ---
 

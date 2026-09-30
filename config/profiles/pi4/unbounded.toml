@@ -22,6 +22,6 @@ pause_s = 3
 persona_groups = 5
 mechanics = true
 readings = "full"
-letter_ms = 55
+letter_ms = 165
 jitter = 0.10
 hesitation = 0.0
