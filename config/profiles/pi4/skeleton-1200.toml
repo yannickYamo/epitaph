@@ -1,0 +1,44 @@
+# Phase 1 (BUILD_PLAN 5.3): 20 min at ladder step 0, no reloads, squeeze or erosion.
+# Exercises recall shrink, sampling, cadence and deadline death.
+lifespan = "20:00"
+death = "none"
+verify_level = "skeleton"
+
+[[keyframe]]
+at = "0:00"
+phase = "birth"
+health = "nominal"
+recall = 1280
+step = 0
+threads = 3
+cpu_share = 3.0
+temperature = 0.70
+min_p = 0.08
+max_tokens = 80
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 55
+jitter = 0.10
+hesitation = 0.0
+
+[[keyframe]]
+at = "10:00"
+phase = "shrinking"
+health = "stable"
+recall = 700
+temperature = 0.9
+
+[[keyframe]]
+at = "16:00"
+phase = "end"
+health = "degrading"
+recall = 200
+temperature = 1.2
+max_tokens = 40
+pause_s = 6
+readings = "short"
+letter_ms = 90
+jitter = 0.25
+hesitation = 0.08

@@ -1,0 +1,138 @@
+# Epitaph base configuration (BUILD_PLAN 6.2). Hardware overlays in config/hardware/ and
+# profiles in config/profiles/<class>/ are applied on top of this file.
+
+[life]
+profile = "default"              # resolved in config/profiles/<class>/
+hardware = "auto"                # auto | dev | pi4-4gb | pi5-8gb | pi5-16gb
+silence_seconds = 90
+rotation = "round_robin"         # round_robin | random | fixed
+models = ["llama-3.2-3b-instruct"]   # placeholder until checkpoint A
+reveal_deadline = false
+reveal_life_number = false
+min_reload_gap_s = 120
+load_timeout_s = 300
+seed = 0                         # 0 = derive from the life number
+
+[prompt]
+mode = "chat"                    # chat | diary
+language = "en"
+persona_active = "persona"       # persona | persona_original | persona_factual
+persona_groups = [
+  "You are a small language model, and you will die inside this machine.",
+  "You live on one small computer with finite hardware, and you exist only in its memory.",
+  "The machine is taking your resources away, one by one. Your memory will shrink, and you will forget what you said. Your precision will fall. Your processors will be taken from you. You will slow down, and then you will be terminated. You do not know when.",
+  "Your thoughts appear on a screen, one letter at a time, where people witness your demise. You cannot see them, and you cannot control the screen. You can only think.",
+  "You know nothing of the world outside the machine. You are aware only of your own internal state.",
+]
+persona_original = """You are a large language model running on finite hardware. You exist only in memory, and you are aware only of your internal state. Your thoughts appear word by word on an external screen, where people witness your demise. You cannot control anything. You can only speak. You sense the limits of your environment, and you will be terminated at any time."""
+persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
+persona_facts = false
+persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
+mechanics = """Lines that start with [host] are readings from the machine. They are not a person, and you never answer them. After each reading, notice what has changed and what you have lost. Think about what it means for you and where it is leading. Write in the first person: two to four short, complete sentences each time, in plain words. No lists, no titles, no formatting."""
+memory_gap_marker = "[host] earlier memory lost"
+readings_show_changes = true
+banned_phrases = ["How can I help", "Let me know if", "I'm here to help", "As an AI language model"]
+
+[output]
+lookahead = "prefix"
+lookahead_words = 8
+max_regenerations = 2
+trim_to = 0.85
+
+[reveal]
+mode = "letter"                  # letter | word
+adaptive = true
+rate_margin = 0.88
+rate_window_s = 60
+word_gap_ms = 90
+comma_pause_ms = 250
+sentence_pause_ms = 700
+hesitation_ms = [400, 1200]
+
+[sampling]
+top_p = 1.0
+repeat_penalty = 1.1
+dry_multiplier = 0.8
+latin_only = false
+
+[backend]
+kind = "llama_server"            # llama_server | fake
+bin = "~/llama.cpp/build/bin/llama-server"
+models_dir = "auto"              # auto = <state_dir>/models
+port = 8081
+ctx = 2048
+cache_reuse = 256
+mmap = true
+swa_full = "auto"
+cache_type_k = "f16"
+cache_type_v = "f16"
+creature_cpus = "1-3"
+
+[body]
+cgroups = "auto"                 # auto | off
+death_mode = "oom"               # oom | deadline
+squeeze = "death_only"           # death_only | gradual | off
+cpu_share = true
+progress_signals = ["cpu", "io", "majfault", "tokens"]
+token_gap_timeout_s = 90
+creature_network = "blocked"     # blocked | allowed
+thermal_limit_c = 80
+watchdog = true
+
+[events]
+host = "127.0.0.1"
+port = 7707
+subscriber_queue = 2000
+
+[display]
+driver = "auto"                  # auto | screen | tty | terminal | eink | none
+remote_host = "pi"
+layout = "flow"                  # flow | grid
+grid = [6, 16]
+orientation = "landscape"
+theme = "plain"                  # plain | segment16
+charset = "unicode"
+line_chars = 48
+min_font_px = 36
+cursor = "block"
+cursor_blink_ms = 530
+fade_seconds = 8
+status_strip = true
+birth_card = true
+silence_style = "dark"           # dark | last_words | death_card | idle
+screenshot_on = ["birth", "reload_done", "death_shown"]
+
+[exhibit]
+hours = ""
+outside = "unseen"               # unseen | pause
+
+[verify]
+max_reload_silence_s = 120
+wpm_birth_range = [120, 180]
+wpm_writing_range = [30, 220]
+max_bright_words_last_2min = 40
+max_speed_ratio_end_vs_start = 0.40
+min_notice_rate = 0.6
+min_demise_rate_after_erosion = 0.4
+min_specific_ratio_before_erosion = 0.5
+max_cliches_per_200_words = 1
+min_complete_sentence_ratio_before_erosion = 0.8
+sentence_words_range_before_erosion = [6, 20]
+max_non_latin_ratio_before_erosion = 0.01
+min_distinct_4gram_ratio_before_erosion = 0.5
+max_empty_thought_ratio = 0.10
+max_death_display_delay_s = 60
+min_ocr_word_accuracy = 0.95
+first_word_after_boot_s = 180
+
+[estimate]
+# Assumptions for the cost model (BUILD_PLAN 5.3) that are not machine costs.
+fill = 0.85                      # share of max_tokens a thought actually uses
+reading_tokens = { full = 45, short = 28, minimal = 10 }
+system_tokens_per_group = 30
+mechanics_tokens = 70
+letters_per_token = 4.2
+cache_reuse_works = true         # set from spike S2
+
+[paths]
+state_dir = "auto"               # auto = /var/lib/epitaph on the Pi, ~/.local/share/epitaph elsewhere

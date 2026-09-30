@@ -1,0 +1,135 @@
+# Phase 2 and checkpoint B (BUILD_PLAN 5.3): 45 min with both reloads, CPU share, group
+# erosion and the RAM death. Reload 2 and erosion are end-anchored (retimed by the cost model) because reload and
+# re-read costs do not scale with the lifespan. Rebased after S1b and S4.
+lifespan = "45:00"
+death = "end-0:30"
+verify_level = "full"
+
+[[keyframe]]
+at = "0:00"
+phase = "birth"
+health = "nominal"
+recall = 1280
+step = 0
+threads = 3
+cpu_share = 3.0
+temperature = 0.70
+min_p = 0.08
+max_tokens = 80
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 55
+jitter = 0.10
+hesitation = 0.0
+
+[[keyframe]]
+at = "8:00"
+phase = "loosening"
+health = "stable"
+recall = 1000
+temperature = 0.80
+
+[[keyframe]]
+at = "11:15"
+phase = "first loss"
+health = "degrading"
+recall = 512
+step = 1
+threads = 2
+cpu_share = 2.0
+temperature = 0.85
+min_p = 0.06
+max_tokens = 70
+pause_s = 4
+letter_ms = 60
+jitter = 0.15
+hesitation = 0.02
+
+[[keyframe]]
+at = "20:00"
+phase = "decline"
+health = "failing"
+recall = 380
+temperature = 1.00
+max_tokens = 60
+pause_s = 5
+letter_ms = 70
+jitter = 0.20
+hesitation = 0.05
+
+[[keyframe]]
+at = "end-20:30"
+phase = "failing"
+health = "critical"
+recall = 200
+step = 2
+temperature = 1.15
+min_p = 0.04
+max_tokens = 45
+pause_s = 6
+readings = "short"
+letter_ms = 90
+jitter = 0.25
+hesitation = 0.08
+
+[[keyframe]]
+at = "end-13:00"
+phase = "eroding"
+recall = 170
+cpu_share = 1.7
+temperature = 1.25
+max_tokens = 35
+pause_s = 7
+persona_groups = 4
+
+[[keyframe]]
+at = "end-10:30"
+health = "terminal"
+recall = 140
+cpu_share = 1.4
+temperature = 1.35
+max_tokens = 28
+pause_s = 8
+persona_groups = 3
+letter_ms = 120
+jitter = 0.30
+hesitation = 0.12
+
+[[keyframe]]
+at = "end-8:00"
+recall = 110
+cpu_share = 1.1
+temperature = 1.45
+max_tokens = 22
+pause_s = 9
+persona_groups = 2
+
+[[keyframe]]
+at = "end-5:30"
+recall = 80
+cpu_share = 0.9
+temperature = 1.50
+max_tokens = 16
+pause_s = 10
+persona_groups = 1
+readings = "minimal"
+letter_ms = 170
+jitter = 0.35
+hesitation = 0.16
+
+[[keyframe]]
+at = "end-3:00"
+phase = "end"
+recall = 48
+cpu_share = 0.7
+temperature = 1.60
+min_p = 0.02
+max_tokens = 12
+pause_s = 12
+persona_groups = 0
+mechanics = false
+letter_ms = 240
+jitter = 0.40
+hesitation = 0.20

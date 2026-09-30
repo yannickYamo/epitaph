@@ -149,7 +149,8 @@ Sources: the artist's build video script and the piece's description, both suppl
 | Network | Internet through the laptop's Ethernet sharing (10.42.0.95; laptop 10.42.0.1); `raspberrypi.local` resolves via mDNS on the laptop | Wi-Fi becomes the default route; the cable becomes maintenance-only (`never-default`) |
 | Clock | No RTC, no UART debug connector; NTP synced | Exhibition hours depend on NTP over Wi-Fi |
 | Watchdog | `/dev/watchdog` present (bcm2835). Raspberry Pi OS ships `/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf` (`RuntimeWatchdogSec=1m`), and the hardware accepts the 1 min timeout (verified in step 0) | Keep the OS default; no drop-in needed |
-| Temperature | 35.5 °C idle, `throttled=0x0`; cooling unknown | Thermal and power soak (S1c) |
+| Power | **Under-voltage under load:** the Pi browned out and rebooted during a 4-core build and under a 3-core busy loop (`throttled=0x50000`, dmesg "Undervoltage detected!") | **Blocker for every Pi phase.** The official 5.1 V / 3 A USB-C supply is required; S1c re-checks under sustained load |
+| Temperature | 35.5 °C idle; cooling unknown | Thermal soak (S1c) |
 | Laptop | ThinkPad X1 Carbon Gen 11, i7-1365U (12 threads), Iris Xe, 30 GB RAM (about 9 GB free), x86_64 Linux, passwordless sudo, zstd, mDNS. **Missing:** tesseract, qemu-user-static, podman or docker | Every "Mac" in v4 means this laptop. llama.cpp on the CPU (AVX2), Vulkan optional; one llama-server at a time; CI on Ubuntu. Step 0 installs the missing tools |
 
 ### 3.2 Hardware profiles

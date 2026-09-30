@@ -1,0 +1,4 @@
+# Pi 5 (simulated only): the Pi 4 skeleton life scaled to 10 minutes.
+extends = "pi4/skeleton-1200"
+lifespan = "10:00"
+verify_level = "skeleton"

@@ -1,0 +1,207 @@
+"""Shared data types: the vocabulary every module and agent codes against (BUILD_PLAN 6.4).
+
+Owned by the integrator. Change through docs/CONTRACT_CHANGES.md.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Literal
+
+PROTOCOL_VERSION = 1
+
+Role = Literal["system", "user", "assistant"]
+WordState = Literal["live", "fading", "forgotten", "inherited"]
+ReadingsForm = Literal["full", "short", "minimal"]
+
+
+class Cause(str, Enum):
+    """Why a life ended."""
+
+    OOM = "oom"
+    DEADLINE = "deadline"
+    FULL = "full"
+    CRASH = "crash"
+    HANG = "hang"
+    MANUAL = "manual"
+    INTERRUPTED = "interrupted"
+
+
+class Health(str, Enum):
+    """The health label shown in the readings; steps, never interpolates."""
+
+    NOMINAL = "nominal"
+    STABLE = "stable"
+    DEGRADING = "degrading"
+    FAILING = "failing"
+    CRITICAL = "critical"
+    TERMINAL = "terminal"
+
+
+@dataclass(frozen=True)
+class Knobs:
+    """Every schedule-driven setting at one moment of a life (BUILD_PLAN 5.3).
+
+    Stepped fields: phase, health, step, threads, persona_groups, readings.
+    Interpolated fields: everything else.
+    """
+
+    t: float
+    phase: str
+    health: Health
+    recall: int
+    step: int
+    threads: int
+    cpu_share: float
+    temperature: float
+    min_p: float
+    max_tokens: int
+    pause_s: float
+    persona_groups: int
+    mechanics: bool
+    readings: ReadingsForm
+    letter_ms: float
+    jitter: float
+    hesitation: float
+    death_squeeze: bool = False
+
+
+@dataclass(frozen=True)
+class Sampling:
+    """Sampling parameters sent to the backend for one thought."""
+
+    temperature: float
+    min_p: float
+    top_p: float = 1.0
+    repeat_penalty: float = 1.1
+    dry_multiplier: float = 0.8
+    seed: int | None = None
+    latin_only: bool = False
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """A model and its precision ladder for the current hardware class."""
+
+    name: str
+    source: str
+    license: str
+    ladder: tuple[str, ...]
+    sliding_window: bool = False
+    chat: bool = True
+
+    def quant(self, step: int) -> str:
+        """Quant name for a ladder step; the last step repeats if the ladder is shorter."""
+        return self.ladder[min(step, len(self.ladder) - 1)]
+
+
+@dataclass(frozen=True)
+class Msg:
+    """One chat message held in the mind's memory."""
+
+    role: Role
+    content: str
+    turn: int = -1
+    kind: Literal["persona", "mechanics", "reading", "thought", "marker"] = "thought"
+
+
+@dataclass(frozen=True)
+class Chunk:
+    """A streamed piece of backend output. The last chunk of a request carries timings."""
+
+    text: str
+    done: bool = False
+    prompt_n: int | None = None
+    predicted_n: int | None = None
+    prompt_per_s: float | None = None
+    predicted_per_s: float | None = None
+
+
+@dataclass(frozen=True)
+class Word:
+    """A whole word with attached punctuation, as released to the displays."""
+
+    turn: int
+    i: int
+    text: str
+
+
+@dataclass(frozen=True)
+class TimedWord:
+    """A released word with its typing cadence (BUILD_PLAN 5.12)."""
+
+    word: Word
+    char_ms: tuple[int, ...]
+    pause_after_ms: int
+    hesitate_before_ms: int = 0
+
+
+@dataclass
+class CreatureStatus:
+    """What the backend knows about the creature process."""
+
+    alive: bool
+    pid: int | None = None
+    exit_code: int | None = None
+    signal: int | None = None
+    tok_s: float | None = None
+    prompt_tok_s: float | None = None
+
+
+@dataclass(frozen=True)
+class ProgressCounters:
+    """Monotonic counters used for hang detection (BUILD_PLAN 5.9)."""
+
+    cpu_usec: int = 0
+    io_rbytes: int = 0
+    majfault: int = 0
+
+
+@dataclass(frozen=True)
+class MachineFacts:
+    """True facts about the machine, for the optional persona facts line."""
+
+    model: str
+    cores: int
+    ram_gb: float
+
+
+@dataclass(frozen=True)
+class Vitals:
+    """A snapshot of the body, reported in the readings."""
+
+    cpu_c: float | None = None
+    throttled: int | None = None
+    ram_limit_mb: int | None = None
+    mem_used_mb: int | None = None
+    cores_effective: float | None = None
+
+
+@dataclass
+class RuleViolation:
+    """One broken thought-count rule (BUILD_PLAN 5.3)."""
+
+    rule: str
+    at_s: float
+    detail: str
+
+
+@dataclass
+class RuleReport:
+    """The cost model's estimate of a life and the thought-count rule result."""
+
+    profile: str
+    lifespan_s: float
+    thought_times: list[float] = field(default_factory=lambda: [])
+    reload_windows: list[tuple[float, float]] = field(default_factory=lambda: [])
+    violations: list[RuleViolation] = field(default_factory=lambda: [])
+    notes: list[str] = field(default_factory=lambda: [])
+
+    @property
+    def ok(self) -> bool:
+        return not self.violations
+
+    @property
+    def thoughts(self) -> int:
+        return len(self.thought_times)

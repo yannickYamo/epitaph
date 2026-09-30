@@ -1,0 +1,20 @@
+# Raspberry Pi 5, 8 GB: simulated and config-validated only (BUILD_PLAN 3.2).
+class = "pi5"
+
+[backend]
+ctx = 4096
+
+[body]
+token_gap_timeout_s = 90
+
+[verify]
+max_reload_silence_s = 120
+wpm_birth_range = [120, 180]
+wpm_writing_range = [30, 220]
+first_word_after_boot_s = 180
+
+[costs]
+estimated = true
+tg_tok_s = { "0-3" = 3.2, "0-2" = 2.4, "1-3" = 4.0, "1-2" = 3.0, "2-2" = 3.4, "2-1" = 1.9, "3-2" = 3.8, "3-1" = 2.1 }
+pp_tok_s = { "0-3" = 30.0, "0-2" = 21.0, "1-3" = 34.0, "1-2" = 24.0, "2-2" = 26.0, "2-1" = 14.0, "3-2" = 28.0, "3-1" = 15.0 }
+load_s = [25.0, 20.0, 16.0, 14.0]

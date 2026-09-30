@@ -1,0 +1,167 @@
+"""Life clocks and the schedule (BUILD_PLAN 5.2, 5.3).
+
+Owned by part B after phase 0a. The life clock is monotonic time since the model finished
+loading; it never pauses and never reads the wall clock.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from bisect import bisect_right
+from typing import Any, Protocol
+
+from epitaph.config import INTERPOLATED, Profile
+from epitaph.types import Health, Knobs
+
+
+class LifeClock(Protocol):
+    """Time since birth, and a way to wait on it."""
+
+    def elapsed(self) -> float: ...
+
+    async def sleep(self, s: float) -> None: ...
+
+    def start(self) -> None: ...
+
+
+class RealClock:
+    """Monotonic wall time for real lives."""
+
+    def __init__(self) -> None:
+        self._t0 = time.monotonic()
+
+    def start(self) -> None:
+        self._t0 = time.monotonic()
+
+    def elapsed(self) -> float:
+        return time.monotonic() - self._t0
+
+    async def sleep(self, s: float) -> None:
+        if s > 0:
+            await asyncio.sleep(s)
+
+
+class FakeClock:
+    """Virtual time for tests and the simulator: sleeping advances time instantly."""
+
+    def __init__(self, t: float = 0.0) -> None:
+        self._t = t
+        self._t0 = t
+
+    def start(self) -> None:
+        self._t0 = self._t
+
+    def elapsed(self) -> float:
+        return self._t - self._t0
+
+    def now(self) -> float:
+        """Absolute virtual time, across lives."""
+        return self._t
+
+    def advance(self, s: float) -> None:
+        if s < 0:
+            raise ValueError("time cannot go backwards")
+        self._t += s
+
+    async def sleep(self, s: float) -> None:
+        self.advance(max(0.0, s))
+        await asyncio.sleep(0)
+
+
+class RehearsalClock(FakeClock):
+    """Virtual time charged at Pi costs while a real model runs on the laptop (BUILD_PLAN 5.11)."""
+
+    def charge(self, cost_s: float) -> None:
+        self.advance(max(0.0, cost_s))
+
+
+class Schedule:
+    """Knob values at any moment of a life, from a resolved profile."""
+
+    def __init__(self, profile: Profile, lifespan_s: float | None = None) -> None:
+        self.profile = profile if lifespan_s is None else profile.with_lifespan(lifespan_s)
+        p = self.profile
+        self.lifespan_s = p.lifespan_s
+        self.times: list[float] = [kf.at.resolve(p.nominal_s, p.lifespan_s) for kf in p.keyframes]
+        self.values: list[dict[str, Any]] = [kf.values for kf in p.keyframes]
+        self.death_s: float | None = (
+            p.death.resolve(p.nominal_s, p.lifespan_s) if p.death is not None else None
+        )
+
+    def at(self, t_s: float) -> Knobs:
+        """Stepped fields hold the last keyframe's value; interpolated fields move linearly."""
+        i = max(0, bisect_right(self.times, t_s) - 1)
+        cur = self.values[i]
+        nxt = self.values[i + 1] if i + 1 < len(self.values) else None
+        frac = 0.0
+        if nxt is not None:
+            span = self.times[i + 1] - self.times[i]
+            frac = min(1.0, max(0.0, (t_s - self.times[i]) / span)) if span > 0 else 0.0
+
+        # Recall is cut at a reload, not eased into it: the reload is the life's big loss
+        # (BUILD_PLAN 5.4), so it holds until a keyframe that changes step or threads.
+        reload_next = nxt is not None and (nxt["step"], nxt["threads"]) != (
+            cur["step"],
+            cur["threads"],
+        )
+
+        def lerp(name: str) -> float:
+            a = float(cur[name])
+            if nxt is None or (name == "recall" and reload_next):
+                return a
+            return a + (float(nxt[name]) - a) * frac
+
+        interp = {name: lerp(name) for name in INTERPOLATED}
+        return Knobs(
+            t=t_s,
+            phase=str(cur["phase"]),
+            health=Health(str(cur["health"])),
+            recall=int(round(interp["recall"])),
+            step=int(cur["step"]),
+            threads=int(cur["threads"]),
+            cpu_share=round(interp["cpu_share"], 3),
+            temperature=round(interp["temperature"], 3),
+            min_p=round(interp["min_p"], 4),
+            max_tokens=max(1, int(round(interp["max_tokens"]))),
+            pause_s=round(interp["pause_s"], 3),
+            persona_groups=int(cur["persona_groups"]),
+            mechanics=bool(cur["mechanics"]),
+            readings=cur["readings"],
+            letter_ms=round(interp["letter_ms"], 2),
+            jitter=round(interp["jitter"], 4),
+            hesitation=round(interp["hesitation"], 4),
+            death_squeeze=self.death_s is not None and t_s >= self.death_s,
+        )
+
+    def change_times(self) -> list[float]:
+        """Times where any stepped field changes (reloads, health, erosion, readings form)."""
+        out: list[float] = []
+        for i in range(1, len(self.values)):
+            a, b = self.values[i - 1], self.values[i]
+            if any(a[f] != b[f] for f in ("health", "step", "threads", "persona_groups")):
+                out.append(self.times[i])
+        return out
+
+    def reload_times(self) -> list[float]:
+        """Keyframe times where the ladder step or thread count changes."""
+        return [
+            self.times[i]
+            for i in range(1, len(self.values))
+            if (self.values[i]["step"], self.values[i]["threads"])
+            != (self.values[i - 1]["step"], self.values[i - 1]["threads"])
+        ]
+
+    def erosion_times(self) -> list[float]:
+        return [
+            self.times[i]
+            for i in range(1, len(self.values))
+            if self.values[i]["persona_groups"] != self.values[i - 1]["persona_groups"]
+        ]
+
+    def health_times(self) -> list[float]:
+        return [
+            self.times[i]
+            for i in range(1, len(self.values))
+            if self.values[i]["health"] != self.values[i - 1]["health"]
+        ]

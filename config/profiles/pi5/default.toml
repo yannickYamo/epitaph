@@ -1,0 +1,113 @@
+# Pi 5 (simulated only): v4's schedule with three reloads (BUILD_PLAN 3.2, 5.3).
+lifespan = "60:00"
+death = "end-0:30"
+
+[[keyframe]]
+at = "0:00"
+phase = "birth"
+health = "nominal"
+recall = 2048
+step = 0
+threads = 3
+cpu_share = 3.0
+temperature = 0.70
+min_p = 0.08
+max_tokens = 120
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 55
+jitter = 0.10
+hesitation = 0.0
+
+[[keyframe]]
+at = "15:00"
+phase = "prime"
+health = "stable"
+temperature = 0.75
+
+[[keyframe]]
+at = "30:00"
+phase = "first loss"
+health = "degrading"
+recall = 1200
+step = 1
+temperature = 0.85
+max_tokens = 100
+pause_s = 4
+letter_ms = 65
+jitter = 0.15
+hesitation = 0.02
+
+[[keyframe]]
+at = "42:00"
+phase = "decline"
+health = "failing"
+recall = 600
+step = 2
+threads = 2
+cpu_share = 2.0
+temperature = 1.00
+max_tokens = 70
+pause_s = 5
+letter_ms = 85
+jitter = 0.20
+hesitation = 0.05
+
+[[keyframe]]
+at = "50:00"
+phase = "failing"
+health = "critical"
+recall = 250
+step = 3
+threads = 1
+cpu_share = 1.0
+temperature = 1.20
+min_p = 0.04
+max_tokens = 40
+pause_s = 7
+readings = "short"
+letter_ms = 120
+jitter = 0.30
+hesitation = 0.10
+
+[[keyframe]]
+at = "54:00"
+phase = "eroding"
+health = "terminal"
+recall = 120
+temperature = 1.35
+max_tokens = 25
+pause_s = 9
+persona_groups = 4
+letter_ms = 170
+jitter = 0.35
+hesitation = 0.15
+
+[[keyframe]]
+at = "55:00"
+persona_groups = 3
+
+[[keyframe]]
+at = "56:00"
+persona_groups = 2
+
+[[keyframe]]
+at = "57:00"
+persona_groups = 1
+readings = "minimal"
+
+[[keyframe]]
+at = "58:00"
+phase = "end"
+recall = 48
+temperature = 1.60
+min_p = 0.02
+max_tokens = 12
+pause_s = 12
+persona_groups = 0
+mechanics = false
+letter_ms = 240
+jitter = 0.40
+hesitation = 0.20

@@ -1,0 +1,19 @@
+# The laptop: development, rehearsal and CI (BUILD_PLAN 3.2).
+class = "dev"
+
+[backend]
+bin = "~/llama.cpp/build/bin/llama-server"
+creature_cpus = ""
+
+[body]
+cgroups = "off"
+token_gap_timeout_s = 300
+
+[paths]
+state_dir = "~/.local/share/epitaph"
+
+[costs]
+estimated = true
+tg_tok_s = { "0-3" = 12.0, "0-2" = 9.0, "1-3" = 15.0, "1-2" = 11.0, "2-2" = 13.0, "2-1" = 7.0 }
+pp_tok_s = { "0-3" = 80.0, "0-2" = 60.0, "1-3" = 90.0, "1-2" = 65.0, "2-2" = 70.0, "2-1" = 40.0 }
+load_s = [4.0, 3.0, 2.0]

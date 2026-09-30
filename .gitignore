@@ -3,3 +3,4 @@ voice/
 __pycache__/
 .venv/
 *.gguf
+logs/
