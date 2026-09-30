@@ -199,22 +199,39 @@ def s3b(args: argparse.Namespace) -> dict[str, Any]:
 # llama-server helpers
 
 
+def drop_cache(path: str) -> None:
+    """Evict a file from the page cache so the next reader re-reads it (and is charged for it).
+
+    Page-cache pages stay charged to the cgroup that first read them; a model cached by an
+    rsync or a checksum is not in the creature's memory.current at all.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    finally:
+        os.close(fd)
+
+
 class Server:
     def __init__(self, body: CgroupBody, binary: str, model: str, threads: int, mmap: bool,
-                 ctx: int = 2048) -> None:
+                 ctx: int = 2048, args_cold: bool = True) -> None:
         argv = [binary, "-m", model, "-t", str(threads), "-c", str(ctx), "--host", "127.0.0.1",
                 "--port", str(PORT), "-ngl", "0", "--no-warmup"]
         if not mmap:
             argv.append("--no-mmap")
+        if args_cold:
+            drop_cache(model)
+        self.log_path = Path(f"server-{int(time.time() * 1000)}.log")
         self.t0 = now()
         self.proc = subprocess.Popen(body.wrap_spawn(argv), stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL)
+                                     stderr=self.log_path.open("w"))
         self.load_s: float | None = None
 
     def wait_ready(self, timeout: float = 300) -> float:
         while now() - self.t0 < timeout:
             if self.proc.poll() is not None:
-                raise RuntimeError(f"llama-server exited rc={self.proc.returncode}")
+                tail = self.log_path.read_text(errors="ignore").strip().splitlines()[-4:]
+                raise RuntimeError(f"llama-server exited rc={self.proc.returncode}: {tail}")
             try:
                 c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=2)
                 c.request("GET", "/health")

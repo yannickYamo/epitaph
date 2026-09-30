@@ -1,0 +1,385 @@
+{
+ "model": "/var/lib/epitaph/models/llama-3.2-3b-instruct/Q4_K_M.gguf",
+ "fraction": 0.5,
+ "trials": [
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1",
+   "env_after": {
+    "cpu_c": 41.4,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1",
+   "env_after": {
+    "cpu_c": 42.8,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 42.8,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1",
+   "env_after": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1",
+   "env_after": {
+    "cpu_c": 41.4,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": false,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 41.4,
+    "throttled": "0x0"
+   },
+   "error": "RuntimeError: llama-server exited rc=1",
+   "env_after": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 41.9,
+    "throttled": "0x0"
+   },
+   "load_s": 4.04,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 1
+   },
+   "limit_mb": 152,
+   "killed": true,
+   "kill_s": 0.21,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 132,
+    "oom_kill": 2,
+    "oom_group_kill": 1
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 50.6,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 50.6,
+    "throttled": "0x0"
+   },
+   "load_s": 4.03,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 2
+   },
+   "limit_mb": 152,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 248,
+    "oom_kill": 4,
+    "oom_group_kill": 2
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   },
+   "load_s": 4.04,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 3
+   },
+   "limit_mb": 152,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 19608,
+    "oom_kill": 6,
+    "oom_group_kill": 3
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 55.5,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 55.5,
+    "throttled": "0x0"
+   },
+   "load_s": 4.05,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 4
+   },
+   "limit_mb": 152,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 19768,
+    "oom_kill": 8,
+    "oom_group_kill": 4
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 55.0,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 55.0,
+    "throttled": "0x0"
+   },
+   "load_s": 4.03,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 5
+   },
+   "limit_mb": 152,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 19849,
+    "oom_kill": 10,
+    "oom_group_kill": 5
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 54.5,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "anon",
+   "env_before": {
+    "cpu_c": 54.5,
+    "throttled": "0x0"
+   },
+   "load_s": 4.04,
+   "warm": {
+    "current_mb": 305,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 6
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 19973,
+    "oom_kill": 12,
+    "oom_group_kill": 6
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 55.5,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "mmap": true,
+   "fraction": 0.5,
+   "basis": "anon",
+   "env_before": {
+    "cpu_c": 55.5,
+    "throttled": "0x0"
+   },
+   "load_s": 4.04,
+   "warm": {
+    "current_mb": 304,
+    "anon_mb": 299,
+    "file_mb": 0,
+    "pgmajfault": 7
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.19,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 0,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 20031,
+    "oom_kill": 14,
+    "oom_group_kill": 7
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 56.0,
+    "throttled": "0x0"
+   }
+  }
+ ],
+ "eviction": {
+  "env_before": {
+   "cpu_c": 56.0,
+   "throttled": "0x0"
+  },
+  "load_s": 4.04,
+  "baseline": {
+   "n": 23,
+   "tok_s": 1.866,
+   "p50": 0.553,
+   "p95": 0.609,
+   "max": 0.612,
+   "mean": 0.536,
+   "current_mb": 305,
+   "anon_mb": 299,
+   "file_mb": 0,
+   "pgmajfault": 8
+  },
+  "evict_1pct": {
+   "n": 11,
+   "tok_s": 1.96,
+   "p50": 0.553,
+   "p95": 0.609,
+   "max": 0.609,
+   "mean": 0.51,
+   "wall_s": 22.6,
+   "io_read_mb": 0,
+   "majfault": 0,
+   "current_mb": 305,
+   "anon_mb": 299,
+   "file_mb": 0,
+   "pgmajfault": 8
+  },
+  "evict_5pct": {
+   "n": 11,
+   "tok_s": 1.964,
+   "p50": 0.553,
+   "p95": 0.609,
+   "max": 0.609,
+   "mean": 0.509,
+   "wall_s": 22.9,
+   "io_read_mb": 0,
+   "majfault": 0,
+   "current_mb": 305,
+   "anon_mb": 299,
+   "file_mb": 0,
+   "pgmajfault": 8
+  },
+  "env_after": {
+   "cpu_c": 55.0,
+   "throttled": "0x0"
+  }
+ },
+ "spike": "s3",
+ "started": "2026-09-29T22:39:55-0700",
+ "finished": "2026-09-29T22:46:30-0700",
+ "kernel": "6.18.50+rpt-rpi-v8"
+}
