@@ -1,8 +1,8 @@
 """`epitaph sim`: whole lives on the fake clock with the fake backend (BUILD_PLAN 9 L4).
 
-Phase 0a reference loop. It emits every event of the contract in the order section 5.8
-defines, so displays, verify-life and transcripts can be built before the real controller
-exists. From phase 1, part B's controller runs here on the fakes instead of this loop.
+A reference loop that emits every event of the contract in the order BUILD_PLAN 5.8
+defines, so displays, verify-life and transcripts can be built and tested without a Pi or a
+model. Once the real controller exists, it runs here on the same fakes instead of this loop.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ from epitaph.types import Cause, Msg, Sampling
 
 @dataclass
 class SimResult:
+    """What a simulation produced: every event in order, and each life's cause and thoughts."""
+
     events: list[Event] = field(default_factory=lambda: [])
     causes: list[str] = field(default_factory=lambda: [])
     thoughts: list[int] = field(default_factory=lambda: [])
@@ -32,8 +34,8 @@ class SimResult:
 
 def _reading(t: float, k: Any, prev: Any | None, forgotten: int, vitals: Any) -> str:
     def was(field_: str, fmt: Callable[[Any], str]) -> str:
-        if prev is None or getattr(prev, field_) == getattr(k, field_):
-            return ""
+        if prev is None or fmt(getattr(prev, field_)) == fmt(getattr(k, field_)):
+            return ""  # compare what is shown, so rounding never reports a change
         return f" (was {fmt(getattr(prev, field_))})"
 
     m, s = divmod(int(t), 60)

@@ -9,8 +9,8 @@ venv:
 	python3 -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
 
 lint:
-	$(PY) -m ruff check src tests
-	$(PY) -m ruff format --check src tests
+	$(PY) -m ruff check src tests tools
+	$(PY) -m ruff format --check src tests tools
 
 type:
 	$(PY) -m pyright

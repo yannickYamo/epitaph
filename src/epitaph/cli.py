@@ -1,6 +1,7 @@
-"""The `epitaph` command (BUILD_PLAN 6.1). Flags override config.
+"""epitaph: a small language model lives and dies on a Raspberry Pi.
 
-Subcommands owned by other agents are wired here as stubs that say who implements them.
+Command-line flags override the configuration in config/. Commands marked [planned] are on the
+roadmap and exit with status 3 until they land.
 """
 
 from __future__ import annotations
@@ -14,15 +15,16 @@ from typing import Any
 
 from epitaph.config import ConfigError, load_config, parse_duration
 
-STUBS: dict[str, tuple[str, str]] = {
-    "run": ("B", "P1 (controller.py)"),
-    "selftest": ("C", "P2 (body/)"),
-    "calibrate": ("C", "P2 (body/calibrate.py)"),
-    "download": ("A", "P0b (tools/download_models.py)"),
-    "bench": ("A", "P2 (tools/bench.py)"),
-    "rehearse": ("A", "P0c (rehearse.py)"),
-    "post": ("F", "V1.5"),
-    "archive": ("F", "V1.5"),
+# Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
+PLANNED: dict[str, tuple[str, str]] = {
+    "run": ("run lives with the real controller", "phase 1"),
+    "selftest": ("check cgroups, limits and the network block on this machine", "phase 2"),
+    "calibrate": ("measure working sets and set the death limit per model", "phase 2"),
+    "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
+    "bench": ("measure model speeds into bench/", "phase 2"),
+    "rehearse": ("accelerated lives with a real model on a laptop", "phase 0c"),
+    "post": ("publish each life's last line (V1.5)", "V1.5"),
+    "archive": ("render every life as a static page (V1.5)", "V1.5"),
 }
 
 
@@ -48,6 +50,7 @@ def _load(args: argparse.Namespace) -> Any:
 
 
 def cmd_sim(args: argparse.Namespace) -> int:
+    """`epitaph sim`: simulate lives and print their milestones, or every event with --events."""
     from epitaph.sim import simulate
 
     cfg = _load(args)
@@ -67,6 +70,7 @@ def cmd_sim(args: argparse.Namespace) -> int:
 
 
 def cmd_estimate(args: argparse.Namespace) -> int:
+    """`epitaph estimate`: print the cost model's report; exit 1 if a thought-count rule fails."""
     from epitaph.costmodel import estimate, format_report, load_costs
 
     cfg = _load(args)
@@ -79,6 +83,10 @@ def cmd_estimate(args: argparse.Namespace) -> int:
 
 
 def cmd_ctl(args: argparse.Namespace) -> int:
+    """`epitaph ctl`: send one command to the running controller and print its JSON reply.
+
+    Exits 2 if no controller is listening and 1 if the reply carries an error.
+    """
     from epitaph.events import control
 
     cmd_args: dict[str, Any] = {}
@@ -100,16 +108,17 @@ def cmd_ctl(args: argparse.Namespace) -> int:
 
 
 def _stub(name: str) -> Callable[[argparse.Namespace], int]:
-    owner, phase = STUBS[name]
+    _, arrives = PLANNED[name]
 
     def run(_: argparse.Namespace) -> int:
-        print(f"`epitaph {name}` is not built yet (agent {owner}, {phase}).", file=sys.stderr)
+        print(f"`epitaph {name}` is not available yet (planned for {arrives}).", file=sys.stderr)
         return 3
 
     return run
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argument parser for every subcommand; each sets `fn`, the function that runs it."""
     parser = argparse.ArgumentParser(prog="epitaph", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -140,11 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_arguments(p)
     p.set_defaults(fn=verify.run)
 
-    sub.add_parser("display", help="show a life live: local screen or --connect HOST (part D)")
-    sub.add_parser("replay", help="replay a recorded life at any speed (part D)")
+    sub.add_parser("display", help="show a life live: local screen or --connect HOST")
+    sub.add_parser("replay", help="replay a recorded life at any speed")
 
-    for name in STUBS:
-        p = sub.add_parser(name, help=f"(agent {STUBS[name][0]})")
+    for name, (text, arrives) in PLANNED.items():
+        p = sub.add_parser(name, help=f"{text} [planned: {arrives}]")
         _common(p)
         p.add_argument("rest", nargs=argparse.REMAINDER)
         p.set_defaults(fn=_stub(name))
@@ -159,6 +168,10 @@ PASSTHROUGH = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command line and return the exit status; config errors exit 2.
+
+    `display` and `replay` hand their arguments to their own modules' parsers.
+    """
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in PASSTHROUGH:
         import importlib

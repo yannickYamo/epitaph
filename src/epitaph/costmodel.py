@@ -20,7 +20,11 @@ from epitaph.types import RuleReport, RuleViolation
 
 @dataclass
 class Costs:
-    """Machine costs at full CPU share. Keys are "<step>-<threads>"."""
+    """Machine costs at full CPU share.
+
+    Rate tables are in tokens per second, keyed "<step>-<threads>"; load_s is the model load
+    time in seconds for each ladder step.
+    """
 
     tg_tok_s: dict[str, float]
     pp_tok_s: dict[str, float]
@@ -44,12 +48,15 @@ class Costs:
         return min(table.values())
 
     def tg(self, step: int, threads: int, share: float) -> float:
+        """Generation speed in tokens/s, scaled down when share is below one core per thread."""
         return self._rate(self.tg_tok_s, step, threads) * min(1.0, share / threads)
 
     def pp(self, step: int, threads: int, share: float) -> float:
+        """Prompt processing speed in tokens/s, scaled like `tg`."""
         return self._rate(self.pp_tok_s, step, threads) * min(1.0, share / threads)
 
     def load(self, step: int) -> float:
+        """Seconds to load the model at a ladder step; steps past the list reuse the last."""
         return self.load_s[min(step, len(self.load_s) - 1)]
 
 
@@ -262,6 +269,7 @@ def check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
 
 
 def format_report(report: RuleReport) -> str:
+    """Render a report for the terminal: a PASS/FAIL headline, then notes and violations."""
     lines = [
         f"profile {report.profile}: {report.thoughts} thoughts in {report.lifespan_s / 60:.0f} min "
         f"-> {'PASS' if report.ok else 'FAIL'}"

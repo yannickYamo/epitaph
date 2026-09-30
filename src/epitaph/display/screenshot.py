@@ -83,7 +83,10 @@ def render_png(
     theme: Theme = PLAIN,
     **opts: Any,
 ) -> Frame:
-    """Render offscreen and save a PNG. Returns the frame drawn (the ground truth)."""
+    """Render `events` (or `view`) offscreen at `size` pixels and save a PNG to `path`.
+
+    Returns the frame drawn, the ground truth for OCR. `opts` go to `ScreenDriver`.
+    """
     os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
     from epitaph.display.screen import ScreenDriver
 
@@ -111,11 +114,15 @@ def norm_words(text: str) -> list[str]:
 
 
 def shown_words(frame: Frame) -> list[str]:
+    """The words drawn in `frame`, normalised like `ocr_words` so the two compare."""
     return norm_words("\n".join(frame.text_rows()))
 
 
 def ocr_words(path: str | Path) -> list[str]:
-    """Tesseract on the rendered PNG (inverted to dark on light, which tesseract expects)."""
+    """Read the words in a rendered PNG with tesseract, normalised by `norm_words`.
+
+    The image is inverted to dark on light first, which tesseract expects.
+    """
     import pytesseract
     from PIL import Image, ImageOps
 
@@ -184,6 +191,7 @@ def readability(size: tuple[int, int], out_dir: Path, theme: Theme = PLAIN) -> d
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run D13 at every size, printing one JSON line each; 0 when all pass, else 1."""
     p = argparse.ArgumentParser(prog="python -m epitaph.display.screenshot")
     p.add_argument("--out", type=Path, default=Path("d13"))
     p.add_argument("--min-ocr", type=float, default=0.95)

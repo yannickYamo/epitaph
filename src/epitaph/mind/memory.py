@@ -65,6 +65,7 @@ class Forgetting:
     marker_added: bool = False
 
     def __bool__(self) -> bool:
+        """True when the trim actually freed tokens."""
         return self.tokens_after < self.tokens_before
 
 
@@ -77,6 +78,7 @@ class Memory:
         marker: str = "[host] earlier memory lost",
         system: str = "",
     ) -> None:
+        """Count tokens with counter; marker is the reading that stands in for lost memory."""
         self.count = counter
         self.marker = marker
         self.marker_tokens = counter(marker)
@@ -97,6 +99,7 @@ class Memory:
 
     @property
     def system_tokens(self) -> int:
+        """Tokens of the current system prompt."""
         return self.count(self.system) if self.system else 0
 
     # -- appending -------------------------------------------------------------------------
@@ -131,6 +134,7 @@ class Memory:
 
     @property
     def pending_tokens(self) -> int:
+        """Tokens of the reading waiting for its thought; 0 if there is none."""
         return self._pending.reading_tokens if self._pending is not None else 0
 
     def prompt_tokens(self) -> int:

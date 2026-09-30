@@ -52,21 +52,26 @@ class FileRef:
 
     @property
     def url(self) -> str:
+        """The Hub download URL at the pinned revision (main when unpinned)."""
         rev = self.revision or "main"
         return f"{HF}/{self.repo}/resolve/{rev}/{self.file}"
 
     def local_path(self, root: Path | None = None) -> Path:
+        """Where the file is kept here: <root>/<model>/<quant>.gguf (root: LOCAL_DIR)."""
         return (root or LOCAL_DIR) / self.model / f"{self.quant}.gguf"
 
     def pi_path(self) -> str:
+        """Where the file lives on the Pi: <PI_DIR>/<model>/<quant>.gguf."""
         return f"{PI_DIR}/{self.model}/{self.quant}.gguf"
 
 
 def read_models_toml(path: Path | None = None) -> dict[str, Any]:
+    """Parse config/models.toml, or `path`."""
     return tomllib.loads((path or CONFIG_DIR / "models.toml").read_text())
 
 
 def read_lock(path: Path | None = None) -> dict[str, dict[str, FileRef]]:
+    """The pins in models.lock.toml as {model: {quant: FileRef}}; empty without a lock file."""
     p = path or LOCK_PATH
     if not p.exists():
         return {}
@@ -104,6 +109,7 @@ def write_lock(lock: dict[str, dict[str, FileRef]], path: Path | None = None) ->
 
 
 def ladder(spec: dict[str, Any], hw_class: str = "pi4") -> list[str]:
+    """The model's quant ladder for `hw_class`, first step first (the pi4 ladder by default)."""
     lad: dict[str, list[str]] = spec.get("ladder", {})
     return list(lad.get(hw_class, lad.get("pi4", [])))
 
@@ -131,6 +137,7 @@ def wanted(
 
 
 def ref_for(models: dict[str, Any], model: str, quant: str) -> FileRef:
+    """The unpinned FileRef for a model and quant, honouring per-quant `sources` and `files`."""
     spec = models[model]
     repo = str(dict(spec.get("sources", {})).get(quant, spec["source"]))
     pattern = str(dict(spec.get("files", {})).get(quant, spec["file"]))
@@ -175,6 +182,7 @@ def resolve(ref: FileRef, get: Getter = _http_json) -> FileRef:
 
 
 def check_space(free_bytes: int, needed: int, where: str) -> None:
+    """Raise ModelFileError unless `needed` bytes fit in `free_bytes` with SPACE_MARGIN spare."""
     if free_bytes < needed + SPACE_MARGIN:
         raise ModelFileError(
             f"not enough space on {where}: need {needed / 1e9:.2f} GB plus "
@@ -183,6 +191,7 @@ def check_space(free_bytes: int, needed: int, where: str) -> None:
 
 
 def sha256_file(path: Path, chunk: int = 8 * 1024 * 1024) -> str:
+    """The file's sha256 as hex, read in blocks of `chunk` bytes."""
     h = hashlib.sha256()
     with path.open("rb") as f:
         while b := f.read(chunk):
@@ -224,6 +233,7 @@ def download(ref: FileRef, root: Path | None = None, log: Callable[[str], None] 
 
 
 def pi_free_bytes(host: str = "pi-eth") -> int:
+    """Free bytes on the Pi's model disk, read over ssh (creates PI_DIR if missing)."""
     out = subprocess.run(
         ["ssh", host, f"mkdir -p {PI_DIR} && df -B1 --output=avail {PI_DIR} | tail -1"],
         check=True,
@@ -262,6 +272,7 @@ def push(ref: FileRef, host: str = "pi-eth", root: Path | None = None, verify: b
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command line: resolve, fetch, push or list model files; return the exit status."""
     import argparse
 
     ap = argparse.ArgumentParser(description="Resolve, download and push model files (A8).")

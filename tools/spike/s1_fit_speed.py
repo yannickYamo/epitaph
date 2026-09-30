@@ -137,7 +137,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             out["cold"] = bool(args.cold)
             if not args.fit_only:
                 b = srv.chat(
-                    [{"role": "system", "content": system}, {"role": "user", "content": reading(0)}],
+                    [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": reading(0)},
+                    ],
                     max_tokens=args.gen,
                     ignore_eos=True,
                 )

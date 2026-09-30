@@ -25,6 +25,7 @@ def _is_wordish(ch: str) -> bool:
 
 
 def is_punct_only(token: str) -> bool:
+    """True for a non-empty token with no letter, digit or mark ("—", "...")."""
     return bool(token) and not any(_is_wordish(c) for c in token)
 
 
@@ -70,6 +71,7 @@ class WordSegmenter:
     """Turns clean text, fed in pieces, into whole words."""
 
     def __init__(self) -> None:
+        """Start at the beginning of a thought, with nothing buffered."""
         self._buf = ""  # text after the last released token boundary
         self._pending: str | None = None  # a complete word that may still gain punctuation
         self._lead = ""  # punctuation seen before the first word of the thought

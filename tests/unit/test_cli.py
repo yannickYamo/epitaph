@@ -12,7 +12,7 @@ def test_sim_and_estimate(capsys) -> None:
 
 def test_stub_names_owner(capsys) -> None:
     assert main(["rehearse"]) == 3
-    assert "part A" in capsys.readouterr().err
+    assert "planned for phase 0c" in capsys.readouterr().err
 
 
 def test_config_error_exit_code(capsys) -> None:

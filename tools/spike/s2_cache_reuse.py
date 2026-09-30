@@ -73,7 +73,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     marker = False
     i = 0
 
-    def step(kind: str, sys_text: str, nxt: str, max_tokens: int = args.max_tokens) -> dict[str, Any]:
+    def step(
+        kind: str, sys_text: str, nxt: str, max_tokens: int = args.max_tokens
+    ) -> dict[str, Any]:
         msgs = build(sys_text, turns, nxt, marker, args.marker)
         r = srv.chat(msgs, max_tokens=max_tokens)
         if "error" in r:

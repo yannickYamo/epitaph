@@ -1376,7 +1376,7 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 
 ## Appendix C: review record
 
-**v1 to v4** (on Yannick's Mac): three external review rounds, the Latent Reflection recheck and the prompt and reveal redesign. The record is in v4's Appendix C (`~/.claudea second reviews/epitaph/` on the Mac).
+**v1 to v4** (on Yannick's Mac): three external review rounds, the Latent Reflection recheck and the prompt and reveal redesign. The record is in v4's Appendix C (kept in the author's review archive).
 
 **v4 to v5:** the laptop agent's hardware facts and 15-point delta, gap-analysed on the Mac with a external second opinion (`2026-09-29_204923_r1.md`). All v5 fixes are kept unless a row below changes them.
 

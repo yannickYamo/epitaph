@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import http.client
+import itertools
 import json
 import os
 import signal
@@ -146,7 +147,14 @@ def s3b(args: argparse.Namespace) -> dict[str, Any]:
     p0 = body.progress()
     step("cpu.stat", lambda: read_flat_keyed(body.creature / "cpu.stat"))
     step("io.stat", lambda: (body.creature / "io.stat").read_text().strip())
-    step("memory.stat", lambda: {k: v for k, v in read_flat_keyed(body.creature / "memory.stat").items() if k in ("anon", "file", "pgmajfault", "pgfault")})
+    step(
+        "memory.stat",
+        lambda: {
+            k: v
+            for k, v in read_flat_keyed(body.creature / "memory.stat").items()
+            if k in ("anon", "file", "pgmajfault", "pgfault")
+        },
+    )
     step("memory.events", lambda: read_flat_keyed(body.creature / "memory.events"))
     step("progress", lambda: vars(p0))
     step("vitals", lambda: vars(body.vitals()))
@@ -156,11 +164,16 @@ def s3b(args: argparse.Namespace) -> dict[str, Any]:
     (body.creature / "memory.max").write_text(str(20 * MIB))
     rc = child.wait(timeout=20)
     step("oom_kill", lambda: {"s": round(now() - t0, 3), "rc": rc, "events": body.memory_events()})
-    step("death_cause_oom", lambda: body.death_cause(CreatureStatus(False, signal=-rc if rc < 0 else None)).value)
+    step(
+        "death_cause_oom",
+        lambda: body.death_cause(CreatureStatus(False, signal=-rc if rc < 0 else None)).value,
+    )
     body.reset_creature_cgroup()
 
     # cgroup.kill
-    child = subprocess.Popen(body.wrap_spawn([sys.executable, "-c", CHILD, "", "60"]), stdout=subprocess.PIPE, text=True)
+    child = subprocess.Popen(
+        body.wrap_spawn([sys.executable, "-c", CHILD, "", "60"]), stdout=subprocess.PIPE, text=True
+    )
     if child.stdout:
         child.stdout.readline()
     t0 = now()
@@ -181,13 +194,21 @@ def s3b(args: argparse.Namespace) -> dict[str, Any]:
         res["nft_installed"] = (sync / "nft_ready").exists()
         if res["nft_installed"]:
             step("net_creature_after", lambda: in_creature(body, CONNECT, "1.1.1.1", "80"))
-            step("net_creature_dns", lambda: in_creature(body, "import socket;\ntry:\n print(socket.getaddrinfo('example.org', 80)[0][4])\nexcept OSError as e:\n print('refused:', e)"))
+            step(
+                "net_creature_dns",
+                lambda: in_creature(
+                    body,
+                    "import socket;\ntry:\n print(socket.getaddrinfo('example.org', 80)[0][4])\nexcept OSError as e:\n print('refused:', e)",
+                ),
+            )
             step("net_supervisor_after", lambda: connect_test("1.1.1.1", 80))
             srv = socket.socket()
             srv.bind(("127.0.0.1", 0))
             srv.listen(1)
             port = srv.getsockname()[1]
-            step("net_creature_localhost", lambda: in_creature(body, CONNECT, "127.0.0.1", str(port)))
+            step(
+                "net_creature_localhost", lambda: in_creature(body, CONNECT, "127.0.0.1", str(port))
+            )
             srv.close()
         (sync / "probe_done").write_text("1")
     body.reset_creature_cgroup()
@@ -213,10 +234,33 @@ def drop_cache(path: str) -> None:
 
 
 class Server:
-    def __init__(self, body: CgroupBody, binary: str, model: str, threads: int, mmap: bool,
-                 ctx: int = 2048, args_cold: bool = True, load_mode: str = "") -> None:
-        argv = [binary, "-m", model, "-t", str(threads), "-c", str(ctx), "--host", "127.0.0.1",
-                "--port", str(PORT), "-ngl", "0", "--no-warmup"]
+    def __init__(
+        self,
+        body: CgroupBody,
+        binary: str,
+        model: str,
+        threads: int,
+        mmap: bool,
+        ctx: int = 2048,
+        args_cold: bool = True,
+        load_mode: str = "",
+    ) -> None:
+        argv = [
+            binary,
+            "-m",
+            model,
+            "-t",
+            str(threads),
+            "-c",
+            str(ctx),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(PORT),
+            "-ngl",
+            "0",
+            "--no-warmup",
+        ]
         if load_mode:  # b11277 replaced --no-mmap with --load-mode none|mmap|dio|...
             argv += ["--load-mode", load_mode]
         elif not mmap:
@@ -225,8 +269,9 @@ class Server:
             drop_cache(model)
         self.log_path = Path(f"server-{int(time.time() * 1000)}.log")
         self.t0 = now()
-        self.proc = subprocess.Popen(body.wrap_spawn(argv), stdout=subprocess.DEVNULL,
-                                     stderr=self.log_path.open("w"))
+        self.proc = subprocess.Popen(
+            body.wrap_spawn(argv), stdout=subprocess.DEVNULL, stderr=self.log_path.open("w")
+        )
         self.load_s: float | None = None
 
     def wait_ready(self, timeout: float = 300) -> float:
@@ -251,12 +296,25 @@ class Server:
             self.proc.wait(10)
 
 
-def stream(n_predict: int, stamps: list[float], stop_at: Callable[[], bool] = lambda: False,
-           prompt: str = PROMPT, timeout: float = 600) -> dict[str, Any]:
+def stream(
+    n_predict: int,
+    stamps: list[float],
+    stop_at: Callable[[], bool] = lambda: False,
+    prompt: str = PROMPT,
+    timeout: float = 600,
+) -> dict[str, Any]:
     """Stream a completion; append a timestamp per token. Returns the final timings."""
-    body = json.dumps({"prompt": prompt, "n_predict": n_predict, "stream": True,
-                       "cache_prompt": False, "ignore_eos": True, "temperature": 0.7,
-                       "seed": 1}).encode()
+    body = json.dumps(
+        {
+            "prompt": prompt,
+            "n_predict": n_predict,
+            "stream": True,
+            "cache_prompt": False,
+            "ignore_eos": True,
+            "temperature": 0.7,
+            "seed": 1,
+        }
+    ).encode()
     c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=timeout)
     c.request("POST", "/completion", body, {"Content-Type": "application/json"})
     r = c.getresponse()
@@ -276,33 +334,53 @@ def stream(n_predict: int, stamps: list[float], stop_at: Callable[[], bool] = la
 
 
 def gaps(stamps: list[float]) -> dict[str, float]:
-    g = [b - a for a, b in zip(stamps[1:], stamps[2:], strict=False)]  # skip the first token
+    g = [b - a for a, b in itertools.pairwise(stamps)]  # skip the first token
     if not g:
         return {}
     g.sort()
-    return {"n": len(g), "tok_s": round(len(g) / sum(g), 3), "p50": round(g[len(g) // 2], 3),
-            "p95": round(g[int(len(g) * 0.95)], 3), "max": round(g[-1], 3),
-            "mean": round(statistics.fmean(g), 3)}
+    return {
+        "n": len(g),
+        "tok_s": round(len(g) / sum(g), 3),
+        "p50": round(g[len(g) // 2], 3),
+        "p95": round(g[int(len(g) * 0.95)], 3),
+        "max": round(g[-1], 3),
+        "mean": round(statistics.fmean(g), 3),
+    }
 
 
 def mem_snapshot(body: CgroupBody) -> dict[str, int]:
     st = read_flat_keyed(body.creature / "memory.stat")
-    return {"current_mb": int((body.creature / "memory.current").read_text()) // MIB,
-            "anon_mb": st.get("anon", 0) // MIB, "file_mb": st.get("file", 0) // MIB,
-            "pgmajfault": st.get("pgmajfault", 0)}
+    return {
+        "current_mb": int((body.creature / "memory.current").read_text()) // MIB,
+        "anon_mb": st.get("anon", 0) // MIB,
+        "file_mb": st.get("file", 0) // MIB,
+        "pgmajfault": st.get("pgmajfault", 0),
+    }
 
 
 # ---------------------------------------------------------------------------------------
 # S3: death by RAM
 
 
-def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction: float,
-                wait_s: float, basis: str = "current", mode: str = "") -> dict[str, Any]:
+def death_trial(
+    body: CgroupBody,
+    args: argparse.Namespace,
+    mmap: bool,
+    fraction: float,
+    wait_s: float,
+    basis: str = "current",
+    mode: str = "",
+) -> dict[str, Any]:
     body.reset_creature_cgroup()
     srv = Server(body, args.server, args.model, 3, mmap, load_mode=mode)
-    trial: dict[str, Any] = {"via_body": bool(args.via_body), "mmap": mmap, "mode": mode or ("mmap" if mmap else "none"),
-                             "fraction": fraction, "basis": basis,
-                             "env_before": body_env()}
+    trial: dict[str, Any] = {
+        "via_body": bool(args.via_body),
+        "mmap": mmap,
+        "mode": mode or ("mmap" if mmap else "none"),
+        "fraction": fraction,
+        "basis": basis,
+        "env_before": body_env(),
+    }
     try:
         trial["load_s"] = round(srv.wait_ready(), 2)
         warm: list[float] = []
@@ -325,24 +403,28 @@ def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction
             limit = int((body.creature / "memory.max").read_text())
         else:
             (body.creature / "memory.max").write_text(str(limit))
-            body._squeezed_at = t0  # noqa: SLF001 - the probe stands in for apply()
+            body._squeezed_at = t0
         n0 = len(stamps)
         while srv.proc.poll() is None and now() - t0 < wait_s:
             time.sleep(0.02)
         dead = srv.proc.poll() is not None
         p1 = body.progress()
-        trial.update({
-            "limit_mb": limit // MIB,
-            "killed": dead,
-            "kill_s": round(now() - t0, 2) if dead else None,
-            "rc": srv.proc.returncode,
-            "tokens_after_squeeze": len(stamps) - n0,
-            "majfault_during": p1.majfault - p0.majfault,
-            "io_read_mb_during": (p1.io_rbytes - p0.io_rbytes) // MIB,
-            "events": body.memory_events(),
-        })
+        trial.update(
+            {
+                "limit_mb": limit // MIB,
+                "killed": dead,
+                "kill_s": round(now() - t0, 2) if dead else None,
+                "rc": srv.proc.returncode,
+                "tokens_after_squeeze": len(stamps) - n0,
+                "majfault_during": p1.majfault - p0.majfault,
+                "io_read_mb_during": (p1.io_rbytes - p0.io_rbytes) // MIB,
+                "events": body.memory_events(),
+            }
+        )
         if dead:
-            st = CreatureStatus(False, signal=-srv.proc.returncode if srv.proc.returncode < 0 else None)
+            st = CreatureStatus(
+                False, signal=-srv.proc.returncode if srv.proc.returncode < 0 else None
+            )
             trial["cause"] = body.death_cause(st).value
     except Exception as e:
         trial["error"] = f"{type(e).__name__}: {e}"
@@ -379,11 +461,15 @@ def eviction_probe(body: CgroupBody, args: argparse.Namespace) -> dict[str, Any]
             t0 = now()
             _swallow(lambda s=s: stream(12, s, timeout=240))
             p1 = body.progress()
-            out[f"evict_{pct}pct"] = gaps(s) | {
-                "wall_s": round(now() - t0, 1),
-                "io_read_mb": (p1.io_rbytes - p0.io_rbytes) // MIB,
-                "majfault": p1.majfault - p0.majfault,
-            } | mem_snapshot(body)
+            out[f"evict_{pct}pct"] = (
+                gaps(s)
+                | {
+                    "wall_s": round(now() - t0, 1),
+                    "io_read_mb": (p1.io_rbytes - p0.io_rbytes) // MIB,
+                    "majfault": p1.majfault - p0.majfault,
+                }
+                | mem_snapshot(body)
+            )
             (body.creature / "memory.high").write_text("max")
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {e}"
@@ -401,7 +487,8 @@ def s3(args: argparse.Namespace) -> dict[str, Any]:
     for mode in args.modes:
         for _ in range(args.reps):
             res["trials"].append(
-                death_trial(body, args, mode == "mmap", args.fraction, args.wait, mode=mode))
+                death_trial(body, args, mode == "mmap", args.fraction, args.wait, mode=mode)
+            )
     for _ in range(args.anon_reps):  # mmap with the limit below the anonymous memory
         res["trials"].append(death_trial(body, args, True, args.fraction, args.wait, "anon"))
     if args.eviction:
@@ -417,8 +504,12 @@ def s3c(args: argparse.Namespace) -> dict[str, Any]:
     body = CgroupBody.delegated(CgroupSettings(creature_cpus="1-3"))
     body.reset_creature_cgroup()
     srv = Server(body, args.server, args.model, 2, not args.no_mmap)
-    res: dict[str, Any] = {"model": args.model, "threads": 2, "levels": {},
-                           "env_before": body_env()}
+    res: dict[str, Any] = {
+        "model": args.model,
+        "threads": 2,
+        "levels": {},
+        "env_before": body_env(),
+    }
     try:
         res["load_s"] = round(srv.wait_ready(), 2)
         stream(8, [])
@@ -468,8 +559,12 @@ def main() -> int:
     args = ap.parse_args()
     started = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     res = {"s3": s3, "s3b": s3b, "s3c": s3c}[args.spike](args)
-    res.update(spike=args.spike, started=started, finished=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-               kernel=os.uname().release)
+    res.update(
+        spike=args.spike,
+        started=started,
+        finished=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        kernel=os.uname().release,
+    )
     Path(args.out).write_text(json.dumps(res, indent=1))
     os.sync()
     return 0

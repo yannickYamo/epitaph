@@ -30,6 +30,7 @@ Event = dict[str, Any]
 
 
 def default_state_dir() -> Path:
+    """Where lives are kept: $EPITAPH_STATE_DIR, else /var/lib/epitaph, else ~/.local/share."""
     env = os.environ.get("EPITAPH_STATE_DIR")
     if env:
         return Path(env).expanduser()
@@ -39,7 +40,11 @@ def default_state_dir() -> Path:
 
 
 def resolve_events(arg: str, state_dir: Path | None = None) -> Path:
-    """A life number, a life folder or an events.jsonl file."""
+    """Find the events.jsonl for `arg`: a life number, a life folder or the file itself.
+
+    A life number is looked up under `state_dir` (default: `default_state_dir()`). Raises
+    FileNotFoundError when nothing matches.
+    """
     p = Path(arg).expanduser()
     if p.is_file():
         return p
@@ -54,6 +59,7 @@ def resolve_events(arg: str, state_dir: Path | None = None) -> Path:
 
 
 def load_events(path: Path) -> list[Event]:
+    """Read a JSONL event log, skipping blank, torn or untyped lines."""
     out: list[Event] = []
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -70,6 +76,7 @@ def load_events(path: Path) -> list[Event]:
 
 
 def _num(x: Any) -> float | None:
+    """`x` as a float when it is a real number (not a bool), else None."""
     return float(x) if isinstance(x, int | float) and not isinstance(x, bool) else None
 
 
@@ -142,10 +149,11 @@ async def republish(
     mirror: LifeView | None = None,
     max_gap_s: float | None = None,
 ) -> int:
-    """Publish `events` at their cadence. Returns the number of events published.
+    """Publish `events` at their cadence divided by `speed`; returns how many were published.
 
-    Events before `from_s` are folded into one snapshot. `mirror`, if given, is fed every
-    event so a bus can answer new subscribers with a current snapshot.
+    Events before `from_s` (life seconds) are folded into one snapshot. `max_gap_s` caps
+    any single wait. `mirror`, if given, is fed every event so a bus can answer new
+    subscribers with a current snapshot. Raises ValueError when `speed` is not positive.
     """
     if speed <= 0:
         raise ValueError("speed must be positive")
@@ -176,6 +184,7 @@ async def republish(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argument parser for `epitaph replay`."""
     p = argparse.ArgumentParser(prog="epitaph replay", description=(__doc__ or "").split("\n\n")[0])
     p.add_argument("life", help="life number, life folder, or events.jsonl")
     p.add_argument("--speed", type=float, default=1.0)
@@ -193,6 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run `epitaph replay`; returns 0, or 2 when the life or `--from` cannot be read."""
     from epitaph.config import ConfigError, parse_duration
 
     args = build_parser().parse_args(argv)
@@ -212,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run(args: argparse.Namespace, events: list[Event], from_s: float) -> None:
+    """Replay into the chosen driver and, with `--port`, onto a local bus."""
     import time
 
     from epitaph.display.app import display_config, drive, make_driver, parse_size

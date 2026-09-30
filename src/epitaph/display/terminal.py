@@ -32,6 +32,7 @@ Cell = tuple[str, Rgb]
 
 
 def detect_color_mode(env: dict[str, str] | None = None) -> str:
+    """Colour support from the environment: "truecolor", "256" or "none" (a dumb terminal)."""
     env = dict(os.environ) if env is None else env
     if env.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
         return "truecolor"
@@ -41,6 +42,7 @@ def detect_color_mode(env: dict[str, str] | None = None) -> str:
 
 
 def _rgb_to_256(c: Rgb) -> int:
+    """Nearest xterm-256 index: the grey ramp for near-greys, else the 6x6x6 cube."""
     r, g, b = c
     if max(r, g, b) - min(r, g, b) < 16:  # grey: use the 24-step ramp
         grey = (r + g + b) // 3
@@ -53,6 +55,7 @@ def _rgb_to_256(c: Rgb) -> int:
 
 
 def sgr(fg: Rgb, bg: Rgb, mode: str) -> str:
+    """The SGR escape setting `fg` on `bg` in colour `mode`; empty for "none"."""
     if mode == "truecolor":
         return f"{CSI}38;2;{fg[0]};{fg[1]};{fg[2]};48;2;{bg[0]};{bg[1]};{bg[2]}m"
     if mode == "256":
@@ -61,7 +64,12 @@ def sgr(fg: Rgb, bg: Rgb, mode: str) -> str:
 
 
 class TerminalDriver:
-    """Draws a `LifeView` in a terminal. `layout` is "flow" or "grid"."""
+    """Draws a `LifeView` in a terminal and implements the `Driver` protocol.
+
+    `layout` is "flow" or "grid". `color` is "auto", "truecolor", "256" or "none". `size`
+    fixes the terminal size in (cols, rows) instead of asking the terminal (tests).
+    `alt_screen` draws on the alternate screen so the shell is restored on close.
+    """
 
     def __init__(
         self,
@@ -78,6 +86,7 @@ class TerminalDriver:
         clock: Callable[[], float] = time.monotonic,
         alt_screen: bool = True,
     ) -> None:
+        """Configure the driver; nothing is written to `out` (default stdout) until `open`."""
         self.out = out or sys.stdout
         self.view = LifeView(settings)
         self.theme = theme
@@ -100,11 +109,13 @@ class TerminalDriver:
     # -- Display protocol -------------------------------------------------------------------
 
     def handle(self, event: dict[str, Any]) -> None:
+        """Apply `event` to the view at the driver's clock; a snapshot forces a full redraw."""
         if event.get("type") == "snapshot":
             self._prev = {}  # redraw everything from the snapshot
         self.view.handle(event, self.clock())
 
     def open(self) -> None:
+        """Enter the alternate screen and hide the cursor; does nothing if already open."""
         if self._opened:
             return
         self._opened = True
@@ -114,6 +125,7 @@ class TerminalDriver:
         self.out.flush()
 
     def close(self) -> None:
+        """Reset colours, show the cursor and leave the alternate screen; safe to call twice."""
         if not self._opened:
             return
         self._opened = False
@@ -134,6 +146,7 @@ class TerminalDriver:
             f.write("\n".join(lines) + "\n")
 
     def run(self, source: Any = None, fps: float = 30.0) -> None:
+        """Block, drawing events from the async iterator `source` until done or closed."""
         import asyncio
 
         from epitaph.display.app import drive
@@ -145,6 +158,7 @@ class TerminalDriver:
     # -- drawing ----------------------------------------------------------------------------
 
     def term_size(self) -> tuple[int, int]:
+        """(cols, rows): the fixed size if given, else the terminal's (80x24 if unknown)."""
         if self.fixed_size:
             return self.fixed_size
         s = shutil.get_terminal_size((80, 24))
@@ -194,6 +208,7 @@ class TerminalDriver:
         return out
 
     def render(self, now: float | None = None) -> None:
+        """Write only the cells that changed since the last frame; clear on a resize."""
         now = self.clock() if now is None else now
         size = self.term_size()
         cells = self.cells(now)

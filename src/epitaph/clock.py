@@ -1,6 +1,6 @@
 """Life clocks and the schedule (BUILD_PLAN 5.2, 5.3).
 
-Owned by part B after phase 0a. The life clock is monotonic time since the model finished
+The life clock is monotonic time since the model finished
 loading; it never pauses and never reads the wall clock.
 
 Three kinds of clock:
@@ -34,11 +34,17 @@ HOLD_UNTIL_RELOAD = ("recall", "cpu_share")
 class LifeClock(Protocol):
     """Time since birth, and a way to wait on it."""
 
-    def elapsed(self) -> float: ...
+    def elapsed(self) -> float:
+        """Seconds since `start`."""
+        ...
 
-    async def sleep(self, s: float) -> None: ...
+    async def sleep(self, s: float) -> None:
+        """Wait s seconds of life time; non-positive waits return at once."""
+        ...
 
-    def start(self) -> None: ...
+    def start(self) -> None:
+        """Mark birth: `elapsed` counts from this moment."""
+        ...
 
     def charge(self, cost_s: float) -> None:
         """Rehearsal: advance by a Pi cost. A no-op on real time."""
@@ -49,15 +55,19 @@ class RealClock:
     """Monotonic wall time for real lives."""
 
     def __init__(self) -> None:
+        """Start counting now; call `start` again once the model has loaded."""
         self._t0 = time.monotonic()
 
     def start(self) -> None:
+        """Reset birth to the current monotonic time."""
         self._t0 = time.monotonic()
 
     def elapsed(self) -> float:
+        """Monotonic seconds since `start`."""
         return time.monotonic() - self._t0
 
     async def sleep(self, s: float) -> None:
+        """Sleep s real seconds with `asyncio.sleep`."""
         if s > 0:
             await asyncio.sleep(s)
 
@@ -69,13 +79,16 @@ class FakeClock:
     """Virtual time for tests and the simulator: sleeping advances time instantly."""
 
     def __init__(self, t: float = 0.0) -> None:
+        """Begin at absolute virtual time t seconds, which is also birth until `start`."""
         self._t = t
         self._t0 = t
 
     def start(self) -> None:
+        """Mark birth at the current virtual time."""
         self._t0 = self._t
 
     def elapsed(self) -> float:
+        """Virtual seconds since `start`."""
         return self._t - self._t0
 
     def now(self) -> float:
@@ -83,15 +96,18 @@ class FakeClock:
         return self._t
 
     def advance(self, s: float) -> None:
+        """Move virtual time forward s seconds; raises ValueError if s is negative."""
         if s < 0:
             raise ValueError("time cannot go backwards")
         self._t += s
 
     async def sleep(self, s: float) -> None:
+        """Jump s seconds forward at once, then yield to the event loop once."""
         self.advance(max(0.0, s))
         await asyncio.sleep(0)
 
     def charge(self, cost_s: float) -> None:
+        """Advance by a cost in seconds; negative costs are ignored."""
         self.advance(max(0.0, cost_s))
 
 
@@ -111,11 +127,17 @@ class _VirtualSelector(selectors.DefaultSelector):
     """Polls real I/O without blocking and turns the loop's timer wait into a time jump."""
 
     def __init__(self, loop: VirtualEventLoop, real_wait_s: float) -> None:
+        """Jump `loop`'s clock; wait up to real_wait_s real seconds for executor wake-ups."""
         super().__init__()
         self._loop = loop
         self._real_wait_s = real_wait_s
 
     def select(self, timeout: float | None = None) -> list[tuple[selectors.SelectorKey, int]]:
+        """Return ready I/O at once; otherwise jump virtual time by the timer wait.
+
+        With no timer pending, wait briefly in real time for another thread, then raise
+        VirtualDeadlock.
+        """
         ready = super().select(0)
         if ready or timeout == 0:
             return ready
@@ -134,13 +156,20 @@ class VirtualEventLoop(asyncio.SelectorEventLoop):
     timer. Deterministic, and a 60-minute life runs in milliseconds."""
 
     def __init__(self, start: float = 0.0, real_wait_s: float = 2.0) -> None:
+        """Begin at virtual time start seconds.
+
+        real_wait_s is how long, in real seconds, an idle loop with no timers waits for an
+        executor thread before declaring a VirtualDeadlock.
+        """
         self._vt = start
         super().__init__(_VirtualSelector(self, real_wait_s))
 
     def time(self) -> float:
+        """The loop's virtual time in seconds; asyncio schedules every timer against it."""
         return self._vt
 
     def jump(self, s: float) -> None:
+        """Move virtual time forward s seconds; raises ValueError if s is negative."""
         if s < 0:
             raise ValueError("time cannot go backwards")
         self._vt += s
@@ -151,13 +180,16 @@ class VirtualClock:
     so concurrent sleepers overlap as they would on a real clock."""
 
     def __init__(self, loop: VirtualEventLoop) -> None:
+        """Read time from `loop`; birth is the loop's current time until `start`."""
         self.loop = loop
         self._t0 = loop.time()
 
     def start(self) -> None:
+        """Mark birth at the loop's current virtual time."""
         self._t0 = self.loop.time()
 
     def elapsed(self) -> float:
+        """Virtual seconds since `start`."""
         return self.loop.time() - self._t0
 
     def now(self) -> float:
@@ -165,6 +197,7 @@ class VirtualClock:
         return self.loop.time()
 
     async def sleep(self, s: float) -> None:
+        """`asyncio.sleep` for s virtual seconds; other tasks run meanwhile."""
         await asyncio.sleep(max(0.0, s))
 
     def charge(self, cost_s: float) -> None:
@@ -173,6 +206,7 @@ class VirtualClock:
         self.loop.jump(max(0.0, cost_s))
 
     def advance(self, s: float) -> None:
+        """Jump the loop forward s seconds, like `FakeClock.advance`."""
         self.loop.jump(s)
 
 
@@ -197,6 +231,7 @@ class Schedule:
     """Knob values at any moment of a life, from a resolved profile."""
 
     def __init__(self, profile: Profile, lifespan_s: float | None = None) -> None:
+        """Resolve profile's keyframe times, rescaled to lifespan_s seconds when given."""
         self.profile = profile if lifespan_s is None else profile.with_lifespan(lifespan_s)
         p = self.profile
         self.lifespan_s = p.lifespan_s
@@ -221,7 +256,10 @@ class Schedule:
         return next((c for c in self.change_times() if c > t_s), None)
 
     def at(self, t_s: float) -> Knobs:
-        """Stepped fields hold the last keyframe's value; interpolated fields move linearly."""
+        """The knobs at t seconds after birth.
+
+        Stepped fields hold the last keyframe's value; interpolated fields move linearly.
+        """
         i = max(0, bisect_right(self.times, t_s) - 1)
         cur = self.values[i]
         nxt = self.values[i + 1] if i + 1 < len(self.values) else None
@@ -285,6 +323,7 @@ class Schedule:
         ]
 
     def erosion_times(self) -> list[float]:
+        """Keyframe times where the number of persona groups changes."""
         return [
             self.times[i]
             for i in range(1, len(self.values))
@@ -292,6 +331,7 @@ class Schedule:
         ]
 
     def health_times(self) -> list[float]:
+        """Keyframe times where the health label changes."""
         return [
             self.times[i]
             for i in range(1, len(self.values))

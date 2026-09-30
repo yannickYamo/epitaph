@@ -57,6 +57,11 @@ class TimeSpec:
     from_end: bool
 
     def resolve(self, nominal_s: float, lifespan_s: float) -> float:
+        """Seconds after birth in a life of lifespan_s.
+
+        A plain time scales with the lifespan relative to nominal_s; an end-anchored time
+        keeps its distance from the end.
+        """
         if self.from_end:
             return lifespan_s - self.seconds
         return self.seconds * lifespan_s / nominal_s
@@ -154,13 +159,16 @@ class Profile:
 
     @property
     def unbounded(self) -> bool:
+        """True for the homage profile that never forgets and dies when memory is full."""
         return bool(self.settings.get("unbounded", False))
 
     @property
     def verify_level(self) -> str:
+        """How thoroughly `epitaph verify` checks a life of this profile ("full" by default)."""
         return str(self.settings.get("verify_level", "full"))
 
     def with_lifespan(self, lifespan_s: float) -> Profile:
+        """A copy that lives lifespan_s seconds; keyframes stay symbolic until resolved."""
         return Profile(
             self.name, self.nominal_s, lifespan_s, self.keyframes, self.death, self.settings
         )
@@ -238,6 +246,7 @@ class Config:
     llamacpp_tag: str
 
     def get(self, dotted: str, default: Any = None) -> Any:
+        """Look up a dotted key such as "backend.ctx"; default if any part is missing."""
         node: Any = self.data
         for part in dotted.split("."):
             if not isinstance(node, dict) or part not in node:
@@ -246,15 +255,21 @@ class Config:
         return node
 
     def section(self, name: str) -> dict[str, Any]:
+        """A top-level table, or an empty dict if it is absent or not a table."""
         value = self.data.get(name, {})
         return value if isinstance(value, dict) else {}
 
     @property
     def ctx(self) -> int:
+        """Context window in tokens: the profile's `ctx` if set, else `backend.ctx`."""
         return int(self.profile.settings.get("ctx", self.get("backend.ctx", 2048)))
 
     @property
     def state_dir(self) -> Path:
+        """Where lives and state files go (BUILD_PLAN 6.1).
+
+        "auto" means /var/lib/epitaph on a Pi where it exists, else ~/.local/share/epitaph.
+        """
         raw = str(self.get("paths.state_dir", "auto"))
         if raw == "auto":
             if self.hw_class in ("pi4", "pi5") and Path("/var/lib/epitaph").exists():
@@ -263,6 +278,7 @@ class Config:
         return Path(raw).expanduser()
 
     def model(self, name: str | None = None) -> ModelSpec:
+        """The named model, or the first of `life.models`; raises ConfigError if unknown."""
         wanted = name or str(self.get("life.models", [""])[0])
         if wanted not in self.models:
             raise ConfigError(f"model {wanted!r} is not in config/models.toml")
@@ -270,6 +286,10 @@ class Config:
 
 
 def load_models(hw_class: str) -> tuple[dict[str, ModelSpec], str]:
+    """Read config/models.toml: the model specs and the pinned llama.cpp tag.
+
+    Each model gets its precision ladder for hw_class; a class without one uses the Pi 4 ladder.
+    """
     raw = _read_toml(CONFIG_DIR / "models.toml")
     ladder_class = hw_class if hw_class in ("pi4", "pi5", "dev") else "pi4"
     out: dict[str, ModelSpec] = {}
@@ -322,6 +342,7 @@ def load_config(
 
 
 def system_tokens(cfg: Config, groups: int, mechanics: bool) -> int:
+    """Estimated system prompt size in tokens for this many persona groups (BUILD_PLAN 5.3)."""
     est = cfg.section("estimate")
     return int(groups * int(est.get("system_tokens_per_group", 30))) + (
         int(est.get("mechanics_tokens", 70)) if mechanics else 0
@@ -329,6 +350,7 @@ def system_tokens(cfg: Config, groups: int, mechanics: bool) -> int:
 
 
 def reading_tokens(cfg: Config, form: str) -> int:
+    """Estimated size in tokens of a sensor reading in the given form (full, short, minimal)."""
     table = cfg.get("estimate.reading_tokens", {}) or {}
     return int(table.get(form, 45))
 
