@@ -63,3 +63,50 @@ def test_deterministic() -> None:
     a = [e["type"] + str(e.get("text", "")) for e in simulate(cfg, seed=3).events]
     b = [e["type"] + str(e.get("text", "")) for e in simulate(cfg, seed=3).events]
     assert a == b
+
+
+def test_event_conventions() -> None:
+    """Contract decisions E2, E3, D2, D6 and E4: `t` on every event (0 before birth),
+    `birth_loading` names what the life runs with, and `gen_end` carries its timings."""
+    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    r = simulate(cfg, lives=2)
+    assert all("t" in e for e in r.events)
+    for life in (1, 2):
+        loading = next(e for e in r.events if e["life"] == life and e["type"] == "birth_loading")
+        assert loading["t"] == 0.0
+        assert loading["profile"] == "pi4/compressed-2700"
+        assert loading["hardware"] == "pi4-4gb"
+        assert loading["lifespan_s"] == cfg.profile.lifespan_s
+    ends = [e for e in r.events if e["type"] == "gen_end"]
+    assert all(e["prompt_n"] > 0 and e["tok_s"] > 0 for e in ends)
+
+
+def test_every_memory_cut_emits_forget_the_reload_included() -> None:
+    """Decision D5: the display fades what the reload cut, like any other loss."""
+    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    types = [e["type"] for e in r.events]
+    for i, e in enumerate(r.events):
+        if e["type"] == "reload":
+            assert e["recall_after"] < e["recall_before"]
+            assert types[i + 1] == "forget" and r.events[i + 1]["items"]
+
+
+def test_readings_come_from_the_mind() -> None:
+    """The simulator writes the real readings, marker included (mind.prompt.Reader)."""
+    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
+    assert readings[0].startswith("[host] t+00:00 · boot complete · health: nominal")
+    assert any("forgotten:" in x for x in readings)
+    assert readings[-1].startswith("[host] ") and " · terminal · " in readings[-1]
+    vitals = [e for e in r.events if e["type"] == "vitals"]
+    assert vitals[0]["marker"] is False and vitals[-1]["marker"] is True
+
+
+def test_a_full_context_from_the_server_is_a_full_death(monkeypatch) -> None:
+    """If the server's count says full before the mind's does, the life still ends `full`."""
+    from epitaph.mind.memory import Memory
+
+    monkeypatch.setattr(Memory, "fits", lambda *a, **k: True)
+    cfg = load_config("pi4/unbounded", "pi4-4gb")
+    cfg.profile.settings["ctx"] = 1200
+    assert simulate(cfg).causes == ["full"]
