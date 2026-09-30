@@ -326,13 +326,23 @@ class CgroupBody:
         self._share = cores
 
     def death_limit_bytes(self) -> int:
+        """The death level: a fraction of the creature's *anonymous* memory.
+
+        S3: a limit below the anonymous memory kills in about 1 s in every load mode (swap
+        is off, so anon cannot be reclaimed). A limit that only undercuts memory.current
+        does not kill an mmap creature: the kernel evicts weight pages and it thrashes on
+        the SD card (no kill in 30 s, 5 of 5). memory.current is the fallback when
+        memory.stat has no anon line.
+        """
         if self.settings.death_limit_mb is not None:
             return self.settings.death_limit_mb * MIB
-        try:
-            current = int(_read(self.creature / "memory.current"))
-        except (OSError, ValueError):
-            current = 0
-        return max(4 * MIB, int(current * self.settings.death_fraction))
+        base = read_flat_keyed(self.creature / "memory.stat").get("anon", 0)
+        if not base:
+            try:
+                base = int(_read(self.creature / "memory.current"))
+            except (OSError, ValueError):
+                base = 0
+        return max(4 * MIB, int(base * self.settings.death_fraction))
 
     def squeeze_to_death(self) -> None:
         """Take the creature's RAM: memory.max below its working set (swap is off)."""
