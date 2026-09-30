@@ -138,3 +138,55 @@ cache model agrees (`tests/sim/test_mind_life.py::test_cache_reuse_holds_through
 It also showed a second trap, fixed in `mind/memory.py`: a live trim that cuts words inside a
 kept thought puts new tokens in front of everything after it, like the old marker, so live
 trims now cut on turn boundaries (words only inside the last remaining turn).
+
+## Phase 0c, round 2: speed never rises across a reload (part V, 2026-09-30)
+
+Review 2, F2 (binding): the generation speed after a reload may be at most the speed before
+it. Lower precision is faster on the Pi 4 (generation is memory-bound), so without a change
+the round-1 profile went from 1.65 to 2.41 tokens/s at reload 1 (Q8_0 to Q4_K_M), which the
+viewer would read as the creature getting better. Each reload keyframe now sets the CPU share
+from the measured Qwen3 1.7B rates so the new step is no faster than the old one:
+
+| Reload | Before | After (depth rate) | CPU share | Why this share |
+|---|---|---|---|---|
+| 1 (28:00; 11:15) | Q8_0, 3 threads, 3.0 cores: 1.65 tokens/s | Q4_K_M, 3 threads: 2.41 at 3.0 cores, **1.61 at 2.0** | 3.0 -> **2.0** | 3 x 1.653 / 2.412 = 2.06 is the most that keeps 2.41 x share / 3 under 1.65 |
+| 2 (end-17:00; end-20:30) | Q4_K_M at 2.0 cores: 1.61 | Q2_K, 2 threads: 2.04 at 2.0 cores, **1.53 at 1.5** | 2.0 -> **1.5** | 2 x 1.608 / 2.036 = 1.58 |
+
+The comparison uses the bench's depth rates (`tg_tok_s`), which is what the rehearsal charges
+and what verify-life's `speed_monotonic` compares (part E: the mean of two thoughts on each
+side, 5% tolerance). At a short context (the bench birth thought) the ratios are 1.03 and 1.00.
+On the Pi itself a thought just after a reload runs at a shorter context than the one before
+it, so the real ratio can come out a little above 1; round 1's S1c drift (F8) is the other
+unknown. The Pi lives of phase 2 will show it.
+
+A lower share also slows the post-reload re-read (prompt threads are capped by the share, QUESTIONS
+A #9), so the post-reload recalls come down to keep the silence under 180 s:
+
+| Keyframe | Field | Before | After |
+|---|---|---|---|
+| reload 1 | recall | 300 | **240** |
+| decline (36:00; 20:00) | recall | 260 | **210** |
+| reload 2 | recall | 200 | **120** |
+| erosion steps 1-4 | recall | 170, 140, 110, 80 | **110, 100, 90, 70** |
+| erosion steps 1-3 | CPU share | 1.7, 1.3, 0.9 | **1.4, 1.1, 0.8** (never above the 1.5 of reload 2) |
+
+The shares only fall from birth to death, so the speed never rises at any other keyframe either.
+
+```
+profile pi4/default: 38 thoughts in 60 min -> PASS
+  note: speed last 5 min / first 5 min 0.31 (limit < 0.40): 1.84 -> 0.58 tokens/s
+  note: 38 thoughts; costs from bench (5 files) over overlay pi4-4gb; cache reuse assumed; generation eases to 86% over 30 min
+  note: reload silences 163s, 171s
+profile pi4/compressed-2700: 30 thoughts in 45 min -> PASS
+  note: speed last 5 min / first 5 min 0.31 (limit < 0.40): 1.84 -> 0.58 tokens/s
+  note: reload silences 162s, 170s
+```
+
+(before: 40 and 32 thoughts, silences 128 s / 153 s and 128 s / 154 s). The other Pi 4
+profiles have no reload. The margins under 180 s are thin (9-18 s): a slower re-read on the Pi
+means a smaller post-reload recall, not a higher share.
+
+**Only Qwen3 1.7B has a measured ladder.** For every other model steps 1 and 2 are the overlay's
+estimates, which are not comparable with a measured step 0, so the F2 check means nothing for
+them until the 3-4B ladders are measured (part A, this round). The profiles are per hardware
+class, not per model; after checkpoint A they are rebased on the chosen models (F1, F9).
