@@ -17,4 +17,5 @@ rsync -a "$root/config/default.toml" $host:epitaph-spike/config/
 # Measured costs wait in bench/measured/ until the integrator rebases the profiles on them
 # (costmodel.load_costs reads bench/*.json directly; see docs/SPIKE.md).
 ssh $host 'mkdir -p ~/epitaph-spike/bench/measured; for f in ~/epitaph-spike/bench/pi4-*.json; do [ -e "$f" ] && mv "$f" ~/epitaph-spike/bench/measured/; done; true'
-rsync -a $host:epitaph-spike/bench/ "$root/bench/"
+# --update: a file edited here since (e.g. a note added to a parked result) is newer and kept.
+rsync -a --update $host:epitaph-spike/bench/ "$root/bench/"
