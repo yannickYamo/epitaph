@@ -221,35 +221,39 @@ class FakeBackend:
     # -- tokens and cache --------------------------------------------------------------------
 
     async def count_past_tokens(self, messages: list[Msg]) -> int:
-        return sum(_msg_tokens(m) for m in messages)
+        return sum(n for m in messages for _, n in _blocks(m.role, m.content))
 
     def _plan(self, messages: list[Msg]) -> tuple[list[tuple[str, int]], int, int]:
-        """(blocks, tokens to process, tokens reused) for this prompt against the cache."""
-        blocks = [(_key(m.role, m.content), _msg_tokens(m)) for m in messages]
+        """(blocks, tokens to process, tokens reused) for this prompt against the cache.
+
+        Mirrors llama-server's `--cache-reuse` scan: after the common prefix, the prompt
+        position only moves on a match of at least `cache_reuse_min` tokens, while the cache
+        position skips ahead. So removed text (a front trim, an erosion step) is skipped and
+        the kept text is reused, but new text inserted before kept text (a marker in front of
+        the oldest turn) stops reuse there, and everything after it is re-read (spike S2f).
+        Blocks are message headers and lines, so a line prepended to a reading is its own block.
+        """
+        blocks = [b for m in messages for b in _blocks(m.role, m.content)]
         old = self._cache.blocks
         prefix = 0
         while prefix < min(len(old), len(blocks)) and old[prefix] == blocks[prefix]:
             prefix += 1
         reused = sum(n for _, n in blocks[:prefix])
         todo = sum(n for _, n in blocks[prefix:])
-        if self.cache_reuse and prefix < len(blocks):
-            # Reuse runs of blocks that appear contiguously in the old cache after the prefix.
-            i = prefix
-            j0 = prefix
-            while i < len(blocks):
-                run = 0
-                j = next((x for x in range(j0, len(old)) if old[x] == blocks[i]), None)
-                start = i
-                while j is not None and i < len(blocks) and j < len(old) and old[j] == blocks[i]:
-                    run += blocks[i][1]
-                    i += 1
-                    j += 1
-                if run >= self.cache_reuse_min and j is not None:
+        if self.cache_reuse:
+            i = j = prefix
+            while i < len(blocks) and j < len(old):
+                run, k = 0, 0
+                while i + k < len(blocks) and j + k < len(old) and old[j + k] == blocks[i + k]:
+                    run += blocks[i + k][1]
+                    k += 1
+                if k and run >= self.cache_reuse_min:
                     reused += run
                     todo -= run
-                    j0 = j
-                if i == start:
-                    i += 1
+                    i += k
+                    j += k
+                else:
+                    j += 1
         return blocks, todo, reused
 
     def _check_faults(self) -> None:
@@ -363,7 +367,7 @@ class FakeBackend:
         log.t_end = self.clock.now()
         # The generated text joins the cache like a real server's slot, so the next prompt
         # that repeats it as an assistant message keeps it cached.
-        self._cache.blocks = [*blocks, (_key("assistant", "".join(text)), n + 4)]
+        self._cache.blocks = [*blocks, *_blocks("assistant", "".join(text))]
         yield Chunk(
             "",
             done=True,
@@ -384,13 +388,11 @@ def _last_user(messages: list[Msg]) -> str:
     return next((m.content for m in reversed(messages) if m.role == "user"), "")
 
 
-def _key(role: str, content: str) -> str:
-    return f"{role}\x00{content.strip()}"
-
-
-def _msg_tokens(m: Msg) -> int:
-    """About 4 letters per token, plus the chat template's per-message overhead."""
-    return len(m.content) // 4 + 4
+def _blocks(role: str, content: str) -> list[tuple[str, int]]:
+    """A message as cache blocks: its template header (with the end of the turn), then one
+    block per line (about 4 letters per token)."""
+    lines = content.strip().split("\n")
+    return [(f"<{role}>", 3)] + [(line, len(line) // 4 + 1) for line in lines]
 
 
 def _split_tokens(piece: str) -> list[str]:
