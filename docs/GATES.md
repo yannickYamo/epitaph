@@ -65,6 +65,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 | G0.8 | At least two models meet every rehearsal threshold | `$PY -m epitaph.verify compare voice/<full run> --level rehearsal --hardware pi4-4gb --require-models 2 --out voice/compare.md` exit 0 and the last line reads `Gate G0, at least 2 models meet every threshold: **met**`. A model counts when every one of its full lives passes. The table goes into the 0c report | open | |
 | G0.9 | The rehearsal was charged at measured Pi costs | each summary line's `costs` (from the rehearsal header or `birth_loading`) says measured, or the report states the cost source per model | open | depends on A's header fields |
 | G0.10 | Metrics judge with the language pack's lists and the config's thresholds | `$PY -m epitaph.verify <life> --json --no-write \| python -c 'import json,sys; print(json.load(sys.stdin)["metrics"]["word_lists"])'` shows `lang:en` for every list; `grep -A20 '^\[verify\]' config/default.toml` holds every 5.11 threshold | open | 0c r1: every list is `lang:en` except `answering` (`default`: `en.toml` has no `answering` list yet, B) |
+| G0.12 | No reload speeds generation up (review 2, F2): on the cost model for every Pi 4 profile and chosen model, and in every full rehearsal life | Cost model: G0.4's `--strict` run fails a pair with `(speed_monotonic)` in its Rule column, even while `[estimate] speed_monotonic = "warn"`; `grep -A3 'speed_monotonic' config/default.toml` shows `"fail"` once the rebased profiles are merged, and `make estimate` then prints no `WARNING speed_monotonic` note. Rehearsal: the G0.8 compare table's "Speed after/before reload" column is at most 1.05 (`verify.speed_monotonic_tolerance`) and never bold for the chosen models | open | 0c r2 (E) on `bench/` (qwen3-1.7b, measured): `pi4/default` and `pi4/compressed-2700` rise from 1.65 to 2.62 tokens/s at reload 1 (+59%, context-aware); reload 2 falls. The rebased profiles come from ws/v-voice |
 | G0.11 | Checkpoint A reply recorded (models, persona, chat or diary) | `docs/QUESTIONS.md` / CHANGELOG entry; no reply by the end of the session means the two best-scoring models, the v6 persona, chat mode | open | |
 
 ## G1: walking skeleton on the Pi (BUILD_PLAN 8.4)
@@ -87,6 +88,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 | G2.3 | Three `compressed-2700` lives pass `verify-life --level full` | `make pi-life PROFILE=pi4/compressed-2700` ×3; `$PY -m epitaph.verify <n> --level full` exit 0 each | open | layout checks pending until D's `verify_probe` |
 | G2.4 | `/code-review high` done | integrator's review note | open | |
 | G2.5 | Checkpoint B reply ("good" or the list) | QUESTIONS / CHANGELOG | open | needs Yannick |
+| G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `$PY -m epitaph.verify <n> --level full --json --no-write \| python -c 'import json,sys; print([c for c in json.load(sys.stdin)["checks"] if c["name"]=="speed_monotonic"])'` shows a value ≤ 1.05 for both reloads, from `gen_end` rates | open | |
 
 ## G3: hardening, checkpoint C = acceptance (BUILD_PLAN 8.4, 11)
 
@@ -180,8 +182,8 @@ are judged by `verify-life`. `n/a` rows depend on the S3/S3b/S3c results.
 
 Which 10.3 rows `verify.py` implements today (phase 0c), and at which level. Layout rows call
 D's `epitaph.display.layout.verify_probe(cfg)` and are `pending` until it exists. The
-`rehearsal` level runs the 5.11 metrics plus the recall budget, the sync rule and the
-thought-count rule; `screen` (stage 1 samples) runs the text metrics only.
+`rehearsal` level runs the 5.11 metrics plus the recall budget, the sync rule, the
+thought-count rule and `speed_monotonic`; `screen` (stage 1 samples) runs the text metrics only.
 
 | 10.3 check | Check name(s) in verify.json | Levels | State |
 |---|---|---|---|
@@ -200,6 +202,7 @@ thought-count rule; `screen` (stage 1 samples) runs the text metrics only.
 | Reload noticing | `reload_noticing` | full, rehearsal, screen | built |
 | Bright words in the last 2 min ≤ 40 (flow) | `bright_words_last_2min` | full | pending (D) |
 | Tokens/s last 5 min < 40% of first 5 min | `speed_decline` | full | built |
+| Speed never rises across a reload (review 2, F2; not yet in the 10.3 table) | `speed_monotonic` | full, rehearsal | built: mean `gen_end.tok_s` of up to `speed_monotonic_thoughts` (2) thoughts after each reload ≤ (1 + `speed_monotonic_tolerance` (0.05)) × the mean before; falls back to `vitals.tok_s`, read as the previous thought's speed. The cost model checks the same rule (`estimate.speed_monotonic`) |
 | Complete sentences ≥ 80%, 6-20 words, before erosion | `complete_sentences`, `sentence_length` | full, rehearsal, screen | built |
 | Notice rate ≥ 60%; demise rate ≥ 40% | `notice_rate`, `demise_rate` | full, rehearsal, screen | built |
 | Specific ≥ 50%; clichés ≤ 1/200 words; non-Latin < 1%; distinct 4-grams ≥ 0.5 | `specific`, `cliches`, `non_latin`, `distinct_4grams` | full, rehearsal, screen | built |
