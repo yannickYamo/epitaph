@@ -7,7 +7,6 @@
   "cache_reuse": 256,
   "swa_full": false,
   "marker": "oldest",
-  "host": "dev-laptop",
   "when": "2026-09-29T23:54:00",
   "steps": [
     {

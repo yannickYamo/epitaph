@@ -8,7 +8,6 @@
   "kv": "f16",
   "file_mb": 1223,
   "when": "2026-09-30T02:05:43",
-  "host": "epitaph",
   "mem_available_before_mb": 3603,
   "load_s": 32.7,
   "cold": true,
@@ -52,5 +51,9 @@
   "throttled": "throttled=0x0",
   "birth_ok": false,
   "cache_reuse_works": true,
-  "cache_reuse_note": "S2f/S2t: warm trims and erosion re-read 2-8% with --cache-reuse (Gemma 3 needs --swa-full)"
+  "cache_reuse_note": "S2f/S2t: warm trims and erosion re-read 2-8% with --cache-reuse (Gemma 3 needs --swa-full)",
+  "tg_ctx_model": {
+    "a_s": 0.32683,
+    "b_s_per_token": 0.0001607
+  }
 }

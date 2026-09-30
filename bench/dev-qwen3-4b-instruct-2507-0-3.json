@@ -8,7 +8,6 @@
   "kv": "f16",
   "file_mb": 2382,
   "when": "2026-09-30T00:11:42",
-  "host": "dev-laptop",
   "mem_available_before_mb": 12648,
   "load_s": 4.2,
   "cold": false,

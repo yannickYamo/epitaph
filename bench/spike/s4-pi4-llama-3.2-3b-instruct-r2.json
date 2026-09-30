@@ -1,0 +1,49 @@
+{
+  "spike": "S4",
+  "model": "llama-3.2-3b-instruct",
+  "from": "Q6_K",
+  "cases": [
+    {
+      "quant": "Q4_K_M",
+      "threads": 3,
+      "threads_batch": 3,
+      "recall": 300,
+      "memory_tokens": 172,
+      "cold": true,
+      "load_mode": "dio",
+      "prefill": true,
+      "stop_s": 0.7,
+      "load_s": 52.3,
+      "prefill_tokens": 262,
+      "prefill_s": 79.6,
+      "reread_tokens": 212,
+      "reread_s": 66.4,
+      "pp_tok_s": 3.1923419931884154,
+      "total_s": 199.0,
+      "throttled": "throttled=0x0",
+      "temp_c": 50.634,
+      "ok": false
+    },
+    {
+      "quant": "Q2_K",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 200,
+      "memory_tokens": 86,
+      "cold": true,
+      "load_mode": "dio",
+      "prefill": true,
+      "stop_s": 0.7,
+      "load_s": 38.5,
+      "prefill_tokens": 262,
+      "prefill_s": 88.9,
+      "reread_tokens": 126,
+      "reread_s": 43.3,
+      "pp_tok_s": 2.9125555809800594,
+      "total_s": 171.3,
+      "throttled": "throttled=0x0",
+      "temp_c": 50.634,
+      "ok": true
+    }
+  ]
+}

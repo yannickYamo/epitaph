@@ -123,7 +123,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "kv": args.kv or "f16",
         "file_mb": round(path.stat().st_size / 2**20),
         "when": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "host": __import__("socket").gethostname(),
     }
     if args.cold:
         drop_caches()
