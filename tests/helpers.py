@@ -205,10 +205,14 @@ def life_events(events: list[Event], n: int = 1) -> list[Event]:
     return [copy.deepcopy(e) for e in events if e.get("life") == n]
 
 
-def retext(events: list[Event], fn: Callable[[int, str], str]) -> list[Event]:
+def retext(
+    events: list[Event], fn: Callable[[int, str], str], pause_after_ms: int | None = None
+) -> list[Event]:
     """Rewrite what each thought says, keeping its timing: fn(turn, old_text) -> new_text.
 
-    The new words take the old words' release times (extra words reuse the last one's)."""
+    The new words take the old words' release times (extra words reuse the last one's).
+    `pause_after_ms` replaces every word's pause, so a longer text still finishes typing
+    before the next thought is requested (the sync rule)."""
     out: list[Event] = []
     by_turn: dict[int, list[Event]] = {}
     for e in events:
@@ -225,7 +229,10 @@ def retext(events: list[Event], fn: Callable[[int, str], str]) -> list[Event]:
             new_words = fn(turn, " ".join(str(w["text"]) for w in old)).split()
             for i, w in enumerate(new_words):
                 src = old[min(i, len(old) - 1)]
-                out.append({**src, "i": i, "text": w, "char_ms": [55] * len(w)})
+                new = {**src, "i": i, "text": w, "char_ms": [55] * len(w)}
+                if pause_after_ms is not None:
+                    new["pause_after_ms"] = pause_after_ms
+                out.append(new)
         elif e["type"] == "thought_end":
             turn = int(e["turn"])
             words = by_turn.get(turn, [])
