@@ -94,7 +94,7 @@ def render_png(
     try:
         for e in events or []:
             drv.view.handle(e, now)
-        drv.draw(now)
+        drv.draw(now, force=True)
         drv.pg.image.save(drv.window, str(path))
         assert drv.last_frame is not None
         return drv.last_frame
