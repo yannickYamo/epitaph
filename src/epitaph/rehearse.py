@@ -52,6 +52,7 @@ import json
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -62,7 +63,7 @@ from epitaph.backend.fake import FakeBackend
 from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
 from epitaph.body.fake import FakeBody
 from epitaph.clock import FakeClock, Schedule, VirtualClock, run_virtual
-from epitaph.config import REPO_ROOT, Config, load_config, parse_duration
+from epitaph.config import REPO_ROOT, Config, deep_merge, load_config, parse_duration
 from epitaph.costmodel import Costs, estimate, load_costs
 from epitaph.events import Event, make_event
 from epitaph.mind.memory import Memory
@@ -102,6 +103,7 @@ __all__ = [
     "laptop_settings",
     "main",
     "moments",
+    "parse_set",
     "run",
     "run_life",
     "run_screen",
@@ -1196,11 +1198,34 @@ def _append_index(out_root: Path, line: str) -> None:
 # the command
 
 
+def parse_set(items: Sequence[str]) -> dict[str, Any]:
+    """`--set` items ("sampling.dry_penalty_last_n=256") as a nested override table.
+
+    Values are TOML literals (numbers, booleans, "strings", [lists]); anything that does
+    not parse is taken as a bare string. Raises ValueError for an item without "=".
+    """
+    out: dict[str, Any] = {}
+    for item in items:
+        key, sep, raw = item.partition("=")
+        if not sep or not key.strip():
+            raise ValueError(f"--set wants key=value, got {item!r}")
+        try:
+            value: Any = tomllib.loads(f"v = {raw}")["v"]
+        except tomllib.TOMLDecodeError:
+            value = raw
+        node = out
+        *parents, leaf = key.strip().split(".")
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[leaf] = value
+    return out
+
+
 def _config(args: argparse.Namespace, persona: str, model: str, profile: str) -> Config:
-    overrides: dict[str, Any] = {
-        "prompt": {"persona_active": persona},
-        "life": {"models": [model]},
-    }
+    overrides = deep_merge(
+        parse_set(args.set or []),
+        {"prompt": {"persona_active": persona}, "life": {"models": [model]}},
+    )
     lifespan = parse_duration(args.lifespan) if args.lifespan else None
     return load_config(profile, args.hardware, lifespan, overrides)
 
@@ -1321,7 +1346,8 @@ def screen_markdown(
         "# Rehearsal screen",
         "",
         f"Profile `{profile}`, hardware `{args.hardware}`, backend `{args.backend}`, "
-        f"{args.thoughts} thoughts per moment, seed {args.seed}. Scores (0-4 per thought): "
+        f"{args.thoughts} thoughts per moment, seed {args.seed}, overrides "
+        f"{', '.join(args.set or []) or 'none'}. Scores (0-4 per thought): "
         "notices the moment's change, names its state or its end, clean voice, complete "
         "sentences. Keywords catch failures; they do not prove quality.",
         "",
@@ -1432,6 +1458,7 @@ def write_life_outputs(
         "",
         f"- profile `{cfg.profile.name}` on `{cfg.hardware}`, persona "
         f"`{cfg.get('prompt.persona_active')}`, backend `{args.backend}`, seed {args.seed}",
+        f"- overrides: {', '.join(args.set or []) or 'none'}",
         f"- Pi costs: {costs.describe()}",
         f"- rates not measured (used anyway): {', '.join(summary['not_measured']) or 'none'}",
         f"- cause {life.cause}, {life.thoughts} thoughts, lived "
@@ -1484,6 +1511,12 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--models-dir", default=DEFAULT_MODELS_DIR)
     p.add_argument("--bench-dir", default=str(DEFAULT_BENCH), help="measured Pi costs")
     p.add_argument("--out", default=str(DEFAULT_OUT), help="where run folders go (untracked)")
+    p.add_argument(
+        "--set",
+        action="append",
+        metavar="KEY=VALUE",
+        help="config override for a tuning run, e.g. sampling.dry_penalty_last_n=256",
+    )
 
 
 def run(args: argparse.Namespace) -> int:

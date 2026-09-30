@@ -31,6 +31,7 @@ from epitaph.rehearse import (
     keyword_matchers,
     main,
     moments,
+    parse_set,
     score_thought,
     thoughts_text,
 )
@@ -353,3 +354,14 @@ def test_echoes_finds_a_thought_that_copies_the_last() -> None:
     c = "The memory is smaller. I lost five thoughts at the reload."
     assert echoes([a, b, c, c]) == [1, 3]
     assert echoes([]) == [] and echoes(["one two"]) == []
+
+
+def test_parse_set_builds_nested_overrides() -> None:
+    got = parse_set(["sampling.dry_penalty_last_n=256", "prompt.mode=diary", "a.b=[1, 2]"])
+    assert got == {
+        "sampling": {"dry_penalty_last_n": 256},
+        "prompt": {"mode": "diary"},
+        "a": {"b": [1, 2]},
+    }
+    with pytest.raises(ValueError):
+        parse_set(["nothing"])
