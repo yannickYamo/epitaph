@@ -1,0 +1,55 @@
+{
+  "spike": "S4",
+  "model": "qwen3-1.7b",
+  "from": "Q8_0",
+  "cases": [
+    {
+      "quant": "Q4_K_M",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 512,
+      "cold": true,
+      "stop_s": 0.4,
+      "load_s": 32.2,
+      "reread_tokens": 923,
+      "reread_s": 148.6,
+      "pp_tok_s": 6.2139783233680665,
+      "total_s": 181.1,
+      "throttled": "throttled=0x0",
+      "temp_c": 55.017,
+      "ok": false
+    },
+    {
+      "quant": "Q4_K_M",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 300,
+      "cold": true,
+      "stop_s": 0.4,
+      "load_s": 32.4,
+      "reread_tokens": 647,
+      "reread_s": 102.2,
+      "pp_tok_s": 6.336276310065279,
+      "total_s": 134.9,
+      "throttled": "throttled=0x0",
+      "temp_c": 54.53,
+      "ok": true
+    },
+    {
+      "quant": "Q2_K",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 200,
+      "cold": true,
+      "stop_s": 0.4,
+      "load_s": 23.5,
+      "reread_tokens": 555,
+      "reread_s": 98.8,
+      "pp_tok_s": 5.6188390379077555,
+      "total_s": 122.7,
+      "throttled": "throttled=0x0",
+      "temp_c": 53.556,
+      "ok": true
+    }
+  ]
+}
