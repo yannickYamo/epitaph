@@ -181,13 +181,16 @@ class Memory:
     def cut_for_reload(self, recall: int, trim_to: float = 1.0) -> Forgetting:
         """The reload is also a memory loss: cut to the post-reload recall during the silence.
 
-        The restarted server re-reads everything anyway, so the cut goes to the word and to
-        `recall x trim_to`: it costs nothing extra and delays the next trim.
+        The cut goes to `recall x trim_to` (it delays the next trim) and removes whole turns.
+        With the slot hand-over (ADR-014) the new server starts from the old one's cache, and a
+        cut that ends inside a turn would force it to re-read almost everything after the cut
+        (a 4-5 minute silence for a 4B model on the Pi 4, seen in rehearsal); whole turns are
+        absorbed by cache reuse.
         """
         before = self.used()
         if before <= recall:
             return Forgetting(tokens_before=before, tokens_after=before)
-        return self._trim_to(_target(recall, trim_to), before, whole_turns=False)
+        return self._trim_to(_target(recall, trim_to), before, whole_turns=True)
 
     def _trim_to(self, target: int, before: int, whole_turns: bool) -> Forgetting:
         res = Forgetting(tokens_before=before)
