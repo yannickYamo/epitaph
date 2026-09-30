@@ -10,7 +10,6 @@
   "kv": "f16",
   "file_mb": 2374,
   "when": "2026-09-30T15:14:53",
-  "host": "epitaph",
   "cold": false,
   "throttled_before": "throttled=0x0",
   "load_s": 64.2,

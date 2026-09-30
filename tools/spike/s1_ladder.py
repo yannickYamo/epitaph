@@ -23,7 +23,6 @@ parks them in bench/measured/) and the raw run to --raw.
 from __future__ import annotations
 
 import argparse
-import socket
 import time
 from pathlib import Path
 from typing import Any
@@ -60,7 +59,6 @@ def one_server(
         "kv": "f16",
         "file_mb": round(path.stat().st_size / 2**20),
         "when": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "host": socket.gethostname(),
         "cold": cold,
         "throttled_before": throttled(),
     }

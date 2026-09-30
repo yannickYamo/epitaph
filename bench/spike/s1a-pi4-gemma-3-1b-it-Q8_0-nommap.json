@@ -8,7 +8,6 @@
   "kv": "f16",
   "file_mb": 1020,
   "when": "2026-09-30T01:58:09",
-  "host": "epitaph",
   "mem_available_before_mb": 3583,
   "load_s": 27.2,
   "cold": false,
