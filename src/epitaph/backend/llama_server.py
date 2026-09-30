@@ -59,6 +59,10 @@ class ServerSettings:
     # after a reload to 2 generation threads cuts the reload silence (pp scales with threads,
     # generation barely does on the Pi 4).
     threads_batch: int | None = None
+    # Tokens DRY scans for repeats; -1 = the whole context. llama.cpp b11277 defaults to 64,
+    # which never reaches the previous thought, so a small model can repeat it word for word
+    # (rehearsal 0c: Qwen3 1.7B copied its last thought for 20 turns).
+    dry_penalty_last_n: int | None = -1
     load_timeout_s: float = 300.0
     stop_timeout_s: float = 10.0
     log_path: str | None = None
@@ -89,8 +93,13 @@ class ServerSettings:
                 if cfg.get("backend.threads_batch") is not None
                 else None
             ),
+            dry_penalty_last_n=_opt_int(cfg.get("sampling.dry_penalty_last_n", -1)),
             load_timeout_s=float(cfg.get("life.load_timeout_s", 300)),
         )
+
+
+def _opt_int(v: Any) -> int | None:
+    return None if v is None else int(v)
 
 
 def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) -> list[str]:
@@ -125,12 +134,17 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
 
 
 def request_body(
-    messages: list[Msg] | None, sampling: Sampling, max_tokens: int, prompt: str | None = None
+    messages: list[Msg] | None,
+    sampling: Sampling,
+    max_tokens: int,
+    prompt: str | None = None,
+    dry_penalty_last_n: int | None = None,
 ) -> dict[str, Any]:
     """The JSON body of one streamed request, with the prompt cache on.
 
     A chat request (thinking off) when `messages` is given, else a raw completion of
-    `prompt`. `max_tokens` caps the generated tokens.
+    `prompt`. `max_tokens` caps the generated tokens. `dry_penalty_last_n` sets how far back
+    DRY looks for repeats (-1: the whole context; None: the server's default).
     """
     body: dict[str, Any] = {
         "stream": True,
@@ -141,6 +155,8 @@ def request_body(
         "repeat_penalty": sampling.repeat_penalty,
         "dry_multiplier": sampling.dry_multiplier,
     }
+    if dry_penalty_last_n is not None:
+        body["dry_penalty_last_n"] = dry_penalty_last_n
     if sampling.seed is not None:
         body["seed"] = sampling.seed
     if sampling.latin_only:
@@ -413,13 +429,17 @@ class LlamaServerBackend:
         and BackendError for any other server or stream error.
         """
         return self._stream(
-            "/v1/chat/completions", request_body(messages, sampling, max_tokens), chat=True
+            "/v1/chat/completions",
+            request_body(messages, sampling, max_tokens, None, self.s.dry_penalty_last_n),
+            chat=True,
         )
 
     def complete(self, prompt: str, sampling: Sampling, max_tokens: int) -> AsyncIterator[Chunk]:
         """Stream a raw completion of `prompt` from /completion (diary mode); errors as chat()."""
         return self._stream(
-            "/completion", request_body(None, sampling, max_tokens, prompt=prompt), chat=False
+            "/completion",
+            request_body(None, sampling, max_tokens, prompt, self.s.dry_penalty_last_n),
+            chat=False,
         )
 
     async def prefill(self, messages: list[Msg]) -> int:
