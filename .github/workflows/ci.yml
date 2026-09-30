@@ -1,0 +1,130 @@
+# CI on Ubuntu x86_64 (BUILD_PLAN 8.3, 8.7, 9 E2). Owned by part E.
+#
+# The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
+# CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,
+# the Pi 5 and sim profiles, verify-life on simulated lives, and the headless display tests.
+name: ci
+
+on:
+  push:
+    branches: [main, "ws/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the laptop, 3.13 the Pi; 3.11 is the floor in pyproject.
+        python: ["3.11", "3.12", "3.13"]
+    env:
+      SDL_VIDEODRIVER: dummy        # pygame renders offscreen
+      SDL_AUDIODRIVER: dummy
+      PYTHONPATH: ${{ github.workspace }}/src   # test this checkout's src, as the Makefile does
+      PY: ${{ github.workspace }}/.venv/bin/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: System packages (OCR for display test D13)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          tesseract --version | head -1
+
+      - name: Virtual environment
+        run: make venv
+
+      # --- make check, step by step -------------------------------------------------------
+      - name: Lint (ruff)
+        run: make lint
+
+      - name: Types (pyright)
+        run: make type
+
+      - name: Tests with coverage
+        run: make test
+
+      - name: Simulated 60-minute lives (under 90 s)
+        run: timeout 90 make sim
+
+      - name: Thought-count rule on every Pi 4 profile
+        run: make estimate
+
+      # --- extras -------------------------------------------------------------------------
+      - name: Coverage floors (80% overall; 90% on the strict modules and verify.py)
+        run: |
+          $PY -m coverage report --fail-under=80 > /dev/null
+          for f in src/epitaph/mind/*.py src/epitaph/{clock,pacing,state,events,controller,costmodel,verify}.py; do
+            [ -f "$f" ] || continue
+            case "$f" in */__init__.py) continue ;; esac
+            $PY -m coverage report --fail-under=90 --include="$f" > /dev/null \
+              || { echo "::error file=$f::coverage under 90%"; $PY -m coverage report --include="$f"; exit 1; }
+          done
+
+      - name: Thought-count rule on the sim profile
+        run: $PY -m epitaph estimate --profile sim --hardware pi4-4gb
+
+      - name: Thought-count rule on the Pi 5 profiles (simulated only; informational)
+        continue-on-error: true
+        run: |
+          rc=0
+          for hw in pi5-8gb pi5-16gb; do
+            for p in pi5/default pi5/skeleton-600 pi5/compressed-600 pi5/unbounded; do
+              $PY -m epitaph estimate --profile $p --hardware $hw || { rc=1; echo "::warning::estimate $p on $hw fails"; }
+            done
+          done
+          exit $rc
+
+      - name: Pi 5 and unbounded profiles pass simulation
+        run: |
+          for hw in pi5-8gb pi5-16gb; do
+            for p in pi5/default pi5/skeleton-600 pi5/compressed-600 pi5/unbounded; do
+              $PY -m epitaph sim --profile $p --hardware $hw --quiet
+            done
+          done
+          $PY -m epitaph sim --profile pi4/unbounded --hardware pi4-4gb --quiet
+
+      - name: verify-life on simulated lives
+        run: |
+          mkdir -p ci-lives
+          for p in smoke-300 skeleton-1200; do
+            $PY -m epitaph sim --profile pi4/$p --hardware pi4-4gb --lives 2 --events > ci-lives/$p.jsonl
+            $PY -m epitaph.verify ci-lives/$p.jsonl --profile pi4/$p --hardware pi4-4gb --out ci-lives/$p.verify.json
+          done
+
+      - name: Headless display tests
+        run: |
+          set +e
+          $PY -m pytest -q -m display tests/display
+          rc=$?
+          # 5 = nothing collected: the display tests have not landed yet.
+          if [ $rc -eq 5 ]; then echo "::notice::no display tests yet"; exit 0; fi
+          exit $rc
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-py${{ matrix.python }}
+          path: |
+            .coverage
+            ci-lives/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
