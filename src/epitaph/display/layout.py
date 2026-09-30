@@ -113,11 +113,15 @@ class ViewWord:
 
 @dataclass
 class Thought:
-    """The words of one turn, in the order they were released."""
+    """The words of one turn, in the order they were released.
+
+    `laid` caches the thought's last wrapping for the layout (see `_lay`).
+    """
 
     turn: int
     words: list[ViewWord] = field(default_factory=lambda: [])
     ended: bool = False
+    laid: tuple[Any, Any] | None = field(default=None, repr=False, compare=False)
 
 
 def char_ms_for(text: str, raw: Any, default: int = DEFAULT_CHAR_MS) -> tuple[int, ...]:
@@ -787,22 +791,49 @@ def flow_lines(
     return placed, (line + 1 if started else 0), after
 
 
+@dataclass(frozen=True)
+class _Laid:
+    """One thought wrapped on its own, starting at line 0 (see `flow_lines`)."""
+
+    placed: list[Placed]
+    nlines: int
+    after: tuple[int, int]
+
+
+def _lay(th: Thought, words: list[ViewWord], cols: int, charset: str) -> _Laid:
+    """Wrap `words` of `th` into `cols` columns, cached on the thought.
+
+    Placement depends only on the words' texts, so a thought whose shown words did not
+    change since the last frame is not wrapped again (each frame would otherwise wrap every
+    visible thought twice).
+    """
+    key = (cols, charset, tuple(id(w) for w in words))
+    cached = th.laid
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    texts = [(w, map_charset(w.text, charset)) for w in words]
+    placed, nlines, after = flow_lines([texts], cols)
+    laid = _Laid(placed, nlines, after)
+    th.laid = (key, laid)
+    return laid
+
+
 def _started(
     view: LifeView,
     now: float,
+    cols: int,
+    rows: int,
     keep: set[str] | None = None,
-    cols: int | None = None,
-    rows: int = 0,
-    mapper: Any = None,
+    charset: str = "unicode",
     blank_between: bool = True,
-) -> list[Thought]:
-    """Thoughts with the words typed so far, oldest first.
+) -> list[_Laid]:
+    """The thoughts with the words typed so far, oldest first, each wrapped on its own.
 
-    With `cols`, only the newest thoughts that can reach the screen are kept: every
-    thought starts on its own line, so they can be wrapped one by one from the end, and
-    a frame costs what is visible, not the whole history.
+    Only the newest thoughts that can reach the screen are kept: every thought starts on
+    its own line, so they can be wrapped one by one from the end, and a frame costs what
+    is visible, not the whole history.
     """
-    out: list[Thought] = []
+    out: list[_Laid] = []
     lines = 0
     for th in reversed(view.thoughts):
         words = [w for w in th.words if w.start <= now]
@@ -810,12 +841,11 @@ def _started(
             words = [w for w in words if w.state_at(now, view.s.fade_s) in keep]
         if not words:
             continue
-        out.append(Thought(th.turn, words, th.ended))
-        if cols is not None:
-            texts = [(w, mapper(w.text) if mapper else w.text) for w in words]
-            lines += flow_lines([texts], cols)[1] + (1 if blank_between and lines else 0)
-            if lines > rows + 1:
-                break
+        laid = _lay(th, words, cols, charset)
+        out.append(laid)
+        lines += laid.nlines + (1 if blank_between and lines else 0)
+        if lines > rows + 1:
+            break
     out.reverse()
     return out
 
@@ -825,56 +855,64 @@ def _compose(
     now: float,
     cols: int,
     rows: int,
-    thoughts: list[Thought],
-    mapper: Any,
+    thoughts: list[_Laid],
     blank_between: bool,
     status: str | None,
     gauge: float | None,
-    top: int = 0,
 ) -> Frame:
-    frame = Frame(cols=cols, rows=rows + top, status=status, gauge=gauge)
+    frame = Frame(cols=cols, rows=rows, status=status, gauge=gauge)
     frame.dim = view.dimmed()
     frame.card = view.card(now)
     frame.dark = view.dark(now)
     if frame.dark or frame.card is not None:
         return frame
-    seqs = [[(w, mapper(w.text)) for w in th.words] for th in thoughts]
-    placed, nlines, (cl, cc) = flow_lines(seqs, cols, blank_between)
+    # stack the thoughts as flow_lines would: each on a new line, a blank line between
+    starts: list[int] = []
+    line = 0
+    for n in range(len(thoughts)):
+        if n:
+            line += thoughts[n - 1].nlines - 1 + (2 if blank_between else 1)
+        starts.append(line)
+    nlines = starts[-1] + thoughts[-1].nlines if thoughts else 0
+    cl, cc = (starts[-1] + thoughts[-1].after[0], thoughts[-1].after[1]) if thoughts else (0, 0)
     cursor_mode = view.cursor(now)
     # the cursor rests after the last typed letter, or after the word in a pause
-    last = placed[-1] if placed else None
+    last = thoughts[-1].placed[-1] if thoughts else None
     if last is not None:
         shown = last.word.shown(now)
         if shown < len(last.word.text):
             cc = last.col + max(0, min(len(last.text), shown - last.offset))
-            cl = last.line
+            cl = starts[-1] + last.line
     if cc >= cols:
         cl, cc = cl + 1, 0
     total = max(nlines, cl + 1) if cursor_mode != "hidden" else nlines
     first = max(0, total - rows)
-    offset_row = top + rows - min(rows, total)  # newest at the bottom
+    offset_row = rows - min(rows, total)  # newest at the bottom
     split_ids: set[int] = set()
-    for p in placed:
-        if p.line < first:
+    fade_s = view.s.fade_s
+    for start, laid in zip(starts, thoughts, strict=True):
+        if start + laid.nlines <= first:
             continue
-        w = p.word
-        shown = w.shown(now)
-        visible = p.text[: max(0, min(len(p.text), shown - p.offset))]
-        if not visible:
-            continue
-        state = w.state_at(now, view.s.fade_s)
-        frame.spans.append(
-            Span(
-                p.line - first + offset_row,
-                p.col,
-                visible,
-                state,
-                w.fade_at(now, view.s.fade_s),
-                len(p.text),
+        for p in laid.placed:
+            line = start + p.line
+            if line < first:
+                continue
+            w = p.word
+            visible = p.text[: max(0, min(len(p.text), w.shown(now) - p.offset))]
+            if not visible:
+                continue
+            frame.spans.append(
+                Span(
+                    line - first + offset_row,
+                    p.col,
+                    visible,
+                    w.state_at(now, fade_s),
+                    w.fade_at(now, fade_s),
+                    len(p.text),
+                )
             )
-        )
-        if p.split:
-            split_ids.add(id(w))
+            if p.split:
+                split_ids.add(id(w))
     frame.split_words = len(split_ids)
     if cursor_mode != "hidden" and cl >= first:
         frame.cursor = Cursor(cl - first + offset_row, cc, cursor_mode)
@@ -889,15 +927,7 @@ def compose_flow(
     `Frame.status` and each driver draws it in its own place (smaller, above the text)."""
     status = view.status_line(now) if status_strip else None
     return _compose(
-        view,
-        now,
-        cols,
-        rows,
-        _started(view, now, cols=cols, rows=rows),
-        lambda s: s,
-        True,
-        status,
-        view.gauge(),
+        view, now, cols, rows, _started(view, now, cols, rows), True, status, view.gauge()
     )
 
 
@@ -912,26 +942,8 @@ def compose_grid(
     """An N x M character grid: live and inherited words only, mapped to the charset, and
     a memory gauge (bottom row) in place of fading."""
     text_rows = rows - 1 if gauge_row and rows >= 3 else rows
-    thoughts = _started(
-        view,
-        now,
-        {"live", "inherited"},
-        cols,
-        text_rows,
-        lambda s: map_charset(s, charset),
-        blank_between=False,
-    )
-    frame = _compose(
-        view,
-        now,
-        cols,
-        text_rows,
-        thoughts,
-        lambda s: map_charset(s, charset),
-        False,
-        None,
-        view.gauge(),
-    )
+    thoughts = _started(view, now, cols, text_rows, {"live", "inherited"}, charset, False)
+    frame = _compose(view, now, cols, text_rows, thoughts, False, None, view.gauge())
     if text_rows < rows and not frame.dark and frame.card is None:
         frame.rows = rows
         frame.spans.append(Span(rows - 1, 0, gauge_bar(frame.gauge, cols, charset), "gauge"))

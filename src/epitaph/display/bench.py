@@ -4,6 +4,8 @@ The bench drives a `ScreenDriver` on a virtual clock: a screen full of earlier t
 then a new thought typed letter by letter, rendered at the display's frame rate. The CPU
 time spent in `render` (composing, painting and updating the window) divided by the
 virtual seconds covered is the share of one core the screen would take on this machine.
+`present_share` is the part spent handing pixels to the video driver (`display.update`),
+which on the offscreen driver is not what a real screen costs.
 
 Scenarios:
 
@@ -86,6 +88,8 @@ def bench_render(
     and flipped whole (the drawing before D7), for comparison. Returns the measurements
     as a dict; `core_share` is CPU seconds per second of screen time.
     """
+    if scenario not in ("typing", "fade"):
+        raise ValueError(f"unknown scenario {scenario!r} (typing or fade)")
     os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
     from epitaph.display.screen import ScreenDriver
 
@@ -101,10 +105,9 @@ def bench_render(
             turns = [th.turn for th in drv.view.thoughts[:-1]]
             items = [{"turn": t, "all": True} for t in turns]
             drv.view.handle({"type": "forget", "life": 1, "items": items}, 0.0)
-        elif scenario != "typing":
-            raise ValueError(f"unknown scenario {scenario!r} (typing or fade)")
         frames = painted = 0
         pg = drv.pg
+        present = _PresentTimer(pg.display)
         now = start
         cpu0 = time.process_time()
         while True:
@@ -123,6 +126,7 @@ def bench_render(
                 painted += 1
         cpu = time.process_time() - cpu0
     finally:
+        present.restore()
         drv.close()
     return {
         "size": f"{size[0]}x{size[1]}",
@@ -135,8 +139,36 @@ def bench_render(
         "painted": painted,
         "cpu_s": round(cpu, 4),
         "core_share": round(cpu / seconds, 4),
+        "present_share": round(present.cpu / seconds, 4),
         "ms_per_painted_frame": round(1000 * cpu / max(1, painted), 3),
     }
+
+
+class _PresentTimer:
+    """Counts the CPU spent in `display.flip` and `display.update`: the video driver's
+    share, which differs between offscreen SDL and a real screen (KMSDRM, S5)."""
+
+    def __init__(self, display: Any) -> None:
+        self.display = display
+        self.cpu = 0.0
+        self.saved = {name: getattr(display, name) for name in ("flip", "update")}
+        for name, fn in self.saved.items():
+            setattr(display, name, self._timed(fn))
+
+    def _timed(self, fn: Any) -> Any:
+        def timed(*args: Any) -> Any:
+            t0 = time.process_time()
+            try:
+                return fn(*args)
+            finally:
+                self.cpu += time.process_time() - t0
+
+        return timed
+
+    def restore(self) -> None:
+        """Put the display module's own functions back."""
+        for name, fn in self.saved.items():
+            setattr(self.display, name, fn)
 
 
 def _size(text: str) -> tuple[int, int]:
