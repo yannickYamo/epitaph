@@ -1,0 +1,23 @@
+{
+  "spike": "S4",
+  "model": "llama-3.2-3b-instruct",
+  "from": "Q6_K",
+  "cases": [
+    {
+      "quant": "Q4_K_M",
+      "threads": 2,
+      "threads_batch": 3,
+      "recall": 512,
+      "cold": true,
+      "stop_s": 0.5,
+      "load_s": 49.8,
+      "reread_tokens": 898,
+      "reread_s": 279.3,
+      "pp_tok_s": 3.21501472884888,
+      "total_s": 329.7,
+      "throttled": "throttled=0x0",
+      "temp_c": 53.556,
+      "ok": false
+    }
+  ]
+}

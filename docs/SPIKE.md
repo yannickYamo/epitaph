@@ -109,17 +109,23 @@ page cache), the minimum over the run; with `--load-mode none` MemAvailable itse
 | llama-3.2-1b-instruct | Q8_0 | 3 | mmap | 33.2 | 56.6 | 9.36 | 2.617 / 2.231 | 2128 | yes | 0x0 |
 | llama-3.2-3b-instruct | Q6_K | 3 | mmap | 63.9 | 175.9 | 2.31 | 1.275 / 1.018 | 645 | yes | 0x0 |
 | phi-4-mini-instruct | Q4_K_M | 3 | mmap | 61.3 | 147.9 | 2.59 | 1.339 / 1.176 | 811 | yes | 0x0 |
+| qwen3-1.7b | Q8_0 | 2 | mmap | 52.4 | 101.3 | 4.04 | 1.879 / 1.596 | 1182 | yes | 0x0 |
 | qwen3-1.7b | Q8_0 | 3 | mmap | 52.2 | 81.2 | 5.96 | 1.84 / 1.653 | 1183 | yes | 0x0 |
+| qwen3-1.7b | Q4_K_M | 2 | mmap | 32.7 | 90.7 | 4.08 | 2.646 / 2.143 | 2024 | yes | 0x0 |
+| qwen3-1.7b | Q4_K_M | 3 | mmap | 32.3 | 68.0 | 5.89 | 2.837 / 2.412 | 2025 | yes | 0x0 |
+| qwen3-1.7b | Q2_K | 2 | mmap | 24.0 | 100.1 | 3.64 | 2.512 / 2.036 | 2409 | yes | 0x0 |
 | qwen3-4b-instruct-2507 | Q4_K_M | 3 | mmap | 60.5 | 165.2 | 2.36 | 1.261 / 1.047 | 774 | yes | 0x0 |
 | smollm3-3b | Q6_K | 3 | mmap | 61.1 | 175.6 | 2.37 | 1.367 / 1.183 | 872 | yes | 0x0 |
 | gemma-3-1b-it | Q8_0 | 3 | none | 27.2 |  | 12.43 |  /  | 2393 | yes | 0x0 |
 | gemma-3-4b-it | Q4_K_M | 3 | none | 60.0 |  | 2.74 |  /  | 702 | yes | 0x0 |
+| gemma-3-4b-it | Q4_K_M | 3 | mmap swa-full | 60.2 |  | 2.73 |  /  | 809 | yes | 0x0 |
 | llama-3.2-1b-instruct | Q8_0 | 3 | none | 32.6 |  | 9.69 |  /  | 2108 | yes | 0x0 |
 | llama-3.2-3b-instruct | Q6_K | 3 | none | 63.8 |  | 2.44 |  /  | 698 | yes | 0x0 |
 | phi-4-mini-instruct | Q4_K_M | 3 | none | 60.0 |  | 2.72 |  /  | 801 | yes | 0x0 |
 | qwen3-1.7b | Q8_0 | 3 | none | 51.5 |  | 6.33 |  /  | 1167 | yes | 0x0 |
 | qwen3-4b-instruct-2507 | Q4_K_M | 3 | none | 60.0 |  | 2.42 |  /  | 773 | yes | 0x0 |
 | smollm3-3b | Q6_K | 3 | none | 61.4 |  | 2.4 |  /  | 863 | yes | 0x0 |
+| qwen3-1.7b | Q4_0 | 2 | mmap | 31.7 | 94.5 | 3.91 | 2.559 / 2.086 | 2075 | yes | 0x0 |
 
 `llama-bench` (pp128, tg32, 3 threads, warm) for the other quants:
 
@@ -136,7 +142,7 @@ page cache), the minimum over the run; with `--load-mode none` MemAvailable itse
 
 **S1a (fit): GO for every candidate.** Every step-0 file fits at ctx 2048 with f16 KV in both
 load modes, with 589-2,393 MB headroom (the tightest: Gemma 3 4B Q4_K_M with mmap, 589 MB;
-with `--swa-full` see batch 2 below). Anonymous memory with mmap is small (170-600 MB: KV, compute
+with `--swa-full`, which Gemma needs for cache reuse, 809 MB in the fit-only run). Anonymous memory with mmap is small (170-600 MB: KV, compute
 buffers, repacked tensors); with `--load-mode none` the whole model is anonymous (2.8 GB for the
 3-4B). `q8_0` KV is not needed.
 
@@ -182,15 +188,80 @@ falling another way). Integrator's call at checkpoint A.
 
 ### S4: reload to the first token
 
-S4_TEXT
+`tools/spike/s4_reload.py`: the step-0 server is stopped (SIGTERM), the page cache dropped
+(cold) or the new file pre-read (warm), the new quant started at 2 threads, and the memory
+re-read (system + recall + reading) up to the first token. "tb" = prompt threads (`-tb`).
+
+| Case | cold | stop s | load s | re-read tokens | re-read s | total s | go (<=180 s) |
+|---|---|---|---|---|---|---|---|
+| llama-3.2-3b-instruct Q4_K_M t2/tb3 recall 512 | True | 0.5 | 49.8 | 898 | 279.3 | 329.7 | no |
+| qwen3-1.7b Q4_K_M t2/tb3 recall 512 | True | 0.4 | 32.2 | 923 | 148.6 | 181.1 | no |
+| qwen3-1.7b Q4_K_M t2/tb3 recall 300 | True | 0.4 | 32.4 | 647 | 102.2 | 134.9 | yes |
+| qwen3-1.7b Q2_K t2/tb3 recall 200 | True | 0.4 | 23.5 | 555 | 98.8 | 122.7 | yes |
+| qwen3-1.7b Q4_K_M t2/tb2 recall 512 | True | 0.4 | 32.6 | 923 | 216.6 | 249.6 | no |
+| qwen3-1.7b Q4_K_M t2/tb2 recall 512 | False | 0.4 | 8.7 | 923 | 215.8 | 224.9 | no |
+| qwen3-1.7b Q2_K t2/tb2 recall 200 | True | 0.4 | 23.9 | 555 | 145.7 | 169.9 | yes |
+| qwen3-1.7b Q2_K t2/tb2 recall 200 | False | 0.4 | 8.1 | 555 | 145.5 | 154.0 | yes |
+
+- **Qwen3 1.7B: GO with the fallback.** At the default post-reload recall 512 the reload takes
+  225-250 s with 2 prompt threads and 181 s with 3 (fails the 180 s go by a hair). With 3 prompt
+  threads and a post-reload recall of 300 it is 135 s, and at reload 2 (Q2_K, recall 200) 123 s.
+  Load is 24-33 s cold, 8-9 s warm: the re-read dominates, so warm vs cold matters little.
+- **Llama 3.2 3B: NO-GO at recall 512** (330 s even with 3 prompt threads; the re-read alone is
+  279 s). A 3-4B on the Pi 4 needs a post-reload recall of about 100-150, or no reload.
+- **Fallback applied in the recommendation:** `threads_batch = 3` (CONTRACT_CHANGES #6) and
+  post-reload recall 300 at reload 1 for Qwen3 1.7B. The next reading can also be shortened; the
+  system prompt (about 280 tokens) is the largest fixed part of every re-read.
 
 ### S2t: re-read timings on the Pi
 
-S2T_TEXT
+Leader (Qwen3 1.7B Q8_0), 3 threads, `--cache-reuse 256`, marker appended to the reading
+(`bench/spike/s2-pi4-qwen3-1.7b-marker-reading.json`). Prompt speed 5.0-6.4 tokens/s.
+
+| Edit | tokens re-read | pause (prompt time) s |
+|---|---|---|
+| a normal turn | 96 | 15.5-18.5 |
+| first trim with the marker (in the reading) | 103 | 20.8 |
+| warm front trim | 96 | 18.7 |
+| erosion step | 96 | 18.9 |
+| cut to the late recall (about 170 tokens) | 230 | 37.2 |
+| erosion at the late recall | 91 | 15.6 |
+| re-read after a reload (587 tokens, fresh server) | 587 | 92.9 |
+
+**GO:** warm trim pause 19-21 s (go: at most 30 s); erosion 16-19 s at 3 threads (go at late
+settings: at most 90 s; at 2 threads and a 1.1-core CPU share the same 91 tokens take about 40 s).
+
+Qwen3 re-reads 96 tokens per turn where the others re-read 40-52: its template drops the empty
+think block from earlier assistant turns, so the cached thought no longer matches and the
+~60-token piece is below the 256-token reuse chunk. With `--cache-reuse 32` (laptop,
+`s2-dev-qwen3-1.7b-reuse32`): 54 tokens per turn and the late cut re-reads 12% instead of 51%;
+Llama 3B and Gemma 4B are unchanged at 4-5%. **Proposed: `cache_reuse = 32`** (CONTRACT_CHANGES #6).
 
 ### S1c: 30 minutes of sustained generation
 
-S1C_TEXT
+Qwen3 1.7B Q8_0, 3 threads, 30 minutes, thought after thought (70 tokens) with a rolling memory
+of about 1,000 tokens; `vcgencmd` sampled every 5 s (`bench/spike/s1c-pi4-qwen3-1.7b.json`).
+
+| Measure | Value |
+|---|---|
+| Thoughts | 32 |
+| Under-voltage bit ever set | no (`get_throttled=0x0` at the end) |
+| Samples throttled or capped | 0% |
+| Max temperature | 56.5 °C (no heatsink or fan) |
+| Lowest ARM clock | 1800 MHz |
+| tg first 5 min / last 5 min | 1.807 / 1.424 tokens/s (drift 21%) |
+
+**Heat and power: GO.** The official supply holds under sustained load: no under-voltage, no
+throttling, the clock never left 1.8 GHz, 56 °C at most. Decision 22 (cooling) is not needed.
+
+**Drift: 21%, over the 10% bound, but not thermal.** The speed falls steadily
+(1.84 → 1.39 tokens/s) while the clock and temperature stay flat,
+and it keeps falling after the memory stops growing (about minute 9). The likely cause (not yet
+proven) is the KV cache filling up with holes: cache reuse shifts kept turns, and attention runs
+over every used cell up to the highest one, so its cost grows toward the full 2,048 context. For the
+cost model this means **using late-life generation speed** (about 1.4 tokens/s for Qwen3 1.7B Q8_0,
+about 20% under the birth speed) rather than the birth speed. A check for next round: the same
+soak with the server restarted every 10 minutes, or `/slots` n_past against speed.
 
 ### Using the numbers
 

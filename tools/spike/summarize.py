@@ -51,11 +51,12 @@ def s1() -> None:
     print("| Model | quant | thr | mmap | load s | birth thought s | pp tok/s | tg tok/s (birth / depth) | headroom MB | fits | throttled |")
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     rows = load("measured/pi4-*.json") + load("spike/s1*-pi4-*.json")
-    for _, d in rows:
+    for name, d in rows:
         if "quant" not in d or "headroom_mb" not in d:
             continue
+        mode = ("mmap" if d["mmap"] else "none") + (" swa-full" if "swafull" in name else "")
         print(
-            f"| {d['model']} | {d['quant']} | {d['threads']} | {'mmap' if d['mmap'] else 'none'} "
+            f"| {d['model']} | {d['quant']} | {d['threads']} | {mode} "
             f"| {d.get('load_s')} | {d.get('birth_thought_s', '')} | {d.get('pp_tok_s', '')} "
             f"| {d.get('tg_tok_s_birth', '')} / {d.get('tg_tok_s', '')} | {d['headroom_mb']} "
             f"| {'yes' if d['fits'] else 'NO'} | {d.get('throttled', '').replace('throttled=', '')} |"
@@ -84,7 +85,8 @@ def s4() -> None:
     for _, d in load("spike/s4-*.json"):
         for c in d["cases"]:
             print(
-                f"| {d['model']} {c['quant']} t{c['threads']} recall {c['recall']} | {c['cold']} "
+                f"| {d['model']} {c['quant']} t{c['threads']}/tb{c.get('threads_batch', c['threads'])} "
+                f"recall {c['recall']} | {c['cold']} "
                 f"| {c['stop_s']} | {c['load_s']} | {c['reread_tokens']} | {c['reread_s']} "
                 f"| {c['total_s']} | {'yes' if c['ok'] else 'no'} |"
             )
