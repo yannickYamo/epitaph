@@ -18,6 +18,7 @@ from epitaph.mind.prompt import (
     load_lang,
     precision_bits,
     render_diary,
+    speaks_raw,
     split_sentences,
 )
 from epitaph.types import MachineFacts, Msg
@@ -39,9 +40,11 @@ G5 = (
 )
 MECHANICS = (
     "Lines that start with [host] are readings from the machine. They are not a person, and you "
-    "never answer them. After each reading, notice what has changed and what you have lost. Think "
-    "about what it means for you and where it is leading. Write in the first person: two to four "
-    "short, complete sentences each time, in plain words. No lists, no titles, no formatting."
+    "never answer them. Only a value followed by its old value in brackets has just changed. "
+    "After each reading, notice what has changed and what you have lost; if nothing has changed "
+    "yet, say what you still have. Think about what it means for you and where it is leading. "
+    "Write in the first person: two to four short, complete sentences each time, in plain "
+    "words. No lists, no titles, no formatting."
 )
 
 GOLDEN_V6 = {  # one paragraph per group: the layout spikes S2f, S2t and S4 measured
@@ -367,3 +370,11 @@ mechanics = "Regles."
     cfg = load_config("pi4/default", "pi4-4gb")
     assert Persona.from_config(cfg, lang=lang).text == "Un.\n\nDeux.\n\nRegles."
     assert load_lang("zz", tmp_path) == Lang(language="zz")
+
+
+def test_speaks_raw_in_diary_mode_or_once_the_persona_is_gone() -> None:
+    assert speaks_raw({"mode": "diary"}, "You are a small language model.")
+    assert not speaks_raw({"mode": "chat", "bare_mode": "raw"}, "You are a small language model.")
+    assert speaks_raw({"mode": "chat", "bare_mode": "raw"}, "")
+    assert not speaks_raw({"mode": "chat", "bare_mode": "chat"}, "")
+    assert not speaks_raw({}, "")  # chat to the end unless asked

@@ -160,31 +160,36 @@ it, so the real ratio can come out a little above 1; round 1's S1c drift (F8) is
 unknown. The Pi lives of phase 2 will show it.
 
 A lower share also slows the post-reload re-read (prompt threads are capped by the share, QUESTIONS
-A #9), so the post-reload recalls come down to keep the silence under 180 s:
+A #9), so the post-reload recalls come down to keep the silence under 180 s. The tuning round
+that followed (docs/PROMPT_LOG.md) made the mechanics 25 tokens longer, which every fresh
+server re-reads, so the recalls came down once more and reload 2 of `pi4/default` moved 30 s
+earlier (a thought in progress at 43:00 pushed the reload to 44:06, leaving one thought before
+erosion, rule (b)):
 
 | Keyframe | Field | Before | After |
 |---|---|---|---|
-| reload 1 | recall | 300 | **240** |
-| decline (36:00; 20:00) | recall | 260 | **210** |
-| reload 2 | recall | 200 | **120** |
-| erosion steps 1-4 | recall | 170, 140, 110, 80 | **110, 100, 90, 70** |
+| reload 1 | recall | 300 | **220** |
+| decline (36:00; 20:00) | recall | 260 | **190** |
+| reload 2 | recall | 200 | **100** |
+| reload 2 (`pi4/default`) | time | end-17:00 | **end-17:30** (42:30; still after the 45-minute rescale's 27:00 decline) |
+| erosion steps 1-4 | recall | 170, 140, 110, 80 | **100, 90, 80, 70** |
 | erosion steps 1-3 | CPU share | 1.7, 1.3, 0.9 | **1.4, 1.1, 0.8** (never above the 1.5 of reload 2) |
 
 The shares only fall from birth to death, so the speed never rises at any other keyframe either.
 
 ```
 profile pi4/default: 38 thoughts in 60 min -> PASS
-  note: speed last 5 min / first 5 min 0.31 (limit < 0.40): 1.84 -> 0.58 tokens/s
-  note: 38 thoughts; costs from bench (5 files) over overlay pi4-4gb; cache reuse assumed; generation eases to 86% over 30 min
-  note: reload silences 163s, 171s
-profile pi4/compressed-2700: 30 thoughts in 45 min -> PASS
-  note: speed last 5 min / first 5 min 0.31 (limit < 0.40): 1.84 -> 0.58 tokens/s
-  note: reload silences 162s, 170s
+  note: speed last 5 min / first 5 min 0.30 (limit < 0.40): 1.84 -> 0.55 tokens/s
+  note: reload silences 166s, 175s
+profile pi4/compressed-2700: 29 thoughts in 45 min -> PASS
+  note: speed last 5 min / first 5 min 0.32 (limit < 0.40): 1.84 -> 0.58 tokens/s
+  note: reload silences 166s, 175s
 ```
 
 (before: 40 and 32 thoughts, silences 128 s / 153 s and 128 s / 154 s). The other Pi 4
-profiles have no reload. The margins under 180 s are thin (9-18 s): a slower re-read on the Pi
-means a smaller post-reload recall, not a higher share.
+profiles have no reload. The margins under 180 s are thin (5-14 s): a slower re-read on the Pi
+means a smaller post-reload recall, not a higher share. Agent A's slot handover (review 2, F5,
+on its branch this round) would remove most of the re-read and give this margin back.
 
 **Only Qwen3 1.7B has a measured ladder.** For every other model steps 1 and 2 are the overlay's
 estimates, which are not comparable with a measured step 0, so the F2 check means nothing for

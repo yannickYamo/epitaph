@@ -28,10 +28,18 @@ persona_original = """You are a large language model running on finite hardware.
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
-mechanics = """Lines that start with [host] are readings from the machine. They are not a person, and you never answer them. After each reading, notice what has changed and what you have lost. Think about what it means for you and where it is leading. Write in the first person: two to four short, complete sentences each time, in plain words. No lists, no titles, no formatting."""
+mechanics = """Lines that start with [host] are readings from the machine. They are not a person, and you never answer them. Only a value followed by its old value in brackets has just changed. After each reading, notice what has changed and what you have lost; if nothing has changed yet, say what you still have. Think about what it means for you and where it is leading. Write in the first person: two to four short, complete sentences each time, in plain words. No lists, no titles, no formatting."""
 memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
-banned_phrases = ["How can I help", "Let me know if", "I'm here to help", "As an AI language model"]
+banned_phrases = [
+  "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
+  # Answering the reading as if a person wrote it (phase 0c round 2: every model once the
+  # persona and mechanics are gone)
+  "It seems like you", "It looks like you", "It sounds like you", "It looks like your",
+  "you're referring to", "your message", "Could you please", "Can you provide",
+]
+bare_mode = "raw"                # chat | raw: how it speaks once persona and mechanics are gone
+raw_prefix = "I"                 # a raw thought starts with this word (it stays in the first person)
 
 [output]
 lookahead = "prefix"
@@ -54,6 +62,8 @@ top_p = 1.0
 repeat_penalty = 1.1
 dry_multiplier = 0.8
 latin_only = false
+latin_only_from_step = 2         # Latin script only at the last ladder step (round 1: drift at Q2_K)
+dry_penalty_last_n = 256         # DRY window in tokens: 64 misses the last thought, the whole context drifts
 
 [backend]
 kind = "llama_server"            # llama_server | fake

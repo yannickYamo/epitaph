@@ -131,7 +131,7 @@ def test_rescale_moves_fractional_keyframes_only() -> None:
     assert short.lifespan_s == 2700
     # 12:00 of 60 becomes 9:00 of 45; end-17:00 stays 17 minutes before the end
     assert 9 * 60 in short.times
-    assert short.reload_times() == [21 * 60, 2700 - 17 * 60]
+    assert short.reload_times() == [21 * 60, 2700 - 17.5 * 60]
     assert short.erosion_times() == [2700 - x * 60 for x in (11, 9, 7, 5, 3)]
     assert short.death_s == 2700 - 30
     assert base.erosion_times()[0] - base.reload_times()[1] == (
