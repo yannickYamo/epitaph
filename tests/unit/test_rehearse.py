@@ -272,6 +272,10 @@ def test_life_folder_has_every_output(life_dir: Path) -> None:
     assert "pi4-qwen3-1.7b-0-3.json" in report and "verify-life --level rehearsal" in report
     hl = (life_dir / "highlights.md").read_text()
     assert "## First thoughts" in hl and "### after reload" in hl and "## The last 5" in hl
+    meta = json.loads((life_dir / "meta.json").read_text())
+    assert meta["type"] == "rehearsal" and meta["stage"] == "full"
+    assert meta["model"] == "qwen3-1.7b" and meta["persona"] == "persona"
+    assert meta["costs"] in ("measured", "estimated")
 
 
 def test_life_events_follow_the_contract(life_dir: Path) -> None:

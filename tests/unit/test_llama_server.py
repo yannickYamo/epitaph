@@ -7,6 +7,7 @@ network and no model are needed. The real server is exercised in tests/templates
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import signal
 import sys
@@ -297,7 +298,7 @@ async def test_count_past_tokens_on_a_template_that_wants_alternating_roles() ->
         payload = json.loads(req.content)
         if req.url.path == "/apply-template":
             roles = [m["role"] for m in payload["messages"]]
-            if any(a == b for a, b in zip(roles, roles[1:], strict=False)):
+            if any(a == b for a, b in itertools.pairwise(roles)):
                 return httpx.Response(400, json={"error": {"message": "must alternate"}})
             text = "".join(f"<{m['role']}>{m['content']}" for m in payload["messages"])
             return httpx.Response(200, json={"prompt": text})
