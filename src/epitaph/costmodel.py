@@ -144,7 +144,8 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
 
         if (k.step, k.threads) != (life.step, life.threads) and t - life.last_reload >= min_gap:
             reload_start = t
-            life.memory = min(life.memory, k.recall)
+            # The reload cuts memory the way Memory.cut_for_reload does (contract C-B4).
+            life.memory = min(life.memory, int(k.recall * trim_to))
             t += costs.load(k.step)
             life.step, life.threads, life.last_reload = k.step, k.threads, reload_start
             extra += sys_tokens + life.memory  # a fresh server reads everything
