@@ -283,7 +283,7 @@ def test_compare_ranks_and_judges_g06(run_dir: Path, tmp_path: Path, capsys) -> 
 def test_compare_json_rows(run_dir: Path, capsys) -> None:
     assert v.main(["compare", str(run_dir / "gemma-v6-s1"), "--json", "--require-models", "0"]) == 0
     rows = json.loads(capsys.readouterr().out)
-    assert len(rows) == 1 and rows[0]["label"].endswith("gemma-v6-s1")
+    assert len(rows) == 1 and rows[0]["label"] == "gemma-v6-s1"
     assert rows[0]["ok"] is False and "notice_rate" in rows[0]["failed"]
 
 
