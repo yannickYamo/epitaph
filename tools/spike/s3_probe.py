@@ -300,7 +300,7 @@ def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction
                 wait_s: float, basis: str = "current", mode: str = "") -> dict[str, Any]:
     body.reset_creature_cgroup()
     srv = Server(body, args.server, args.model, 3, mmap, load_mode=mode)
-    trial: dict[str, Any] = {"mmap": mmap, "mode": mode or ("mmap" if mmap else "none"),
+    trial: dict[str, Any] = {"via_body": bool(args.via_body), "mmap": mmap, "mode": mode or ("mmap" if mmap else "none"),
                              "fraction": fraction, "basis": basis,
                              "env_before": body_env()}
     try:
@@ -320,8 +320,12 @@ def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction
             base = int((body.creature / "memory.current").read_text())
         limit = int(base * fraction)
         t0 = now()
-        (body.creature / "memory.max").write_text(str(limit))
-        body._squeezed_at = t0  # noqa: SLF001 - the probe stands in for apply()
+        if args.via_body:  # the controller's own path: CgroupBody.squeeze_to_death()
+            body.squeeze_to_death()
+            limit = int((body.creature / "memory.max").read_text())
+        else:
+            (body.creature / "memory.max").write_text(str(limit))
+            body._squeezed_at = t0  # noqa: SLF001 - the probe stands in for apply()
         n0 = len(stamps)
         while srv.proc.poll() is None and now() - t0 < wait_s:
             time.sleep(0.02)
@@ -457,6 +461,7 @@ def main() -> int:
     ap.add_argument("--eviction", action="store_true")
     ap.add_argument("--anon-reps", type=int, default=2)
     ap.add_argument("--modes", nargs="+", default=["none", "mmap"])
+    ap.add_argument("--via-body", action="store_true", help="squeeze with CgroupBody itself")
     ap.add_argument("--no-mmap", action="store_true")
     ap.add_argument("--tokens", type=int, default=48)
     ap.add_argument("--levels", type=int, nargs="+", default=[200, 170, 140, 110, 90, 70])
