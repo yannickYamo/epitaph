@@ -10,8 +10,9 @@ Round 2 (review item F8) explains the drift, so every thought also logs:
   - the slot's logical context from GET /slots (n_past = prompt + decoded tokens, n_ctx);
   - with --kv-debug, the KV cache's high-water mark: the cells attention runs over
     (llama.cpp's n_kv is the highest used cell + 1, padded to 256). A trim frees cells at the
-    front and cache reuse shifts the kept turns' positions, not their cells, so the holes stay
-    and the high-water mark can sit above the logical context;
+    front and cache reuse shifts the kept turns' positions, not their cells; the freed cells
+    are refilled from the front, so the mark stays at the largest context held (round 2:
+    speed follows the mark, R2 0.99, not n_past);
   - variants: --restart-every-min restarts the server (the next request re-reads everything
     into a fresh cache), --compact-every-min saves and restores the slot, which writes the
     cells back from cell 0 without the holes.
