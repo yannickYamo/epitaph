@@ -173,8 +173,12 @@ def test_death_squeeze_once_with_fraction(fs: Path, sys_paths: SysPaths) -> None
     (c / "memory.current").write_text(str(2000 * 1024 * 1024))
     body.apply(knobs(death=False))
     assert (c / "memory.max").read_text() == "max"
-    body.apply(knobs(death=True))
+    body.apply(knobs(death=True))  # no memory.stat: half of memory.current
     assert (c / "memory.max").read_text() == str(1000 * 1024 * 1024)
+    body.reset_creature_cgroup()
+    (c / "memory.stat").write_text(f"anon {300 * 1024 * 1024}\nfile {1900 * 1024 * 1024}\n")
+    body.apply(knobs(death=True))  # half of anon: below what the kernel cannot reclaim
+    assert (c / "memory.max").read_text() == str(150 * 1024 * 1024)
     (c / "memory.max").write_text("sentinel")
     body.apply(knobs(death=True))  # applied once per life
     assert (c / "memory.max").read_text() == "sentinel"
