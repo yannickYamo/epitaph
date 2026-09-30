@@ -3,9 +3,12 @@
 # Saves the partition table, the boot partition, and the used blocks of the rootfs.
 # The rootfs is mounted while imaged, so the result is crash-consistent.
 # Usage: tools/sd_backup.sh [host] [out_dir]
+# Without a host it prefers the cable (`pi-eth`, several GB) and falls back to Wi-Fi.
 set -euo pipefail
 
-HOST="${1:-${PI_HOST:-pi}}"
+# shellcheck source=tools/pi_host.sh
+. "$(dirname "$0")/pi_host.sh"
+HOST="${1:-$(PI_HOSTS="${PI_HOSTS:-pi-eth pi}" pi_host)}"
 OUT="${2:-$HOME/epitaph-backups/$(date +%Y%m%d-%H%M%S)}"
 DISK=/dev/mmcblk0
 

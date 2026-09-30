@@ -241,6 +241,15 @@ def test_reset_kills_leftover_creature(fs: Path, sys_paths: SysPaths) -> None:
     assert body.wait_empty(0.1)
 
 
+def test_every_life_starts_with_swap_off(fs: Path, sys_paths: SysPaths) -> None:
+    """The Pi keeps zram swap for the system (F11); the creature never gets any of it."""
+    body = make(fs, sys_paths)
+    c = fs / REL / "creature"
+    (c / "memory.swap.max").write_text("max")  # whatever a previous life or a person left
+    body.reset_creature_cgroup()
+    assert (c / "memory.swap.max").read_text() == "0"
+
+
 def test_populated_from_procs(fs: Path, sys_paths: SysPaths) -> None:
     body = make(fs, sys_paths)
     (fs / REL / "creature" / "cgroup.procs").write_text("11\n12\n")

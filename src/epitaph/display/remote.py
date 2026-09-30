@@ -4,11 +4,17 @@ SSH tunnel (BUILD_PLAN 4 decision 7, 9 D3).
     epitaph display                          # on the Pi: 127.0.0.1:7707
     epitaph display --connect pi             # on the laptop: ssh -N -L <free>:127.0.0.1:7707 pi
     epitaph display --connect pi --driver screen
+    epitaph display --connect pi,pi-eth      # try pi (Wi-Fi), then pi-eth (the cable)
 
 The bus never listens on the network; the tunnel carries it. When the connection drops
 (the controller restarts, Wi-Fi blinks, the tunnel dies) the view says so in the status
 strip, reconnects with backoff (restarting ssh if needed) and redraws from the snapshot
 the bus sends first on every subscription.
+
+`--connect` takes SSH aliases in order of preference. Each (re)start of the tunnel tries
+them in turn, so the view moves to the cable when mDNS fails and back to Wi-Fi when it
+returns (BUILD_PLAN F12). The bare alias `pi` implies `pi,pi-eth`, the two aliases every
+tool uses (docs/PI_FACTS.md).
 """
 
 from __future__ import annotations
@@ -19,13 +25,30 @@ import contextlib
 import json
 import socket
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from epitaph.events import subscribe
 
 Event = dict[str, Any]
+
+# The laptop's aliases for the Pi (docs/PI_FACTS.md): Wi-Fi via mDNS first, then the cable.
+DEFAULT_FALLBACKS: dict[str, tuple[str, ...]] = {"pi": ("pi-eth",)}
+
+
+def parse_hosts(spec: str) -> list[str]:
+    """SSH aliases from a `--connect` value, in order of preference.
+
+    `"a,b"` gives `["a", "b"]`; a single alias with known fallbacks (`pi`) gets them appended.
+    Raises ValueError when no alias is given.
+    """
+    hosts = [h.strip() for h in spec.split(",") if h.strip()]
+    if not hosts:
+        raise ValueError(f"no ssh host in {spec!r}")
+    if len(hosts) == 1:
+        hosts += [h for h in DEFAULT_FALLBACKS.get(hosts[0], ()) if h not in hosts]
+    return hosts
 
 
 def free_port() -> int:
@@ -41,6 +64,7 @@ def tunnel_argv(host: str, local_port: int, remote_port: int = 7707, ssh: str = 
         ssh,
         "-N",
         "-o", "ExitOnForwardFailure=yes",
+        "-o", "ConnectTimeout=8",
         "-o", "ServerAliveInterval=5",
         "-o", "ServerAliveCountMax=3",
         "-o", "BatchMode=yes",
@@ -62,7 +86,7 @@ async def port_open(host: str, port: int, timeout: float = 0.5) -> bool:
 
 
 class Tunnel:
-    """An `ssh -N -L` process kept alive across reconnects."""
+    """An `ssh -N -L` process kept alive across reconnects, with fallback hosts."""
 
     def __init__(
         self,
@@ -71,12 +95,16 @@ class Tunnel:
         local_port: int = 0,
         argv: Callable[[str, int, int], list[str]] = tunnel_argv,
         ready_timeout: float = 20.0,
+        fallbacks: Sequence[str] = (),
     ) -> None:
         """Prepare, but do not start, a tunnel from `local_port` to `host`:`remote_port`.
 
         `local_port` 0 picks a free port. `argv` builds the ssh command (swapped in tests).
         `ready_timeout` is how long `ensure` waits, in seconds, for the local end to accept.
+        `fallbacks` are further aliases for the same machine, tried in order when `host`
+        fails; every restart begins again with `host`.
         """
+        self.hosts = [host, *(h for h in fallbacks if h != host)]
         self.host = host
         self.remote_port = remote_port
         self.local_port = local_port or free_port()
@@ -93,32 +121,45 @@ class Tunnel:
     async def ensure(self) -> tuple[str, int]:
         """Start ssh if it is not running and wait until the local end accepts.
 
-        Returns the local (host, port) to subscribe to. Raises ConnectionError when ssh
-        exits early (with its stderr) or the port is not ready within `ready_timeout`.
+        Tries each host in `hosts` in order; `host` is the one that answered. Returns the
+        local (host, port) to subscribe to. Raises ConnectionError, with every host's
+        reason, when none of them gives a working tunnel.
         """
         if not self.alive:
-            self.proc = await asyncio.create_subprocess_exec(
-                *self.argv(self.host, self.local_port, self.remote_port),
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            self.starts += 1
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + self.ready_timeout
-            while not await port_open("127.0.0.1", self.local_port):
-                if not self.alive:
-                    err = b""
-                    if self.proc.stderr is not None:
-                        err = await self.proc.stderr.read()
-                    raise ConnectionError(
-                        f"ssh {self.host} exited: {err.decode(errors='replace').strip()}"
-                    )
-                if loop.time() > deadline:
-                    await self.close()
-                    raise ConnectionError(f"ssh tunnel to {self.host} not ready")
-                await asyncio.sleep(0.2)
+            errors: list[str] = []
+            for host in self.hosts:
+                try:
+                    await self._start(host)
+                except ConnectionError as e:
+                    errors.append(str(e))
+                    continue
+                self.host = host
+                break
+            else:
+                raise ConnectionError("; ".join(errors))
         return "127.0.0.1", self.local_port
+
+    async def _start(self, host: str) -> None:
+        """Start ssh to `host` and wait for the local end; ConnectionError if it fails."""
+        self.proc = await asyncio.create_subprocess_exec(
+            *self.argv(host, self.local_port, self.remote_port),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        self.starts += 1
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.ready_timeout
+        while not await port_open("127.0.0.1", self.local_port):
+            if not self.alive:
+                err = b""
+                if self.proc.stderr is not None:
+                    err = await self.proc.stderr.read()
+                raise ConnectionError(f"ssh {host} exited: {err.decode(errors='replace').strip()}")
+            if loop.time() > deadline:
+                await self.close()
+                raise ConnectionError(f"ssh tunnel to {host} not ready")
+            await asyncio.sleep(0.2)
 
     async def close(self) -> None:
         """Stop ssh: terminate, then kill if it has not exited after 3 seconds."""
@@ -190,7 +231,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="epitaph display", description=(__doc__ or "").split("\n\n")[0]
     )
-    p.add_argument("--connect", metavar="HOST", help="watch a remote controller through ssh -L")
+    p.add_argument(
+        "--connect",
+        metavar="HOST[,HOST...]",
+        help="watch a remote controller through ssh -L; later hosts are fallbacks (pi = pi,pi-eth)",
+    )
     p.add_argument("--driver", choices=["terminal", "screen"], default=None)
     p.add_argument("--port", type=int, default=None, help="bus port on the controller (7707)")
     p.add_argument("--local-port", type=int, default=0, help="local end of the tunnel (free port)")
@@ -223,7 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     if name == "screen":
         opts.update(size=parse_size(args.size), fullscreen=args.fullscreen)
     driver = make_driver(name, cfg, **opts)
-    tunnel = Tunnel(args.connect, port, args.local_port) if args.connect else None
+    tunnel = None
+    if args.connect:
+        first, *rest = parse_hosts(args.connect)
+        tunnel = Tunnel(first, port, args.local_port, fallbacks=rest)
 
     async def connect() -> tuple[str, int]:
         return await tunnel.ensure() if tunnel else ("127.0.0.1", port)
