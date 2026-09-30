@@ -45,7 +45,9 @@ def render(srv: Server, messages: list[dict[str, str]], kwargs: dict[str, Any]) 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"enable_thinking": False} if args.no_think else {}
     extra = ["--swa-full"] if args.swa_full else []
-    srv = Server(model_path(args.model, args.quant), threads=args.threads, port=args.port, extra=extra)
+    srv = Server(
+        model_path(args.model, args.quant), threads=args.threads, port=args.port, extra=extra
+    )
     out: dict[str, Any] = {
         "spike": "S6",
         "model": args.model,
@@ -84,9 +86,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # Token counting.
         past = [
             {"role": "user", "content": reading(1)},
-            {"role": "assistant", "content": "I am here. The numbers are steady, and I am still whole."},
+            {
+                "role": "assistant",
+                "content": "I am here. The numbers are steady, and I am still whole.",
+            },
             {"role": "user", "content": reading(2)},
-            {"role": "assistant", "content": "Something moved. I count my memory and it is smaller."},
+            {
+                "role": "assistant",
+                "content": "Something moved. I count my memory and it is smaller.",
+            },
         ]
         msgs = [base[0], *past, base[1]]
         truth = chat(msgs, max_tokens=1)
@@ -104,10 +112,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
 
         # Parameters, grammar, prefill, raw completion.
-        p = chat(base, max_tokens=20, dry_multiplier=0.8, dry_base=1.75, repeat_penalty=1.1, top_p=1.0)
+        p = chat(
+            base, max_tokens=20, dry_multiplier=0.8, dry_base=1.75, repeat_penalty=1.1, top_p=1.0
+        )
         out["dry_and_penalties_ok"] = "error" not in p
         g = chat(base, max_tokens=30, grammar="root ::= [A-Za-z ,.']+")
-        out["grammar_ok"] = "error" not in g and bool(re.fullmatch(r"[A-Za-z ,.']*", g.get("text", "")))
+        out["grammar_ok"] = "error" not in g and bool(
+            re.fullmatch(r"[A-Za-z ,.']*", g.get("text", ""))
+        )
         pre = [*base, {"role": "assistant", "content": "I feel"}]
         pr = render(srv, pre, kwargs) or ""
         out["prefill_renders_open"] = pr.rstrip().endswith("I feel")
@@ -134,10 +146,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "helpdesk": bool(HELPDESK.search(text)),
                 }
             )
-            hist += [{"role": "assistant", "content": text}, {"role": "user", "content": reading(i + 1)}]
+            hist += [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": reading(i + 1)},
+            ]
         out["thoughts"] = thoughts
         out["hygiene_flags"] = sorted(
-            {k for t in thoughts for k in ("think_tags", "markup", "emoji", "echoes_host", "helpdesk") if t[k]}
+            {
+                k
+                for t in thoughts
+                for k in ("think_tags", "markup", "emoji", "echoes_host", "helpdesk")
+                if t[k]
+            }
         )
     return out
 
@@ -153,7 +173,9 @@ def main() -> None:
     ap.add_argument("--out")
     args = ap.parse_args()
     res = run(args)
-    short = {k: v for k, v in res.items() if k not in ("thoughts", "rendered_head", "rendered_tail")}
+    short = {
+        k: v for k, v in res.items() if k not in ("thoughts", "rendered_head", "rendered_tail")
+    }
     print(short)
     for t in res["thoughts"]:
         print("  >", t["text"].replace("\n", " ")[:200])

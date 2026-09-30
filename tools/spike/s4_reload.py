@@ -68,7 +68,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--from-quant", required=True)
-    ap.add_argument("--case", action="append", required=True, help="QUANT:THREADS:RECALL[:THREADS_BATCH]")
+    ap.add_argument(
+        "--case", action="append", required=True, help="QUANT:THREADS:RECALL[:THREADS_BATCH]"
+    )
     ap.add_argument("--port", type=int, default=8094)
     ap.add_argument("--warm", action="store_true", help="also measure warm reloads")
     ap.add_argument("--out")

@@ -19,18 +19,34 @@ Event = dict[str, Any]
 
 
 class Driver(Protocol):
+    """What `drive` needs from a display: a view to feed and a surface to draw it on.
+
+    `closed` turns true when the user closes the window or presses the quit key; `drive`
+    then stops at the next frame.
+    """
+
     view: LifeView
     closed: bool
 
-    def open(self) -> None: ...
+    def open(self) -> None:
+        """Acquire the output (window, alternate screen) before the first frame."""
+        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Release the output and restore the terminal or display; safe to call twice."""
+        ...
 
-    def handle(self, event: Event) -> None: ...
+    def handle(self, event: Event) -> None:
+        """Apply one life event to the view; never blocks on drawing."""
+        ...
 
-    def render(self, now: float | None = None) -> None: ...
+    def render(self, now: float | None = None) -> None:
+        """Draw the view as of `now` (monotonic seconds; the current time when None)."""
+        ...
 
-    def screenshot(self, path: str) -> None: ...
+    def screenshot(self, path: str) -> None:
+        """Write the current frame to `path` as an image or text capture."""
+        ...
 
 
 async def drive(
@@ -42,8 +58,12 @@ async def drive(
     clock: Callable[[], float] = time.monotonic,
     on_event: Callable[[Event], None] | None = None,
 ) -> None:
-    """Run `driver` until it is closed, or (with `exit_when_done`) until the source has
-    ended and every queued letter has been typed."""
+    """Feed `driver` from `source` and redraw it at `fps` until it is closed.
+
+    With `exit_when_done`, also stop once the source has ended and every queued letter has
+    been typed, plus `linger_s` seconds. `on_event` sees each event after the driver has.
+    An exception raised by the source is re-raised here; the driver is always closed.
+    """
     done = asyncio.Event()
 
     async def consume() -> None:
@@ -75,7 +95,7 @@ async def drive(
 
 
 async def iterate(events: list[Event]) -> AsyncIterator[Event]:
-    """An async source from a list (tests, screenshots)."""
+    """Yield `events` one at a time, letting the loop run between them (tests, screenshots)."""
     for e in events:
         yield e
         await asyncio.sleep(0)
@@ -110,6 +130,10 @@ def display_config(hardware: str | None = None, profile: str | None = None) -> d
 
 
 def parse_size(text: str | None) -> tuple[int, int] | None:
+    """Parse a "WIDTHxHEIGHT" flag such as "1920x1080" into pixels; None when empty.
+
+    Raises ValueError when either side is not an integer.
+    """
     if not text:
         return None
     w, _, h = text.lower().partition("x")
@@ -117,7 +141,11 @@ def parse_size(text: str | None) -> tuple[int, int] | None:
 
 
 def make_driver(name: str, cfg: dict[str, Any], **opts: Any) -> Driver:
-    """A driver by name ("terminal" or "screen") configured from `[display]`."""
+    """Build the driver called `name` ("terminal" or "screen") from the `[display]` config.
+
+    `opts` override the config (`theme`, `layout`) or pass through to the driver's
+    constructor. Raises ValueError for an unknown driver or theme.
+    """
     from epitaph.display.layout import ViewSettings
     from epitaph.display.themes import get_theme
 

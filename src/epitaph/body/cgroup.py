@@ -60,6 +60,7 @@ class CgroupSettings:
 
     @classmethod
     def from_config(cls, cfg: Config) -> CgroupSettings:
+        """Read `[body]` and `backend.creature_cpus` from the config."""
         body = cfg.section("body")
         limit = body.get("death_limit_mb")
         return cls(
@@ -165,6 +166,10 @@ class CgroupBody:
         vitals: VitalsReader | None = None,
         sys_paths: SysPaths = DEFAULT_PATHS,
     ) -> None:
+        """`root` is the delegated cgroup; nothing is touched until setup().
+
+        `vitals` defaults to a VitalsReader on `sys_paths`.
+        """
         self.root = root
         self.settings = settings
         self.supervisor = root / "supervisor"
@@ -244,18 +249,21 @@ class CgroupBody:
         (self.creature / name).write_text(value)
 
     def pids(self) -> list[int]:
+        """Pids in the creature cgroup; empty when it cannot be read."""
         try:
             return [int(p) for p in _read(self.creature / "cgroup.procs").split()]
         except OSError:
             return []
 
     def populated(self) -> bool:
+        """Whether a process is left in the creature cgroup (cgroup.events, else cgroup.procs)."""
         events = read_flat_keyed(self.creature / "cgroup.events")
         if "populated" in events:
             return events["populated"] == 1
         return bool(self.pids())
 
     def memory_events(self) -> dict[str, int]:
+        """The creature's memory.events counters (oom, oom_kill, oom_group_kill, ...)."""
         return read_flat_keyed(self.creature / "memory.events")
 
     def _oom_kills(self) -> int:
@@ -273,6 +281,10 @@ class CgroupBody:
                 os.kill(pid, signal.SIGKILL)
 
     def wait_empty(self, timeout_s: float | None = None) -> bool:
+        """Block until the creature cgroup is empty, polling every 50 ms; False on timeout.
+
+        The timeout is in seconds and defaults to `settings.kill_wait_s`.
+        """
         deadline = time.monotonic() + (
             self.settings.kill_wait_s if timeout_s is None else timeout_s
         )
@@ -285,6 +297,12 @@ class CgroupBody:
     # --- the Body protocol -------------------------------------------------------------
 
     def reset_creature_cgroup(self) -> None:
+        """Kill any leftover creature and restore the birth limits.
+
+        cpu.max unlimited, memory.high and memory.max off, swap 0, memory.oom.group on. The share,
+        squeeze and kill cause are forgotten, and the OOM-kill count is taken as the new baseline
+        so that an earlier life's kill is not read as this life's death.
+        """
         if self.populated():
             self._kill_all()
             if not self.wait_empty():
@@ -301,9 +319,14 @@ class CgroupBody:
         self._oom_base = self._oom_kills()
 
     def wrap_spawn(self, argv: list[str]) -> list[str]:
+        """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv)."""
         return wrap_argv(argv, self.creature / "cgroup.procs", self.settings.creature_cpus)
 
     def apply(self, knobs: Knobs) -> None:
+        """Set cpu.max when the share changed; squeeze to death once, when the knobs ask for it.
+
+        The squeeze needs the oom death mode in force and `squeeze` not "off".
+        """
         if self.settings.cpu_share and knobs.cpu_share != self._share:
             self.set_cpu_share(knobs.cpu_share)
         if (
@@ -352,6 +375,7 @@ class CgroupBody:
         self._squeezed_at = time.monotonic()
 
     def progress(self) -> ProgressCounters:
+        """The creature cgroup's usage_usec, io.stat rbytes and pgmajfault."""
         return ProgressCounters(
             cpu_usec=read_flat_keyed(self.creature / "cpu.stat").get("usage_usec", 0),
             io_rbytes=read_io_rbytes(self.creature / "io.stat"),
@@ -359,10 +383,14 @@ class CgroupBody:
         )
 
     def kill_now(self, cause: Cause) -> None:
+        """Record `cause` and kill every process in the creature cgroup."""
         self._kill_cause = cause
         self._kill_all()
 
     def death_cause(self, status: CreatureStatus) -> Cause:
+        """The recorded kill cause; else OOM if the kernel OOM-killed it or a SIGKILL followed
+        the squeeze; else a crash.
+        """
         if self._kill_cause is not None:
             return self._kill_cause
         if self._oom_kills() > self._oom_base:
@@ -372,6 +400,7 @@ class CgroupBody:
         return Cause.CRASH
 
     def vitals(self) -> Vitals:
+        """Vitals with the creature's memory.max and memory.current (MiB) and its CPU share."""
         limit: int | None = None
         used: int | None = None
         try:
@@ -384,6 +413,7 @@ class CgroupBody:
         return self._vitals.read(ram_limit_mb=limit, mem_used_mb=used, cores_effective=cores)
 
     def facts(self) -> MachineFacts:
+        """True machine facts: board, cores, nominal RAM."""
         return machine_facts(self._sys_paths)
 
 
@@ -398,6 +428,7 @@ class PlainBody:
     def __init__(
         self, settings: CgroupSettings = DEFAULT_SETTINGS, sys_paths: SysPaths = DEFAULT_PATHS
     ) -> None:
+        """Pin to `settings.creature_cpus`; read vitals from `sys_paths`."""
         self.settings = settings
         self._vitals = VitalsReader(sys_paths)
         self._sys_paths = sys_paths
@@ -405,27 +436,35 @@ class PlainBody:
         self._kill_cause: Cause | None = None
 
     def reset_creature_cgroup(self) -> None:
+        """Forget the last kill cause (there is no cgroup to clean)."""
         self._kill_cause = None
 
     def wrap_spawn(self, argv: list[str]) -> list[str]:
+        """Argv pinned to `creature_cpus`, with no cgroup to join."""
         return wrap_argv(argv, None, self.settings.creature_cpus)
 
     def apply(self, knobs: Knobs) -> None:
+        """Remember the CPU share for the vitals; nothing enforces it."""
         self._share = knobs.cpu_share
 
     def progress(self) -> ProgressCounters:
+        """Zero counters: without a cgroup there is nothing to read."""
         return ProgressCounters()
 
     def kill_now(self, cause: Cause) -> None:
+        """Record `cause`; the backend, which holds the pid, does the kill."""
         self._kill_cause = cause
 
     def death_cause(self, status: CreatureStatus) -> Cause:
+        """The recorded kill cause, else a crash."""
         return self._kill_cause or Cause.CRASH
 
     def vitals(self) -> Vitals:
+        """Real temperature and throttling, with the last applied CPU share."""
         return self._vitals.read(cores_effective=self._share)
 
     def facts(self) -> MachineFacts:
+        """True machine facts: board, cores, nominal RAM."""
         return machine_facts(self._sys_paths)
 
 

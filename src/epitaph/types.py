@@ -1,6 +1,7 @@
-"""Shared data types: the vocabulary every module and agent codes against (BUILD_PLAN 6.4).
+"""Shared data types: the vocabulary every module codes against (BUILD_PLAN 6.4).
 
-Owned by the integrator. Change through docs/CONTRACT_CHANGES.md.
+These types are part of the contract between modules; record any change to them in
+docs/CONTRACT_CHANGES.md.
 """
 
 from __future__ import annotations
@@ -200,8 +201,10 @@ class RuleReport:
 
     @property
     def ok(self) -> bool:
+        """True when no rule is violated."""
         return not self.violations
 
     @property
     def thoughts(self) -> int:
+        """Number of thoughts the life is estimated to have."""
         return len(self.thought_times)

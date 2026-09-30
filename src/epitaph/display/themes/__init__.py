@@ -17,6 +17,7 @@ DEFAULT_FONT = FONT_DIR / "IBMPlexMono-Regular.ttf"
 
 
 def _lin(c: int) -> float:
+    """Linearise one sRGB channel (0 to 255) for the luminance formula."""
     x = c / 255
     return x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
 
@@ -34,6 +35,7 @@ def contrast_ratio(a: Rgb, b: Rgb) -> float:
 
 
 def mix(a: Rgb, b: Rgb, t: float) -> Rgb:
+    """Blend from `a` (t = 0) to `b` (t = 1) in sRGB space; `t` is clamped to 0..1."""
     t = min(1.0, max(0.0, t))
     return (
         round(a[0] + (b[0] - a[0]) * t),
@@ -44,6 +46,12 @@ def mix(a: Rgb, b: Rgb, t: float) -> Rgb:
 
 @dataclass(frozen=True)
 class Theme:
+    """Colours, font and reload dimming for one look; the same theme serves every driver.
+
+    `live`, `forgotten` and `inherited` colour the words, `status` the strip, `card` the
+    title cards and `gauge` the context gauge, all on `bg`.
+    """
+
     name: str
     bg: Rgb
     live: Rgb
@@ -57,7 +65,11 @@ class Theme:
     advance: float = 0.6  # the font's advance width per em
 
     def word(self, kind: str, fade: float = 0.0, dim: bool = False) -> Rgb:
-        """Colour of a word: live and inherited are bright; fading moves to forgotten grey."""
+        """Colour of a word of `kind` ("live", "fading", "forgotten", "inherited", "gauge").
+
+        Live and inherited words are bright; a fading word moves toward the forgotten colour
+        as `fade` goes from 0 to 1. `dim` applies the reload dimming.
+        """
         if kind == "inherited":
             c = self.inherited
         elif kind == "gauge":
@@ -69,6 +81,7 @@ class Theme:
         return self.dimmed(c) if dim else c
 
     def dimmed(self, c: Rgb) -> Rgb:
+        """Colour `c` pulled toward the background by `dim`, as drawn during a reload."""
         return mix(self.bg, c, self.dim)
 
 
@@ -99,6 +112,7 @@ THEMES = {t.name: t for t in (PLAIN, SEGMENT16)}
 
 
 def get_theme(name: str) -> Theme:
+    """Look a theme up by name; raises ValueError listing the known themes."""
     try:
         return THEMES[name]
     except KeyError:

@@ -29,6 +29,7 @@ Event = dict[str, Any]
 
 
 def free_port() -> int:
+    """Ask the OS for a free TCP port on 127.0.0.1 (the local end of the tunnel)."""
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
@@ -49,6 +50,7 @@ def tunnel_argv(host: str, local_port: int, remote_port: int = 7707, ssh: str = 
 
 
 async def port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+    """Whether a TCP connection to `host`:`port` succeeds within `timeout` seconds."""
     try:
         _r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
     except (OSError, TimeoutError):
@@ -70,6 +72,11 @@ class Tunnel:
         argv: Callable[[str, int, int], list[str]] = tunnel_argv,
         ready_timeout: float = 20.0,
     ) -> None:
+        """Prepare, but do not start, a tunnel from `local_port` to `host`:`remote_port`.
+
+        `local_port` 0 picks a free port. `argv` builds the ssh command (swapped in tests).
+        `ready_timeout` is how long `ensure` waits, in seconds, for the local end to accept.
+        """
         self.host = host
         self.remote_port = remote_port
         self.local_port = local_port or free_port()
@@ -80,10 +87,15 @@ class Tunnel:
 
     @property
     def alive(self) -> bool:
+        """Whether the ssh process has been started and has not exited."""
         return self.proc is not None and self.proc.returncode is None
 
     async def ensure(self) -> tuple[str, int]:
-        """Start ssh if it is not running and wait until the local end accepts."""
+        """Start ssh if it is not running and wait until the local end accepts.
+
+        Returns the local (host, port) to subscribe to. Raises ConnectionError when ssh
+        exits early (with its stderr) or the port is not ready within `ready_timeout`.
+        """
         if not self.alive:
             self.proc = await asyncio.create_subprocess_exec(
                 *self.argv(self.host, self.local_port, self.remote_port),
@@ -109,6 +121,7 @@ class Tunnel:
         return "127.0.0.1", self.local_port
 
     async def close(self) -> None:
+        """Stop ssh: terminate, then kill if it has not exited after 3 seconds."""
         if self.alive and self.proc is not None:
             self.proc.terminate()
             try:
@@ -124,8 +137,12 @@ async def reconnecting(
     backoff: tuple[float, float] = (0.5, 5.0),
     stop: asyncio.Event | None = None,
 ) -> AsyncIterator[Event]:
-    """Events from the bus forever: subscribe, and on any drop wait and subscribe again.
-    Each subscription starts with a snapshot, which redraws the view."""
+    """Yield bus events until `stop` is set, resubscribing after every drop.
+
+    Each subscription starts with a snapshot, which redraws the view. `on_state` is called
+    with True on the first event of a subscription and False after each drop; the retry
+    delay doubles from `backoff[0]` to `backoff[1]` seconds and resets once events flow.
+    """
     delay = backoff[0]
     while stop is None or not stop.is_set():
         got_any = False
@@ -169,6 +186,7 @@ def pick_driver(configured: str, remote: bool, present: Callable[[], bool] = scr
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argument parser for `epitaph display`."""
     p = argparse.ArgumentParser(
         prog="epitaph display", description=(__doc__ or "").split("\n\n")[0]
     )
@@ -188,6 +206,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run `epitaph display` until closed or interrupted.
+
+    Returns the exit code: 0 on a normal exit, 2 when the ssh tunnel cannot be set up, and
+    for `--screen-present`, 0 if a screen is connected and 1 if not.
+    """
     args = build_parser().parse_args(argv)
     if args.screen_present:
         return 0 if screen_present() else 1

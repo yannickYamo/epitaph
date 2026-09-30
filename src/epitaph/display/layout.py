@@ -63,6 +63,7 @@ class ViewWord:
 
     @property
     def typing_s(self) -> float:
+        """Seconds from the first letter to the last, excluding the pause after."""
         return sum(self.char_ms) / 1000
 
     @property
@@ -87,12 +88,13 @@ class ViewWord:
         return len(self.text)
 
     def state_at(self, now: float, fade_s: float) -> WordState:
+        """The word's state at `now`: fading for `fade_s` seconds after it is forgotten."""
         if self.forgotten_at is None:
             return self.state
         return "fading" if now - self.forgotten_at < fade_s else "forgotten"
 
     def fade_at(self, now: float, fade_s: float) -> float:
-        """0 = fully bright, 1 = fully forgotten."""
+        """Fade progress at `now`, from 0 (fully bright) to 1 (fully forgotten)."""
         if self.forgotten_at is None:
             return 0.0
         if fade_s <= 0:
@@ -102,6 +104,8 @@ class ViewWord:
 
 @dataclass
 class Thought:
+    """The words of one turn, in the order they were released."""
+
     turn: int
     words: list[ViewWord] = field(default_factory=lambda: [])
     ended: bool = False
@@ -123,6 +127,12 @@ def char_ms_for(text: str, raw: Any, default: int = DEFAULT_CHAR_MS) -> tuple[in
 
 @dataclass
 class ViewSettings:
+    """Timing and card options for a `LifeView`; durations in seconds.
+
+    `max_backlog_s` bounds how far typing may lag the events before `catch_up`, and
+    `max_words` bounds the history kept for display.
+    """
+
     fade_s: float = 8.0
     blink_s: float = BLINK_S
     birth_card: bool = True
@@ -134,6 +144,7 @@ class ViewSettings:
 
     @classmethod
     def from_config(cls, display: dict[str, Any]) -> ViewSettings:
+        """Read the `[display]` config section; missing keys keep their defaults."""
         return cls(
             fade_s=float(display.get("fade_seconds", 8)),
             blink_s=float(display.get("cursor_blink_ms", 530)) / 1000,
@@ -143,14 +154,19 @@ class ViewSettings:
 
 
 class LifeView:
-    """Everything a display needs, fed by events (BUILD_PLAN 6.3)."""
+    """Everything a display needs, fed by events (BUILD_PLAN 6.3).
+
+    Not thread-safe: one driver feeds and reads it from a single thread or event loop.
+    """
 
     def __init__(self, settings: ViewSettings | None = None) -> None:
+        """Start empty, connected and showing no life; `settings` defaults to ViewSettings()."""
         self.s = settings or ViewSettings()
         self.reset(0)
         self.connected = True
 
     def reset(self, life: int) -> None:
+        """Forget everything shown and start an empty view of life number `life`."""
         self.life = life
         self.model = ""
         self.quant = ""
@@ -172,6 +188,10 @@ class LifeView:
     # -- events ---------------------------------------------------------------------------
 
     def handle(self, e: dict[str, Any], now: float) -> None:
+        """Apply event `e` received at display time `now`; unknown event types are ignored.
+
+        A `birth_loading` event, or any event from a different life, resets the view first.
+        """
         etype = str(e.get("type", ""))
         life = int(e.get("life", self.life) or 0)
         if etype != "snapshot" and (etype == "birth_loading" or (life and life != self.life)):
@@ -344,6 +364,7 @@ class LifeView:
             total -= len(self.thoughts.pop(0).words)
 
     def words(self) -> Iterable[ViewWord]:
+        """Every word still held, oldest first."""
         for th in self.thoughts:
             yield from th.words
 
@@ -368,6 +389,10 @@ class LifeView:
         return max(0.0, now - max(ends))
 
     def life_t(self, now: float) -> float | None:
+        """Seconds since birth at `now`, extrapolated from the last event's `t` while alive.
+
+        None until an event has carried `t`; frozen once the life stops living.
+        """
         if self.t_life is None:
             return None
         if self.mode in ("living", "reloading"):
@@ -432,6 +457,7 @@ class LifeView:
         return False
 
     def dimmed(self) -> bool:
+        """Whether the text is drawn dimmed (during a reload)."""
         return self.mode == "reloading"
 
     def gauge(self) -> float | None:
@@ -630,6 +656,8 @@ class Span:
 
 @dataclass(frozen=True)
 class Cursor:
+    """Where the cursor rests and how it is drawn."""
+
     row: int
     col: int
     mode: str  # on | off | dim
@@ -652,6 +680,7 @@ class Frame:
 
     @property
     def bright_words(self) -> int:
+        """Spans drawn as live text in this frame."""
         return sum(1 for s in self.spans if s.kind == "live")
 
     def text_rows(self) -> list[str]:
@@ -666,6 +695,8 @@ class Frame:
 
 @dataclass(frozen=True)
 class Placed:
+    """A word (or one piece of an over-long word) placed at a line and column."""
+
     line: int
     col: int
     word: ViewWord
@@ -677,8 +708,10 @@ class Placed:
 def flow_lines(
     thoughts: Iterable[list[tuple[ViewWord, str]]], cols: int, blank_between: bool = True
 ) -> tuple[list[Placed], int, tuple[int, int]]:
-    """Wrap whole words into lines of `cols`. Returns placements, line count and the
-    position right after the last word (where the cursor rests).
+    """Wrap whole words into lines of `cols` characters.
+
+    Returns the placements, the line count and the (line, col) right after the last word,
+    where the cursor rests.
 
     A word that fits on an empty line is never split. Only a word longer than a whole
     line is cut into line-sized pieces (and flagged).
@@ -884,6 +917,7 @@ def fit_status(text: str, max_chars: int) -> str:
 
 
 def gauge_bar(fraction: float | None, cols: int, charset: Charset | str = "unicode") -> str:
+    """Draw `fraction` (0..1, None as empty) as a bar of `cols` block or ASCII characters."""
     full, empty = ("█", "░") if charset == "unicode" else ("#", "-")
     n = round((fraction or 0.0) * cols)
     return full * n + empty * (cols - n)

@@ -92,6 +92,7 @@ class Lookahead:
     held words."""
 
     def __init__(self, phrases: Sequence[str], cap: int = 8) -> None:
+        """Match against phrases; duplicates after normalization keep their first spelling."""
         seen: dict[tuple[str, ...], str] = {}
         for p in phrases:
             norm = tuple(n for n in (normalize(w) for w in split_words(p)) if n)
@@ -102,6 +103,7 @@ class Lookahead:
         self.held: list[str] = []
 
     def reset(self) -> None:
+        """Drop every held word, for a new attempt at a thought."""
         self.held = []
 
     def push(self, word: str) -> tuple[list[str], int | None, str | None]:
@@ -181,6 +183,14 @@ class Pacer:
         hesitation_ms: tuple[int, int] = (400, 1200),
         hesitation_inside_from: float = 0.1,
     ) -> None:
+        """Build the pipeline; the keyword arguments mirror config's [output] and [reveal].
+
+        rate_margin scales the measured generation rate so typing stays a little slower than
+        generation; the rate is averaged over the last rate_window_s seconds of chunks and
+        trusted once min_rate_sample_s seconds are measured. With adaptive off, letters follow
+        the profile's floor alone. Pauses and hesitations are in milliseconds; a hesitation
+        may fall inside a word once the knob's hesitation reaches hesitation_inside_from.
+        """
         self.clock = clock
         self.rng = random.Random(seed)
         self.max_regenerations = max_regenerations
@@ -217,6 +227,7 @@ class Pacer:
 
     @classmethod
     def from_config(cls, cfg: Config, clock: LifeClock, seed: int = 0) -> Pacer:
+        """A pacer set up from the [output], [reveal] and prompt.banned_phrases settings."""
         out = cfg.section("output")
         rev = cfg.section("reveal")
         hes = list(rev.get("hesitation_ms", [1200, 3600]))
@@ -300,6 +311,7 @@ class Pacer:
 
     @property
     def cut_at_host(self) -> bool:
+        """True once the thought was cut at a `[host]` line or a chat template token."""
         return self._sanitizer.cut
 
     def push(self, chunk: str) -> PushResult:
@@ -472,6 +484,7 @@ class Spoken:
 
     @property
     def text(self) -> str:
+        """The words shown, joined by single spaces."""
         return " ".join(w.text for w in self.words)
 
 

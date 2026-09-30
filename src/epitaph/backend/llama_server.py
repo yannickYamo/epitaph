@@ -128,6 +128,11 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
 def request_body(
     messages: list[Msg] | None, sampling: Sampling, max_tokens: int, prompt: str | None = None
 ) -> dict[str, Any]:
+    """The JSON body of one streamed request, with the prompt cache on.
+
+    A chat request (thinking off) when `messages` is given, else a raw completion of
+    `prompt`. `max_tokens` caps the generated tokens.
+    """
     body: dict[str, Any] = {
         "stream": True,
         "cache_prompt": True,
@@ -192,6 +197,7 @@ def _error_from(err: Any) -> Exception:
 
 
 def final_chunk(timings: dict[str, Any] | None) -> Chunk:
+    """The closing chunk (done=True) with the server's timings; None where a timing is absent."""
     t = timings or {}
     return Chunk(
         "",
@@ -221,6 +227,11 @@ class LlamaServerBackend:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        """Prepare a backend; nothing is spawned until start().
+
+        `body` places the child in its cgroup (anything with `wrap_spawn`; None spawns it
+        unwrapped). `transport` replaces the HTTP transport, for tests.
+        """
         self.s = settings
         self.body = body or _Spawner()
         self._transport = transport
@@ -238,9 +249,11 @@ class LlamaServerBackend:
 
     @property
     def base_url(self) -> str:
+        """The server's HTTP root, e.g. "http://127.0.0.1:8081"."""
         return f"http://{self.s.host}:{self.s.port}"
 
     def client(self) -> httpx.AsyncClient:
+        """The shared HTTP client, made on first use (no read timeout: generation is slow)."""
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -250,6 +263,11 @@ class LlamaServerBackend:
         return self._client
 
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
+        """Spawn llama-server (stopping any previous one) and wait until /health says ok.
+
+        Sets `load_s` to the load time in seconds. Raises CreatureDied if the process exits
+        while loading and TimeoutError after `load_timeout_s`; neither leaves a process behind.
+        """
         await self.stop()
         self.argv = self.body.wrap_spawn(build_argv(self.s, model, quant, threads))
         log = self.s.log_path
@@ -296,6 +314,10 @@ class LlamaServerBackend:
                 fn(self._status)
 
     async def stop(self, hard: bool = False) -> None:
+        """Stop the process: SIGTERM (SIGKILL when `hard`), then SIGKILL after `stop_timeout_s`.
+
+        A deliberate stop does not fire on_death. Does nothing when no process is running.
+        """
         proc = self._proc
         if proc is None:
             return
@@ -316,15 +338,18 @@ class LlamaServerBackend:
         self._proc = None
 
     async def aclose(self) -> None:
+        """Stop the process and close the HTTP client."""
         await self.stop()
         if self._client is not None:
             await self._client.aclose()
             self._client = None
 
     def on_death(self, fn: Callable[[CreatureStatus], None]) -> None:
+        """Register a callback fired when the process exits on its own, even between requests."""
         self._on_death.append(fn)
 
     def status(self) -> CreatureStatus:
+        """The process status and the speeds (tokens/s) of the last finished request."""
         proc = self._proc
         if proc is not None and proc.returncode is None:
             s = self._status
@@ -383,20 +408,28 @@ class LlamaServerBackend:
     def chat(
         self, messages: list[Msg], sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:
+        """Stream a thought from /v1/chat/completions; the final chunk carries the timings.
+
+        Raises CreatureDied when the process died, ContextFull when the prompt does not fit,
+        and BackendError for any other server or stream error.
+        """
         return self._stream(
             "/v1/chat/completions", request_body(messages, sampling, max_tokens), chat=True
         )
 
     def complete(self, prompt: str, sampling: Sampling, max_tokens: int) -> AsyncIterator[Chunk]:
+        """Stream a raw completion of `prompt` from /completion (diary mode); errors as chat()."""
         return self._stream(
             "/completion", request_body(None, sampling, max_tokens, prompt=prompt), chat=False
         )
 
     async def prefill(self, messages: list[Msg]) -> int:
-        """Read these messages into the prompt cache without showing anything; returns the
-        tokens processed. Used after a load to read the system prompt during the birth card
-        or the reload silence, so the first thought only reads its reading (S1b: the system
-        prompt alone is about 100 s of prompt processing for a 3B on the Pi 4)."""
+        """Read messages into the prompt cache without generating; return the tokens processed.
+
+        Used after a load to read the system prompt during the birth card or the reload
+        silence, so the first thought only reads its reading (S1b: the system prompt alone is
+        about 100 s of prompt processing for a 3B on the Pi 4).
+        """
         if not self._alive():
             raise CreatureDied(self.status())
         body = request_body([*messages, _PROBE], Sampling(temperature=0.0, min_p=0.0), 1)

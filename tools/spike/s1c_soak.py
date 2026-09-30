@@ -57,7 +57,9 @@ def main() -> None:
             )  # fmt: skip
             stop.wait(5)
 
-    srv = Server(model_path(args.model, args.quant), threads=args.threads, port=args.port, taskset="1-3")
+    srv = Server(
+        model_path(args.model, args.quant), threads=args.threads, port=args.port, taskset="1-3"
+    )
     system = system_text(5, True)
     thoughts: list[dict[str, Any]] = []
     th = threading.Thread(target=sampler, daemon=True)

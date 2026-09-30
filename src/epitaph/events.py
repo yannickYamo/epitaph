@@ -25,6 +25,7 @@ Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
 def make_event(etype: str, life: int, **fields: Any) -> Event:
+    """Build an event stamped with the protocol version and the wall-clock time in seconds."""
     return {
         "v": PROTOCOL_VERSION,
         "ts": round(time.time(), 3),
@@ -35,6 +36,8 @@ def make_event(etype: str, life: int, **fields: Any) -> Event:
 
 
 class _Subscriber:
+    """One subscribed connection: a bounded queue and the task that writes it out."""
+
     def __init__(self, writer: asyncio.StreamWriter, maxsize: int, snapshot: SnapshotFn) -> None:
         self.writer = writer
         self.queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=maxsize)
@@ -71,6 +74,11 @@ class EventBus:
         queue_size: int = 2000,
         snapshot: SnapshotFn | None = None,
     ) -> None:
+        """Listen on host:port (port 0 picks a free one at `start`).
+
+        queue_size bounds each subscriber's queue in events; snapshot builds the state sent to
+        new and overflowed subscribers.
+        """
         self.host = host
         self.port = port
         self.queue_size = queue_size
@@ -94,21 +102,29 @@ class EventBus:
         self._local.append(fn)
 
     def on(self, cmd: str, handler: Handler) -> None:
+        """Register the handler for a control command, replacing any earlier one.
+
+        The handler gets the command's args and returns the reply fields; an exception it
+        raises becomes an error reply.
+        """
         self.handlers[cmd] = handler
 
     @property
     def subscriber_count(self) -> int:
+        """Number of connected TCP subscribers (in-process listeners are not counted)."""
         return len(self._subs)
 
     # -- server ---------------------------------------------------------------------------
 
     async def start(self) -> None:
+        """Start listening; afterwards `port` holds the real port even if 0 was asked for."""
         self._server = await asyncio.start_server(self._handle, self.host, self.port)
         if self.port == 0:
             sock = self._server.sockets[0]
             self.port = int(sock.getsockname()[1])
 
     async def stop(self) -> None:
+        """Disconnect every subscriber and close the server."""
         for sub in list(self._subs):
             if sub.task:
                 sub.task.cancel()

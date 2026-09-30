@@ -129,9 +129,14 @@ def _hold_from(raw: str) -> int:
 
 
 class Sanitizer:
-    """Streaming sanitizer for one thought."""
+    """Streaming sanitizer for one thought.
+
+    Its output is append-only: text once returned by `feed` is never taken back, so it is
+    safe to type immediately.
+    """
 
     def __init__(self) -> None:
+        """Start a fresh thought: nothing fed, nothing emitted, not cut."""
         self._raw = ""
         self._emitted = ""
         self.cut = False

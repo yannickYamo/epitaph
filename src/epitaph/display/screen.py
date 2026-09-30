@@ -32,6 +32,7 @@ DEFAULT_WINDOW = (1280, 720)
 
 
 def _pygame() -> Any:
+    """Import pygame lazily and without its banner, so the terminal path never needs it."""
     os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
     import pygame
 
@@ -39,12 +40,18 @@ def _pygame() -> Any:
 
 
 def headless() -> bool:
+    """Whether SDL draws offscreen (screenshots, tests) rather than to a real display."""
     return os.environ.get("SDL_VIDEODRIVER", "") in ("offscreen", "dummy")
 
 
 class ScreenDriver:
-    """Draws a `LifeView` with pygame. `size=None` means the full screen (or a 1280x720
-    window on a desktop session)."""
+    """Draws a `LifeView` with pygame and implements the `Driver` protocol.
+
+    `size=None` means the full screen on the console, or a 1280x720 window on a desktop
+    session. `orientation="portrait"` on a landscape panel draws to a rotated surface.
+    `min_font_px` is the smallest letter height allowed (BUILD_PLAN 5.12); `line_chars`
+    and `grid` bound the flow and grid layouts in characters.
+    """
 
     def __init__(
         self,
@@ -61,6 +68,7 @@ class ScreenDriver:
         fullscreen: bool = False,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """Configure the driver; no window is opened until `open` (or the first draw)."""
         self.view = LifeView(settings)
         self.theme = theme
         self.line_chars = line_chars
@@ -88,6 +96,7 @@ class ScreenDriver:
     # -- setup ------------------------------------------------------------------------------
 
     def open(self) -> None:
+        """Open the window (or full screen) and fit the font; does nothing if already open."""
         if self.pg is not None:
             return
         pg = self.pg = _pygame()
@@ -108,6 +117,7 @@ class ScreenDriver:
         self._setup(self.window.get_size())
 
     def _setup(self, physical: tuple[int, int]) -> None:
+        """Size surfaces, caches and metrics for a window of `physical` pixels."""
         pg = self.pg
         w, h = physical
         self.rotate = 90 if self.orientation == "portrait" and w > h else 0
@@ -142,6 +152,7 @@ class ScreenDriver:
         )
 
     def font(self, px: int) -> Any:
+        """The theme's font at `px` pixels (at least 6), loaded once and cached."""
         px = max(6, int(px))
         f = self._fonts.get(px)
         if f is None:
@@ -151,6 +162,7 @@ class ScreenDriver:
         return f
 
     def close(self) -> None:
+        """Shut the pygame display down; safe to call twice."""
         if self.pg is not None:
             self.pg.display.quit()
             self.pg = None
@@ -158,9 +170,11 @@ class ScreenDriver:
     # -- Display protocol -------------------------------------------------------------------
 
     def handle(self, event: dict[str, Any]) -> None:
+        """Apply `event` to the view at the driver's clock."""
         self.view.handle(event, self.clock())
 
     def run(self, source: Any = None, fps: float = 30.0) -> None:
+        """Block, drawing events from the async iterator `source` until done or closed."""
         import asyncio
 
         from epitaph.display.app import drive
@@ -170,17 +184,23 @@ class ScreenDriver:
         asyncio.run(drive(self, source, fps=fps))
 
     def _ensure(self) -> Any:
+        """The pygame module, opening the display first if needed."""
         if self.pg is None:
             self.open()
         return self.pg
 
     def screenshot(self, path: str) -> None:
+        """Save the window as an image at `path` (format from the extension, usually PNG)."""
         pg = self._ensure()
         if self.last_frame is None:
             self.draw(self.clock(), force=True)
         pg.image.save(self.window, path)
 
     def render(self, now: float | None = None) -> None:
+        """Process window events (quit on close, q or Esc; refit on resize), then draw.
+
+        The display is flipped only when the frame changed.
+        """
         pg = self._ensure()
         for ev in pg.event.get():
             if ev.type == pg.QUIT or (ev.type == pg.KEYDOWN and ev.key in (pg.K_q, pg.K_ESCAPE)):
@@ -193,6 +213,7 @@ class ScreenDriver:
     # -- drawing ----------------------------------------------------------------------------
 
     def _glyphs(self, px: int, text: str, colour: Rgb) -> Any:
+        """Rendered text surface, cached by size, text and colour (cleared past 5000)."""
         key = (px, text, colour)
         surf = self._cache.get(key)
         if surf is None:
@@ -212,8 +233,11 @@ class ScreenDriver:
         return compose_flow(self.view, now, m.cols, m.rows, self.status_strip)
 
     def draw(self, now: float, force: bool = False) -> bool:
-        """Paint the view at `now`. Returns False (and paints nothing) when the frame is
-        the same as the last one painted, so a still screen costs no drawing or flip."""
+        """Paint the view at `now` onto the window; returns whether anything was painted.
+
+        Returns False, painting nothing, when the frame equals the last one painted (unless
+        `force`), so a still screen costs no drawing or flip. The caller flips.
+        """
         pg = self._ensure()
         assert self.metrics is not None
         frame = self.compose(now)
@@ -246,6 +270,7 @@ class ScreenDriver:
         return True
 
     def _draw_status(self, text: str) -> None:
+        """Draw the status strip in small type, trimmed to whole parts to fit the width."""
         m = self.metrics
         assert m is not None
         px = max(12, round(m.font_px * 0.45))
@@ -255,6 +280,7 @@ class ScreenDriver:
         self.surface.blit(glyphs, (m.margin_x, m.margin_y))
 
     def _draw_card(self, lines: list[str], px: int) -> None:
+        """Draw a birth or death card centred, the first line larger, shrinking to fit."""
         m = self.metrics
         assert m is not None
         big = round(px * 1.2)
@@ -276,6 +302,7 @@ class ScreenDriver:
     def _draw_cells(
         self, frame: Frame, left: float, top: float, cell_w: float, line_h: float, px: int
     ) -> None:
+        """Draw the spans and the cursor on a cell grid starting at (`left`, `top`) pixels."""
         th = self.theme
         font_h = self.font(px).get_height()
         pad = (line_h - font_h) / 2
@@ -301,6 +328,7 @@ class ScreenDriver:
     def _draw_gauge(
         self, fraction: float | None, x: float, y: float, width: float, h: float
     ) -> None:
+        """Draw the memory gauge as an outlined bar filled to `fraction` (0..1)."""
         th = self.theme
         pg = self.pg
         bar_h = max(2, round(h * 0.3))
@@ -311,7 +339,7 @@ class ScreenDriver:
         )
 
     def _grid_geometry(self) -> tuple[int, int, int, float, float, int]:
-        """rows, cols, margin, cell width, line height and font size for the grid."""
+        """Rows, cols, margin, cell width, line height and font size (pixels) for the grid."""
         th = self.theme
         w, h = self.surface.get_size()
         margin = max(4, round(min(w, h) * 0.04))
@@ -325,6 +353,7 @@ class ScreenDriver:
 
 
 def _signature(frame: Frame) -> tuple[Any, ...]:
+    """A hashable summary of everything `draw` paints, to skip unchanged frames."""
     card = (frame.card[0], tuple(frame.card[1])) if frame.card is not None else None
     return (
         tuple(frame.spans),
@@ -343,6 +372,10 @@ def _console() -> bool:
 
 
 def _font_path(theme: Theme) -> Path | None:
+    """The font file: $EPITAPH_FONT, else the theme's, else DejaVu Sans Mono, else None.
+
+    None makes pygame fall back to its built-in font.
+    """
     env = os.environ.get("EPITAPH_FONT")
     if env and Path(env).exists():
         return Path(env)

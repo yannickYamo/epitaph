@@ -87,14 +87,17 @@ class Lang:
     helpdesk: list[str] = field(default_factory=lambda: [])
 
     def r(self, key: str) -> str:
+        """A top-level reading template, such as "prefix" or "time"."""
         return str(self.readings.get(key, _DEFAULT_READINGS[key]))
 
     def form(self, form: str, key: str) -> str:
+        """The template for one reading field in a form ("full" or "short")."""
         table: Mapping[str, Any] = self.readings.get(form, {})
         default: Mapping[str, Any] = _DEFAULT_READINGS[form]
         return str(table.get(key, default[key]))
 
     def health_label(self, health: str) -> str:
+        """The translated health label; the English label if the pack has none."""
         return self.health.get(health, health)
 
 
@@ -176,6 +179,7 @@ class Persona:
     """The system prompt as persona groups plus mechanics, and its erosion."""
 
     def __init__(self, groups: Sequence[str], mechanics: str) -> None:
+        """Take the persona groups G1..Gn in order (blank ones dropped) and the mechanics."""
         self.groups = [g.strip() for g in groups if g.strip()]
         self.mechanics = mechanics.strip()
         self.groups_left: int | None = None
@@ -185,6 +189,12 @@ class Persona:
     def from_config(
         cls, cfg: Config, facts: MachineFacts | None = None, lang: Lang | None = None
     ) -> Persona:
+        """The persona chosen by `prompt.persona_active`, with the language pack's overrides.
+
+        A prose persona is split into as many groups as `persona_groups` has. With
+        `persona_facts` on, a line of machine facts joins the second group. Raises ValueError
+        for an unknown persona.
+        """
         prompt: dict[str, Any] = {**cfg.section("prompt"), **(lang.prompt if lang else {})}
         n = len(prompt.get("persona_groups", [])) or 5
         active = str(prompt.get("persona_active", "persona"))
@@ -224,6 +234,7 @@ class Persona:
 
     @property
     def text(self) -> str:
+        """The system prompt now: the whole persona until the first `update`."""
         if self.groups_left is None:
             return self.system_text(len(self.groups), True)
         return self.system_text(self.groups_left, bool(self.mechanics_present))
@@ -284,6 +295,11 @@ class Reader:
         speed_step: float = 0.2,
         memory_step: float = 0.05,
     ) -> None:
+        """Write in lang (English by default); show_changes False drops every "(was X)".
+
+        The step thresholds are explained on the class; cores_step is in cores, the others
+        are fractions of the last announced value.
+        """
         self.lang = lang or Lang()
         self.show_changes = show_changes
         self.memory_step = memory_step
@@ -297,6 +313,7 @@ class Reader:
 
     @classmethod
     def from_config(cls, cfg: Config, lang: Lang | None = None) -> Reader:
+        """A reader set up from the `prompt.readings_*` settings and `prompt.language`."""
         p = cfg.section("prompt")
         return cls(
             lang or load_lang(str(p.get("language", "en"))),
@@ -307,6 +324,10 @@ class Reader:
         )
 
     def reading(self, x: ReadingInput) -> str:
+        """The `[host]` line for this moment in x's form; updates what was last announced.
+
+        The first reading of a life also announces the boot.
+        """
         lang = self.lang
         m, s = divmod(max(0, int(x.t)), 60)
         health = lang.health_label(x.health)

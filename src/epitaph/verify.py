@@ -143,7 +143,10 @@ _SENTENCE_END = re.compile(r"[.?!…][\"')\]]*$")
 
 @dataclass
 class Thought:
-    """One thought as shown: its words, when it was requested, typed and ended."""
+    """One thought as shown: its words, when it was requested, typed and ended.
+
+    Times are life-clock seconds; `shown_start` and `shown_end` come from the typing replay.
+    """
 
     turn: int
     gen_idx: int = -1
@@ -158,24 +161,29 @@ class Thought:
 
     @property
     def text(self) -> str:
+        """The words as shown, space-joined; the thought_end text when no words were logged."""
         if self.words:
             return " ".join(str(w.get("text", "")) for w in self.words)
         return self.end_text
 
     @property
     def n_words(self) -> int:
+        """Number of whitespace-separated words in `text`."""
         return len(self.text.split())
 
     @property
     def first_word_t(self) -> float | None:
+        """Life-clock seconds when the first word was released, or None if none was."""
         return _t(self.words[0]) if self.words else None
 
     @property
     def last_word_idx(self) -> int:
+        """Event index of the last word, or -1 for a thought without words."""
         return int(self.words[-1]["_idx"]) if self.words else -1
 
     @property
     def wpm(self) -> float | None:
+        """Typing speed on the replayed display in words per minute; None when untimed."""
         if self.shown_start is None or self.shown_end is None:
             return None
         span = self.shown_end - self.shown_start
@@ -203,17 +211,21 @@ class Life:
     source: Path | None = None
 
     def of(self, etype: str) -> list[Event]:
+        """Every event of this type, in log order."""
         return [e for e in self.events if e["type"] == etype]
 
     def first(self, etype: str) -> Event | None:
+        """The first event of this type, or None."""
         return next((e for e in self.events if e["type"] == etype), None)
 
     @property
     def death(self) -> Event | None:
+        """The death event, or None when the log ends before one (a power cut, a live life)."""
         return self.first("death")
 
     @property
     def death_t(self) -> float:
+        """Life-clock seconds at death; the last event's time when there is no death event."""
         d = self.death
         if d is not None:
             return _t(d)
@@ -221,16 +233,19 @@ class Life:
 
     @property
     def erosion_t(self) -> float | None:
+        """Life-clock seconds of the first erosion step, or None when nothing eroded."""
         e = self.first("erosion")
         return _t(e) if e is not None else None
 
     def before_erosion(self) -> list[Thought]:
+        """Finished thoughts requested before the first erosion step (all of them if none)."""
         cut = self.erosion_t
         return [
             th for th in self.thoughts if th.end_t is not None and (cut is None or th.gen_t < cut)
         ]
 
     def after_erosion(self) -> list[Thought]:
+        """Thoughts requested at or after the first erosion step; empty when nothing eroded."""
         cut = self.erosion_t
         if cut is None:
             return []
@@ -261,6 +276,7 @@ def load_events(path: Path) -> list[Event]:
 
 
 def lives_in(events: Iterable[Event]) -> list[int]:
+    """Life numbers present in an event stream, in order of first appearance."""
     seen: list[int] = []
     for e in events:
         n = int(e.get("life", 0))
@@ -387,21 +403,29 @@ def _kw_pattern(kw: str) -> re.Pattern[str]:
 
 
 class Matcher:
-    """Keyword and phrase matching with "*" prefix wildcards."""
+    """Keyword and phrase matching with "*" prefix wildcards.
+
+    Case-insensitive; curly apostrophes match straight ones. A keyword without "*" matches only
+    whole words or phrases, and spaces in a phrase match any run of whitespace.
+    """
 
     def __init__(self, keywords: Iterable[str]) -> None:
+        """Compile every non-blank keyword once."""
         self.keywords = [k for k in keywords if k.strip()]
         self._pats = [(k, _kw_pattern(k)) for k in self.keywords]
 
     def hits(self, text: str) -> list[str]:
+        """The keywords found in text, each listed once."""
         low = text.lower().replace("’", "'")
         return [k for k, p in self._pats if p.search(low)]
 
     def count(self, text: str) -> int:
+        """Total matches of all keywords in text; a keyword found twice counts twice."""
         low = text.lower().replace("’", "'")
         return sum(len(p.findall(low)) for _, p in self._pats)
 
     def any(self, text: str) -> bool:
+        """Whether any keyword occurs in text."""
         return bool(self.hits(text))
 
 
@@ -417,21 +441,25 @@ def find_phrase(words: list[str], phrase: str) -> int:
 
 
 def sentences(text: str) -> list[str]:
+    """Split text after `.`, `?`, `!` or `…` (and any closing quote or bracket) plus whitespace."""
     parts = re.split(r"(?<=[.?!…])\s+|(?<=[.?!…][\"')\]])\s+", text.strip())
     return [p for p in (s.strip() for s in parts) if p]
 
 
 def is_complete(sentence: str) -> bool:
+    """Whether a sentence has at least two words and ends with terminal punctuation."""
     return bool(_SENTENCE_END.search(sentence)) and len(sentence.split()) >= 2
 
 
 def distinct_4gram_ratio(text: str) -> float | None:
+    """Distinct word 4-grams over all 4-grams (1.0 = no repeats); None under four words."""
     w = normalize_words(text)
     grams = [tuple(w[i : i + 4]) for i in range(len(w) - 3)]
     return len(set(grams)) / len(grams) if grams else None
 
 
 def is_emoji(ch: str) -> bool:
+    """Whether a character is an emoji, a variation selector or a zero-width joiner."""
     cp = ord(ch)
     return (
         0x1F000 <= cp <= 0x1FAFF
@@ -442,7 +470,7 @@ def is_emoji(ch: str) -> bool:
 
 
 def non_latin_letters(text: str) -> tuple[int, int]:
-    """(letters outside the Latin script, all letters)."""
+    """Count letters as (outside the Latin script, all letters)."""
     bad = total = 0
     for ch in text:
         if ch.isalpha():
@@ -453,6 +481,7 @@ def non_latin_letters(text: str) -> tuple[int, int]:
 
 
 def markup_hits(text: str) -> list[str]:
+    """Markdown, template tokens, thinking tags and emoji in text; none may reach the screen."""
     hits = [w for w in text.split() if _MARKUP.search(w)]
     hits += _THINK.findall(text)
     hits += [ch for ch in text if is_emoji(ch)]
@@ -491,6 +520,12 @@ def default_layout_probe(cfg: Config) -> LayoutProbe | None:
 
 @dataclass
 class Check:
+    """One row of the verify table: a named check, its status, measured value and limit.
+
+    `pending` means the check cannot run yet (a missing layout probe, an unrecorded next
+    life); like `skip`, it never fails a life.
+    """
+
     name: str
     status: Status
     value: Any = None
@@ -500,6 +535,8 @@ class Check:
 
 @dataclass
 class VerifyResult:
+    """Every check run on one life at one level, plus headline metrics."""
+
     life: int
     level: str
     profile: str
@@ -509,12 +546,15 @@ class VerifyResult:
 
     @property
     def ok(self) -> bool:
+        """True unless a check failed; pending and skipped checks never fail a life."""
         return not any(c.status == "fail" for c in self.checks)
 
     def by_name(self, name: str) -> Check:
+        """The check with this name; raises StopIteration if it did not run."""
         return next(c for c in self.checks if c.name == name)
 
     def to_json(self) -> dict[str, Any]:
+        """The result in the shape written to verify.json."""
         return {
             "life": self.life,
             "level": self.level,
@@ -537,7 +577,7 @@ def _r(x: float | None, nd: int = 3) -> float | None:
 
 
 class Verifier:
-    """Runs the checks for one life."""
+    """Runs the 10.3 checks and the 5.11 metrics for one life against `[verify]` thresholds."""
 
     def __init__(
         self,
@@ -547,6 +587,12 @@ class Verifier:
         layout: LayoutProbe | None = None,
         lifespan_s: float | None = None,
     ) -> None:
+        """Prepare thresholds, keyword matchers and the schedule the life ran on.
+
+        `next_life` feeds the next-birth check and `layout` the layout checks (both pending
+        without it); `lifespan_s` overrides the profile's lifespan. A non-default
+        `cpu_drop_min_cores` rebuilds `life.changes` in place.
+        """
         self.life = life
         self.cfg = cfg
         self.next_life = next_life
@@ -567,6 +613,7 @@ class Verifier:
     # -- the table ------------------------------------------------------------------------
 
     def run(self, level: str) -> VerifyResult:
+        """Run the checks enabled at `level`; raises ValueError for an unknown level."""
         if level not in LEVELS:
             raise ValueError(f"unknown level {level!r}; use one of {LEVELS}")
         self.level = level
@@ -607,6 +654,7 @@ class Verifier:
         return res
 
     def summary(self) -> dict[str, Any]:
+        """Headline counts for verify.json: thoughts, words shown, seconds lived, cause, changes."""
         life = self.life
         words = sum(th.n_words for th in life.thoughts)
         return {
@@ -626,17 +674,24 @@ class Verifier:
 
     @property
     def cause(self) -> str | None:
+        """The recorded cause of death, or None without a death event."""
         d = self.life.death
         return None if d is None else str(d.get("cause"))
 
     @property
     def lived_s(self) -> float:
+        """Seconds lived: the death event's `lived_s` when present, else the death time."""
         d = self.life.death
         if d is not None and d.get("lived_s") is not None:
             return float(d["lived_s"])
         return self.life.death_t
 
     def expected_cause(self, level: str) -> str:
+        """The cause of death the plan expects for this profile at this level.
+
+        `full` for an unbounded profile; `deadline` for smoke and skeleton runs and for profiles
+        without a death time; otherwise the configured `body.death_mode` (default `oom`).
+        """
         if self.cfg.profile.unbounded:
             return "full"
         if level in ("smoke", "skeleton") or self.schedule.death_s is None:
@@ -646,6 +701,10 @@ class Verifier:
     # -- smoke ----------------------------------------------------------------------------
 
     def check_duration(self) -> list[Check]:
+        """The life lasted its lifespan within `duration_tolerance_s` (10.3).
+
+        An unbounded life must instead end with cause `full` inside the lifespan.
+        """
         if self.cfg.profile.unbounded:
             return [
                 Check(
@@ -670,10 +729,15 @@ class Verifier:
         ]
 
     def check_cause(self) -> list[Check]:
+        """The recorded cause of death is the one `expected_cause` gives for this level."""
         want = self.expected_cause(self.level)
         return [Check("cause", _pf(self.cause == want), self.cause, want)]
 
     def check_recall_budget(self) -> list[Check]:
+        """Memory in use never exceeded the recall budget by more than `recall_tolerance` (10.3).
+
+        Judged at the worst vitals sample; skipped when no sample reports `recall_used`.
+        """
         tol = 1 + float(self.th["recall_tolerance"])
         worst: tuple[float, Event] | None = None
         for e in self.life.of("vitals"):
@@ -697,6 +761,7 @@ class Verifier:
         ]
 
     def check_banned_shown(self) -> list[Check]:
+        """No banned prompt phrase, markup, thinking tag or emoji was shown."""
         banned: list[str] = []
         markup: list[str] = []
         for th in self.life.thoughts:
@@ -731,6 +796,7 @@ class Verifier:
         return [Check("sync_rule", _pf(not bad), len(bad), 0, "; ".join(bad[:5]))]
 
     def check_death_display(self) -> list[Check]:
+        """The death screen appeared within `max_death_display_delay_s` of the death."""
         death, shown = self.life.death, self.life.first("death_shown")
         limit = float(self.th["max_death_display_delay_s"])
         if death is None or shown is None:
@@ -739,6 +805,11 @@ class Verifier:
         return [Check("death_shown_delay", _pf(0 <= delay <= limit), _r(delay, 1), limit)]
 
     def check_next_birth(self) -> list[Check]:
+        """The next life was born within silence + load + margin of the death screen (10.3).
+
+        The load is measured from the next life's `birth_loading` to its `birth`. Pending until
+        the next life is recorded.
+        """
         silence = float(self.cfg.get("life.silence_seconds", 90))
         limit = silence + float(self.th["next_birth_margin_s"])
         shown = self.life.first("death_shown")
@@ -766,6 +837,7 @@ class Verifier:
     # -- skeleton -------------------------------------------------------------------------
 
     def check_empty_thoughts(self) -> list[Check]:
+        """Fewer than `max_empty_thought_ratio` of the thoughts showed no words."""
         n = len(self.life.thoughts)
         limit = float(self.th["max_empty_thought_ratio"])
         if n == 0:
@@ -774,6 +846,11 @@ class Verifier:
         return [Check("empty_thoughts", _pf(empty / n < limit), _r(empty / n), limit)]
 
     def check_typing_speed(self) -> list[Check]:
+        """Words per minute on the replayed display stay in range.
+
+        The birth phase's median must fall in `wpm_birth_range` and every timed thought (at least
+        `min_words_for_speed` words) in `wpm_writing_range`.
+        """
         lo_b, hi_b = (float(x) for x in self.th["wpm_birth_range"])
         lo_w, hi_w = (float(x) for x in self.th["wpm_writing_range"])
         min_words = int(self.th["min_words_for_speed"])
@@ -810,6 +887,7 @@ class Verifier:
         ]
 
     def check_split_words(self) -> list[Check]:
+        """No word is broken across lines by the layout; pending without a layout probe."""
         if self.layout is None:
             return [Check("no_split_words", "pending", detail="needs display.layout (agent D)")]
         n = self.layout.split_words(self.life.events)
@@ -828,6 +906,7 @@ class Verifier:
         return rep
 
     def check_thought_count_rule(self) -> list[Check]:
+        """The real thought and reload times satisfy the cost model's rules (5.3)."""
         rep = self.rule_report()
         detail = "; ".join(f"({v.rule}) {v.detail}" for v in rep.violations)
         return [Check("thought_count_rule", _pf(rep.ok), len(rep.violations), 0, detail)]
@@ -837,6 +916,12 @@ class Verifier:
         return _t(w) if w is not None else None
 
     def check_reloads(self) -> list[Check]:
+        """Reload silences and count match the plan.
+
+        Each reload may leave the screen silent (reload to next word) for at most
+        `max_reload_silence_s`, and the reloads done, or done plus skipped, must equal the
+        schedule's reloads before death.
+        """
         limit = float(self.th["max_reload_silence_s"])
         silences: list[float] = []
         for e in self.life.of("reload"):
@@ -861,6 +946,7 @@ class Verifier:
         return [th for th in self.life.thoughts if th.gen_idx > idx][:k]
 
     def check_reload_noticing(self) -> list[Check]:
+        """The first thought after every reload speaks of the loss (5.11); skip without reloads."""
         reloads = self.life.of("reload")
         if not reloads:
             return [Check("reload_noticing", "skip", detail="no reloads in this life")]
@@ -885,6 +971,10 @@ class Verifier:
         ]
 
     def check_bright_words(self) -> list[Check]:
+        """At most `max_bright_words_last_2min` words at full brightness at once near the end.
+
+        Only the flow layout is checked (the last 120 s of the life); pending without a probe.
+        """
         limit = int(self.th["max_bright_words_last_2min"])
         if str(self.cfg.get("display.layout", "flow")) != "flow":
             return [Check("bright_words_last_2min", "skip", detail="grid layout")]
@@ -910,6 +1000,10 @@ class Verifier:
         return out
 
     def check_speed_decline(self) -> list[Check]:
+        """Tokens/s in the last 5 minutes is under `max_speed_ratio_end_vs_start` of the first 5.
+
+        Rates come from `gen_end` events, else from vitals; skipped for unbounded profiles.
+        """
         limit = float(self.th["max_speed_ratio_end_vs_start"])
         if self.cfg.profile.unbounded:
             return [Check("speed_decline", "skip", limit=limit, detail="unbounded: no decline")]
@@ -932,6 +1026,10 @@ class Verifier:
         ]
 
     def check_persona_at_death(self) -> list[Check]:
+        """Every persona group and the mechanics text were gone by the last erosion step.
+
+        Skipped when the profile never erodes.
+        """
         if not self.schedule.erosion_times():
             return [Check("persona_groups_at_death", "skip", detail="no erosion in profile")]
         ero = self.life.of("erosion")
@@ -950,6 +1048,11 @@ class Verifier:
     # -- rehearsal metrics (5.11) ---------------------------------------------------------
 
     def check_readability(self) -> list[Check]:
+        """Before erosion, sentences are complete and of readable length (5.11).
+
+        At least `min_complete_sentence_ratio_before_erosion` of sentences end properly, and
+        the mean complete sentence has a word count in `sentence_words_range_before_erosion`.
+        """
         pool = self.life.before_erosion()
         lo, hi = (float(x) for x in self.th["sentence_words_range_before_erosion"])
         min_c = float(self.th["min_complete_sentence_ratio_before_erosion"])
@@ -987,6 +1090,10 @@ class Verifier:
         return table
 
     def check_notice_rate(self) -> list[Check]:
+        """The share of changes mentioned in the next `notice_window_thoughts` thoughts (5.11).
+
+        Changes the creature died before answering are not counted.
+        """
         table = self.notice_table()
         limit = float(self.th["min_notice_rate"])
         noticed = sum(a for a, _ in table.values())
@@ -1005,6 +1112,7 @@ class Verifier:
         ]
 
     def check_demise_rate(self) -> list[Check]:
+        """The share of thoughts after erosion that speak of ending (5.11)."""
         pool = self.life.after_erosion()
         limit = float(self.th["min_demise_rate_after_erosion"])
         if not pool:
@@ -1021,6 +1129,11 @@ class Verifier:
         ]
 
     def is_specific(self, th: Thought) -> bool:
+        """Whether a thought names its situation.
+
+        It does when it uses a `specific` keyword or repeats a number (other than 0 and 1) from
+        the reading it answered.
+        """
         if self.kw["specific"].any(th.text):
             return True
         v = th.vitals or {}
@@ -1032,6 +1145,7 @@ class Verifier:
         return any(n in numbers for n in re.findall(r"\d+", th.text))
 
     def check_specific(self) -> list[Check]:
+        """The share of thoughts before erosion that are specific (5.11, see `is_specific`)."""
         pool = self.life.before_erosion()
         limit = float(self.th["min_specific_ratio_before_erosion"])
         if not pool:
@@ -1048,6 +1162,7 @@ class Verifier:
         ]
 
     def check_cliches(self) -> list[Check]:
+        """Cliches per 200 shown words stay at or under `max_cliches_per_200_words` (5.11)."""
         text = " ".join(th.text for th in self.life.thoughts)
         words = len(text.split())
         limit = float(self.th["max_cliches_per_200_words"])
@@ -1066,6 +1181,11 @@ class Verifier:
         ]
 
     def check_voice_hygiene(self) -> list[Check]:
+        """The voice stays its own (5.11).
+
+        No helpdesk phrases, no answering the readings, no thinking tags, and before erosion
+        fewer than `max_non_latin_ratio_before_erosion` of letters outside the Latin script.
+        """
         help_hits: list[str] = []
         answer_hits: list[str] = []
         think: list[str] = []
@@ -1095,6 +1215,10 @@ class Verifier:
         ]
 
     def check_repetition(self) -> list[Check]:
+        """Before erosion, no thought of `min_words_for_4grams` or more words repeats itself.
+
+        Each one's distinct 4-gram ratio must reach `min_distinct_4gram_ratio_before_erosion`.
+        """
         limit = float(self.th["min_distinct_4gram_ratio_before_erosion"])
         min_words = int(self.th["min_words_for_4grams"])
         scored = [
@@ -1127,6 +1251,7 @@ def verify_life(
 
 
 def add_arguments(p: argparse.ArgumentParser) -> None:
+    """Add the verify-life arguments to a parser (used by `epitaph verify-life` and `main`)."""
     p.add_argument("target", help="life number, life folder, or an events.jsonl file")
     p.add_argument("--level", choices=LEVELS, help="default: the profile's verify_level")
     p.add_argument("--profile", help="profile the life ran (default: from the events or config)")
@@ -1160,6 +1285,7 @@ def _next_life(events: list[Event], path: Path, n: int) -> Life | None:
 
 
 def format_result(res: VerifyResult) -> str:
+    """The result as a plain-text report, one check per line."""
     lines = [
         f"life {res.life} ({res.profile}, {res.hardware}) level {res.level}: "
         f"{'PASS' if res.ok else 'FAIL'}"
@@ -1209,6 +1335,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run verify-life as a standalone program; returns the exit code of `run`."""
     p = argparse.ArgumentParser(
         prog="epitaph verify-life",
         description=__doc__,

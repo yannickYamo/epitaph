@@ -118,12 +118,14 @@ class VitalsReader:
     """Reads the body's vitals; `vcgencmd` is called at most every `throttle_every_s`."""
 
     def __init__(self, paths: SysPaths = DEFAULT_PATHS, throttle_every_s: float = 10.0) -> None:
+        """Read from `paths`; call `vcgencmd` at most every `throttle_every_s` seconds."""
         self.paths = paths
         self.throttle_every_s = throttle_every_s
         self._throttled: int | None = None
         self._throttled_at = -math.inf
 
     def throttled(self) -> int | None:
+        """The firmware's throttling bits, cached for `throttle_every_s` (None off a Pi)."""
         now = time.monotonic()
         if now - self._throttled_at >= self.throttle_every_s:
             self._throttled = read_throttled(self.paths)
@@ -136,6 +138,7 @@ class VitalsReader:
         mem_used_mb: int | None = None,
         cores_effective: float | None = None,
     ) -> Vitals:
+        """Current vitals; the memory (MiB) and core figures come from the caller."""
         return Vitals(
             cpu_c=read_cpu_temp(self.paths),
             throttled=self.throttled(),

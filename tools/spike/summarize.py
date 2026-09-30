@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Print markdown tables of agent A's spike results (for docs/SPIKE.md).
+"""Print the spike results under bench/ as markdown tables for docs/SPIKE.md (BUILD_PLAN 8.5).
+
+With no argument every table is printed; otherwise only the named ones.
 
   python3 tools/spike/summarize.py [s1|s2|s6|s4|s1c|bench]
 """
@@ -18,7 +20,9 @@ def load(pattern: str) -> list[tuple[str, dict]]:
 
 
 def s2() -> None:
-    print("| Run | Model | reuse | first marker | warm trim | erosion | late trim (tokens) | late erosion | reload re-read | works |")
+    print(
+        "| Run | Model | reuse | first marker | warm trim | erosion | late trim (tokens) | late erosion | reload re-read | works |"
+    )
     print("|---|---|---|---|---|---|---|---|---|---|")
     for name, d in load("spike/s2-*.json"):
         by = {s["kind"]: s for s in d["steps"]}
@@ -33,7 +37,9 @@ def s2() -> None:
 
 
 def s6() -> None:
-    print("| Model | system kept | 2 user turns | count exact | overhead/msg | DRY | grammar | prefill | raw | hygiene |")
+    print(
+        "| Model | system kept | 2 user turns | count exact | overhead/msg | DRY | grammar | prefill | raw | hygiene |"
+    )
     print("|---|---|---|---|---|---|---|---|---|---|")
     for _, d in load("spike/s6-*.json"):
         c = d["count"]
@@ -48,7 +54,9 @@ def s6() -> None:
 
 
 def s1() -> None:
-    print("| Model | quant | thr | mmap | load s | birth thought s | pp tok/s | tg tok/s (birth / depth) | headroom MB | fits | throttled |")
+    print(
+        "| Model | quant | thr | mmap | load s | birth thought s | pp tok/s | tg tok/s (birth / depth) | headroom MB | fits | throttled |"
+    )
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     rows = load("measured/pi4-*.json") + load("spike/s1*-pi4-*.json")
     for name, d in rows:

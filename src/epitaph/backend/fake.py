@@ -106,6 +106,12 @@ class FakeBackend:
         cache_reuse_min: int = 256,
         faults: FakeFaults | None = None,
     ) -> None:
+        """Create a stopped creature on `clock`, with the speeds of `costs`.
+
+        `seed` makes the text deterministic. `ctx` is the context size in tokens. `cache_reuse`
+        says whether `--cache-reuse` works (default: `costs.cache_reuse_works`), and
+        `cache_reuse_min` is the shortest reusable run, in tokens.
+        """
         self.clock = clock
         self.costs = costs
         self.rng = random.Random(seed)
@@ -134,6 +140,11 @@ class FakeBackend:
     # -- lifecycle ---------------------------------------------------------------------------
 
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
+        """Load the quant's ladder step, taking the modelled load time on the clock.
+
+        Empties the prompt cache. Raises CreatureDied for `crash_on_start`, or when a stop or
+        kill ends a `hang_on_start`.
+        """
         self.alive = False
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
@@ -170,6 +181,7 @@ class FakeBackend:
             )
 
     def set_cpu_share(self, share: float) -> None:
+        """Set the CPU share in cores; the modelled speeds scale with it."""
         self.cpu_share = share
 
     def kill(self, signal: int = SIGKILL, exit_code: int | None = None) -> None:
@@ -190,6 +202,7 @@ class FakeBackend:
         self.kill(SIGKILL)
 
     def crash(self) -> None:
+        """Die with the configured crash signal or exit code. Fires on_death."""
         self.kill(self.faults.crash_signal or SIGSEGV, self.faults.crash_exit_code)
 
     def hang(self) -> None:
@@ -199,13 +212,16 @@ class FakeBackend:
             self._wake = asyncio.Event()
 
     def resume(self) -> None:
+        """Continue after a hang (SIGCONT)."""
         self.hung = False
         self._wake.set()
 
     def on_death(self, fn: Callable[[CreatureStatus], None]) -> None:
+        """Register a callback fired when the creature dies on its own (not on stop)."""
         self._on_death.append(fn)
 
     def status(self) -> CreatureStatus:
+        """The process status, with the speeds (tokens/s) the current step and share would give."""
         tg = self.costs.tg(self.step, self.threads, self.cpu_share) / self.faults.tg_factor
         pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
         s = self._last
@@ -221,10 +237,11 @@ class FakeBackend:
     # -- tokens and cache --------------------------------------------------------------------
 
     async def count_past_tokens(self, messages: list[Msg]) -> int:
+        """Tokens of these messages in the fake's block model (about 4 letters per token)."""
         return sum(n for m in messages for _, n in _blocks(m.role, m.content))
 
     def _plan(self, messages: list[Msg]) -> tuple[list[tuple[str, int]], int, int]:
-        """(blocks, tokens to process, tokens reused) for this prompt against the cache.
+        """Return (blocks, tokens to process, tokens reused) for this prompt against the cache.
 
         Mirrors llama-server's `--cache-reuse` scan: after the common prefix, the prompt
         position only moves on a match of at least `cache_reuse_min` tokens, while the cache
@@ -333,6 +350,11 @@ class FakeBackend:
     async def chat(
         self, messages: list[Msg], sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:
+        """Stream a thought at modelled speeds, re-reading only what the cache lacks.
+
+        Raises ContextFull when the prompt does not fit and CreatureDied when a fault kills the
+        creature. Stops early and sets `truncated` when the context fills during generation.
+        """
         if not self.alive:
             raise CreatureDied(self.status())
         blocks, todo, reused = self._plan(messages)
@@ -390,6 +412,7 @@ class FakeBackend:
     async def complete(
         self, prompt: str, sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:
+        """Stream a raw completion: the end of `prompt` (400 characters) as a chat turn."""
         async for c in self.chat([Msg("user", prompt[-400:])], sampling, max_tokens):
             yield c
 
@@ -399,15 +422,19 @@ def _last_user(messages: list[Msg]) -> str:
 
 
 def _blocks(role: str, content: str) -> list[tuple[str, int]]:
-    """A message as cache blocks: its template header (with the end of the turn), then one
-    block per line (about 4 letters per token)."""
+    """A message as cache blocks: its template header (with the end of the turn), then its lines.
+
+    Each block is (content key, tokens), at about 4 letters per token.
+    """
     lines = content.strip().split("\n")
     return [(f"<{role}>", 3)] + [(line, len(line) // 4 + 1) for line in lines]
 
 
 def _split_tokens(piece: str) -> list[str]:
-    """About 1.3 tokens per English word, like a real tokenizer: short words are one token,
-    longer ones two."""
+    """Split a word into fake tokens: one for up to 5 letters, two for longer words.
+
+    That gives about 1.3 tokens per English word, like a real tokenizer.
+    """
     word = piece.rstrip()
     if len(word) <= 5:
         return [piece]

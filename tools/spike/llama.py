@@ -23,7 +23,9 @@ BIN = Path(os.environ.get("LLAMA_BIN", "~/llama.cpp/build/bin")).expanduser()
 MODELS = Path(
     os.environ.get(
         "EPITAPH_MODELS_DIR",
-        "/var/lib/epitaph/models" if Path("/var/lib/epitaph/models").exists() else "~/epitaph-models",
+        "/var/lib/epitaph/models"
+        if Path("/var/lib/epitaph/models").exists()
+        else "~/epitaph-models",
     )
 ).expanduser()
 
@@ -150,7 +152,9 @@ class Server:
         except urllib.error.HTTPError as e:
             return {"error": {"code": e.code, "message": e.read().decode(errors="replace")}}
 
-    def chat(self, messages: list[dict[str, str]], max_tokens: int = 70, **kw: Any) -> dict[str, Any]:
+    def chat(
+        self, messages: list[dict[str, str]], max_tokens: int = 70, **kw: Any
+    ) -> dict[str, Any]:
         """One non-streamed chat request; returns text, timings and wall seconds."""
         body: dict[str, Any] = {
             "messages": messages,
@@ -191,7 +195,9 @@ def running(server: Server) -> Iterator[Server]:
         server.stop()
 
 
-def system_text(groups: int = 5, mechanics: bool = True, prompt: dict[str, Any] | None = None) -> str:
+def system_text(
+    groups: int = 5, mechanics: bool = True, prompt: dict[str, Any] | None = None
+) -> str:
     p = prompt or default_prompt()
     parts = list(p["persona_groups"][:groups])
     if mechanics:

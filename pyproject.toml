@@ -9,7 +9,23 @@ description = "A small language model lives and dies on a Raspberry Pi, one hour
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
+authors = [{ name = "Yannick" }]
+keywords = ["raspberry-pi", "llm", "llama.cpp", "art", "installation", "generative-art", "cgroups"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Artistic Software",
+]
 dependencies = ["httpx>=0.27"]
+
+[project.urls]
+Homepage = "https://github.com/yannickYamo/epitaph"
+Documentation = "https://github.com/yannickYamo/epitaph/blob/main/docs/BUILD_PLAN.md"
+Issues = "https://github.com/yannickYamo/epitaph/issues"
 
 [project.optional-dependencies]
 display = ["pygame>=2.5"]
@@ -44,8 +60,13 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "D1"]
 ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# Docstrings are required on the public API in src/; tests and one-off tools are exempt.
+"tests/**" = ["D1"]
+"tools/**" = ["D1", "E501"]  # tables and usage examples read better unwrapped
 
 [tool.pyright]
 include = ["src"]
