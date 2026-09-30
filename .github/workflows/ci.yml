@@ -2,7 +2,12 @@
 #
 # The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
 # CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,
-# the Pi 5 and sim profiles, verify-life on simulated lives, and the headless display tests.
+# the Pi 5 and sim profiles, verify-life and the rehearsal tools on simulated lives, the cost
+# model on the measured Pi 4 costs, and the headless display tests.
+#
+# Nothing here needs a model file, llama.cpp or the Pi: `make test` runs every test under
+# tests/ except those marked `pi` (tests/pi) or `model` (tests/templates), which pyproject's
+# addopts deselect; the runner has neither, so a test that needed one would fail here.
 name: ci
 
 on:
@@ -113,6 +118,31 @@ jobs:
             $PY -m epitaph sim --profile pi4/$p --hardware pi4-4gb --lives 2 --events > ci-lives/$p.jsonl
             $PY -m epitaph.verify ci-lives/$p.jsonl --profile pi4/$p --hardware pi4-4gb --out ci-lives/$p.verify.json
           done
+
+      - name: Rehearsal tools on simulated lives (summary line, compare table)
+        run: |
+          for p in smoke-300 skeleton-1200; do
+            # The fake backend's words fail the 5.11 metrics (exit 1); only exit 2 is an error.
+            rc=0
+            $PY -m epitaph.verify ci-lives/$p.jsonl --life 1 --profile pi4/$p --hardware pi4-4gb \
+              --level rehearsal --summary --no-write >> ci-lives/summaries.jsonl || rc=$?
+            [ $rc -le 1 ] || exit $rc
+            $PY -m epitaph.verify compare ci-lives/$p.jsonl --profile pi4/$p --hardware pi4-4gb \
+              --level screen --require-models 0 --out ci-lives/$p.compare.md > /dev/null
+          done
+          $PY -c 'import json,sys; [json.loads(l) for l in open(sys.argv[1])]' ci-lives/summaries.jsonl
+
+      - name: Thought-count rule on measured Pi 4 costs, every model (informational; gate G0.4)
+        continue-on-error: true
+        run: |
+          rc=0
+          for b in bench bench/measured; do
+            ls $b/pi4-*.json > /dev/null 2>&1 || continue
+            echo "costs from $b"
+            $PY .github/scripts/estimate_measured.py --bench $b \
+              || { rc=1; echo "::warning::a Pi 4 profile fails the thought-count rule on $b costs"; }
+          done
+          exit $rc
 
       - name: Headless display tests
         run: |
