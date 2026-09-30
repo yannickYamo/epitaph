@@ -76,4 +76,59 @@ gaps), same prompt, `cache_prompt: false`.
 **Recommended:** `cpu_share = true`; the profile's CPU-share column stands; no thread drop to 1
 at reload 2. Period 100 ms (default) is fine.
 
-### S3: death by RAM — see below (rerun in progress)
+### S3: death by RAM — **GO: `death_mode = "oom"`, load mode `dio`, limit below anon**
+
+Runs: `s3-20260929-231811.json` (mmap, eviction probe), `s3-20260929-233619.json` (`none`,
+`dio`), `s3-20260930-000233.json` (the controller's own `CgroupBody.squeeze_to_death()`).
+`s3-20260929-223951.json` is **invalid** (kept for the record): the model's page cache was
+charged to the rsync session, so an mmap creature showed 0 MB of file memory, and every
+non-mmap trial failed at start (see "llama.cpp flag" below).
+
+Method per trial: drop the model from the page cache (`FADV_DONTNEED`), start llama-server
+(3 threads, ctx 2048) in the creature cgroup, generate 8 tokens, start a 400-token stream,
+after 3 tokens write `memory.max`, poll until the process dies (30 s cap).
+
+| Load mode | Limit | Kills | Time to kill | Creature memory before (anon + file) | Load time |
+|---|---|---|---|---|---|
+| `dio` (O_DIRECT into anon) | 0.5 × current | **5 / 5** | 0.33-0.35 s | 2231 + 19 MB | 51.3-51.9 s |
+| `none` (read into anon) | 0.5 × current | **5 / 5** | 0.72-0.74 s | 2218 + 1269-1328 MB | 48.9 s |
+| `mmap` | 0.5 × current (1118 MB, above anon) | **0 / 5** | no kill in 30 s: thrash, about 1.23 GB read from the card per 30 s (40 MB/s), 0-1 tokens | 299 + 1927 MB | 48.4-48.7 s |
+| `mmap` | 0.5 × anon (149 MB) | 2 / 2 | 1.08-1.38 s | 299 + 1927 MB | 48.4 s |
+| `mmap`, via `CgroupBody.squeeze_to_death()` | 0.5 × anon (149 MB) | **5 / 5** | 0.81-0.83 s | 299 + 1937 MB | 48.6-48.9 s |
+| `dio`, via `CgroupBody.squeeze_to_death()` | 0.5 × anon (1115 MB) | **5 / 5** | 0.34-0.38 s | 2231 + 19 MB | 51.6-52.1 s |
+Every kill: `oom_kill` and `oom_group_kill` rose, exit by SIGKILL, `death_cause` → `oom`.
+`get_throttled` 0x0 throughout.
+
+**Eviction probe (mmap, for the record; confirms 5.5 / V3):** `memory.high` just below the
+working set (2237 MB):
+
+| memory.high | tok/s | vs baseline 1.858 | card reads | token gap p50 / max |
+|---|---|---|---|---|
+| −1% (−22 MB) | 0.421 | 23% | 1.07 GB in 59 s | 2.6 s / 3.4 s |
+| −5% (−112 MB) | 0.085 | 4.6% | 5.2 GB in 162 s | 12.3 s / 15.1 s |
+
+Even a 1% eviction cuts the speed to a quarter: the weights are streamed once per token and
+the evicted pages are re-read every token. No gradual RAM squeeze on this card.
+
+**Findings that change other cards:**
+
+1. **llama.cpp flag (A, backend argv):** b11277 has no `--no-mmap` ("error: invalid argument:
+   --no-mmap"). It is `--load-mode none|mmap|dio|mlock|mmap+mlock` now. Contract proposal 3.
+2. **Page-cache charging (A, C):** page-cache pages are charged to the cgroup that first read
+   them. After an rsync, checksum or bench, an mmap creature's weights sit in *another*
+   cgroup and no creature limit can reach them (the invalid first run). `dio` avoids the page
+   cache entirely; for mmap, `drop_page_cache(model)` before the spawn.
+3. **`none` doubles the memory:** the weights in anon plus the file in the page cache, 3.5 GB
+   of the Pi's 3.7 GB for a 3B Q4_K_M. Reclaimable, but it evicts everything else. `dio`
+   holds one copy.
+4. **Death level:** `memory.max` must go below the *anonymous* memory; a level below
+   `memory.current` is not enough for mmap. `CgroupBody.death_limit_bytes()` now uses
+   `death_fraction` × anon (0.5).
+5. **Warm reloads:** `dio` never benefits from a warm cache (always about 51 s for 2 GB);
+   mmap loads in 4 s when warm. S4 (A) should time reloads with `dio`; the cost model's
+   estimated 45-60 s load stands.
+
+**Recommended:** `death_mode = "oom"`, `load_mode = "dio"` (mmap = false), `death_fraction =
+0.5` of anon, applied at `end-0:30` (set in `config/hardware/pi4-4gb.toml`). The fallback
+`death_mode = "deadline"` is not needed. S1a (A) must confirm that step 0 (Q6_K, about
+2.6 GB anon) plus KV still leaves 300 MB free with `dio`.

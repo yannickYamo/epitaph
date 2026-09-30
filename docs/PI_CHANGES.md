@@ -30,3 +30,4 @@ Every system-level change to the Pi, in order. Commands and results only, never 
 | 2026-09-29 | C | Bootstrap drift test: timezone set to UTC and `90-epitaph.conf` (journald) deleted by hand, then `--apply` | Both reported and restored (`changed: 2`); effective state equal to before; journald restarted |
 | 2026-09-29 | C | `/var/lib/epitaph/models/llama-3.2-3b-instruct/Q4_K_M.gguf` rsynced from the laptop over `pi-eth` (40.8 MB/s) for S3/S3c | sha256 6c1a2b41…c728ff matches the laptop copy |
 | 2026-09-29 | C | S3b: throwaway unit `epitaph-spike-s3b` (Delegate=yes, user pi, `--collect`); nftables table `inet epitaph_spike` added for the network test, then deleted | Unit gone; no nft table left |
+| 2026-09-29/30 | C | Spikes S3 (four runs) and S3c: throwaway units `epitaph-spike-s3`, `epitaph-spike-s3c` (Delegate=yes, user pi, `--collect`); files in `/tmp/epitaph-spike` | No units, cgroups or nft tables left; `get_throttled` 0x0 before and after every run |
