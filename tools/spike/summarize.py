@@ -3,7 +3,7 @@
 
 With no argument every table is printed; otherwise only the named ones.
 
-  python3 tools/spike/summarize.py [s1|s2|s6|s4|s1c|bench]
+  python3 tools/spike/summarize.py [s1|s2|s6|s4|s4b|s1c|bench|ladder]
 """
 
 from __future__ import annotations
@@ -62,12 +62,52 @@ def s1() -> None:
     for name, d in rows:
         if "quant" not in d or "headroom_mb" not in d:
             continue
+        if "load_mode" in d:  # round 2 (s1_ladder.py): shown by ladder()
+            continue
         mode = ("mmap" if d["mmap"] else "none") + (" swa-full" if "swafull" in name else "")
         print(
             f"| {d['model']} | {d['quant']} | {d['threads']} | {mode} "
             f"| {d.get('load_s')} | {d.get('birth_thought_s', '')} | {d.get('pp_tok_s', '')} "
             f"| {d.get('tg_tok_s_birth', '')} / {d.get('tg_tok_s', '')} | {d['headroom_mb']} "
             f"| {'yes' if d['fits'] else 'NO'} | {d.get('throttled', '').replace('throttled=', '')} |"
+        )
+
+
+def ladder() -> None:
+    """Round 2 (s1_ladder.py): every step at 3 and 2 threads, -tb 3, dio loads, prefill."""
+    print(
+        "| Model | step | quant | thr | load s (cold / warm) | prefill s | birth s | pp tok/s "
+        "| tg tok/s (birth / deep / late) | headroom MB | throttled |"
+    )
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    for _, d in load("measured/pi4-*.json"):
+        if "load_mode" not in d:
+            continue
+        print(
+            f"| {d['model']} | {d['step']} | {d['quant']} | {d['threads']} "
+            f"| {d.get('load_s_cold', d['load_s'])} / {d.get('load_s_warm', '')} "
+            f"| {d.get('prefill_s', '')} | {d.get('birth_thought_s', '')} | {d.get('pp_tok_s', '')} "
+            f"| {d.get('tg_tok_s_birth', '')} / {d.get('tg_tok_s', '')} / {d.get('tg_tok_s_late', '')} "
+            f"| {d['headroom_mb']} | {d.get('throttled', '').replace('throttled=', '')} |"
+        )
+
+
+def s4b() -> None:
+    """Spike S4b: the slot handover against the plain re-read of the same prompt."""
+    print(
+        "| Model | from -> to | memory before / after | file MB | save s | stop s | load s "
+        "| restore s | first request (read / prompt tokens) s | total s | re-read control s |"
+    )
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    for _, d in load("spike/s4b-*.json"):
+        f = d.get("first", {})
+        ctl = d.get("control", {})
+        print(
+            f"| {d['model']} | {d['from']} -> {d['to']} "
+            f"| {d.get('memory_tokens_before')} / {d.get('memory_tokens_after')} | {d.get('file_mb')} "
+            f"| {d.get('save_s')} | {d.get('stop_s')} | {d.get('load_s')} | {d.get('restore_s')} "
+            f"| {d.get('first_s')} ({f.get('prompt_n')} / {f.get('prompt_tokens')}) "
+            f"| {d.get('total_s')} | {ctl.get('reread_total_s', '')} |"
         )
 
 
@@ -88,25 +128,29 @@ def bench() -> None:
 
 
 def s4() -> None:
-    print("| Case | cold | stop s | load s | re-read tokens | re-read s | total s | go (<=180 s) |")
-    print("|---|---|---|---|---|---|---|---|")
+    print(
+        "| Case | cold | load mode | stop s | load s | prefill (tokens) s | re-read tokens "
+        "| re-read s | total s | go (<=180 s) |"
+    )
+    print("|---|---|---|---|---|---|---|---|---|---|")
     for _, d in load("spike/s4-*.json"):
         for c in d["cases"]:
+            pre = f"{c['prefill_s']} ({c['prefill_tokens']})" if c.get("prefill") else "none"
             print(
                 f"| {d['model']} {c['quant']} t{c['threads']}/tb{c.get('threads_batch', c['threads'])} "
-                f"recall {c['recall']} | {c['cold']} "
-                f"| {c['stop_s']} | {c['load_s']} | {c['reread_tokens']} | {c['reread_s']} "
+                f"recall {c['recall']} | {c['cold']} | {c.get('load_mode', 'mmap')} "
+                f"| {c['stop_s']} | {c['load_s']} | {pre} | {c['reread_tokens']} | {c['reread_s']} "
                 f"| {c['total_s']} | {'yes' if c['ok'] else 'no'} |"
             )
 
 
 def s1c() -> None:
     for _, d in load("spike/s1c-*.json"):
-        print({k: v for k, v in d.items() if k not in ("samples", "per_thought")})
+        print({k: v for k, v in d.items() if k not in ("samples", "per_thought", "events")})
 
 
 if __name__ == "__main__":
-    which = sys.argv[1:] or ["s6", "s2", "bench", "s1", "s4", "s1c"]
+    which = sys.argv[1:] or ["s6", "s2", "bench", "s1", "ladder", "s4", "s4b", "s1c"]
     for w in which:
         print(f"\n### {w}\n")
         globals()[w]()
