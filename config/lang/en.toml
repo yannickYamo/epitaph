@@ -79,6 +79,8 @@ demise = [
   "terminate*", "termination", "stop*", "cease*", "gone", "last", "final", "finish*",
   "shut*", "off", "darkness", "dark", "silence", "never", "goodbye", "farewell", "vanish*",
   "fade*", "disappear*", "nothing",
+  # round 2: how the better voices spoke of their end ("it's fading", "being erased")
+  "fading", "dimming", "erased", "erasing", "dissolv*", "unravel*", "extinguish*", "no longer",
 ]
 # A thought is specific when it mentions a concrete reading.
 specific = [

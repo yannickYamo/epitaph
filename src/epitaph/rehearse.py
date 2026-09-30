@@ -110,6 +110,7 @@ __all__ = [
     "highlights",
     "keyword_matchers",
     "laptop_settings",
+    "life_meta",
     "main",
     "moments",
     "parse_set",
@@ -1539,13 +1540,37 @@ def run_life_stage(args: argparse.Namespace) -> Path:
     return out_dir
 
 
+def life_meta(cfg: Config, args: argparse.Namespace, measured: bool) -> dict[str, Any]:
+    """The rehearsal header verify-life reads from `meta.json` (proposal E10).
+
+    `measured` says whether every Pi rate the life was charged at was a measurement.
+    """
+    model = cfg.model()
+    return {
+        "type": "rehearsal",
+        "stage": "full",
+        "model": model.name,
+        "quant": model.quant(0),
+        "ladder": list(model.ladder),
+        "persona": str(cfg.get("prompt.persona_active", "persona")),
+        "seed": args.seed,
+        "profile": cfg.profile.name,
+        "hardware": cfg.hardware,
+        "lifespan_s": Schedule(cfg.profile).lifespan_s,
+        "costs": "measured" if measured else "estimated",
+        "overrides": list(args.set or []),
+    }
+
+
 def write_life_outputs(
     out_dir: Path, cfg: Config, life: RehearsedLife, costs: PiCosts, args: argparse.Namespace
 ) -> None:
-    """thoughts.txt, highlights.md, charges.json, verify.json and report.md for one life."""
+    """thoughts.txt, highlights.md, charges.json, verify.json, report.md and meta.json."""
+    summary = charge_summary(life.charges)
+    meta = life_meta(cfg, args, measured=not summary["not_measured"])
+    _write(out_dir / "meta.json", json.dumps(meta, indent=1) + "\n")
     _write(out_dir / "thoughts.txt", thoughts_text(life.events))
     _write(out_dir / "highlights.md", highlights(life.events))
-    summary = charge_summary(life.charges)
     (out_dir / "charges.json").write_text(
         json.dumps({"summary": summary, "charges": [asdict(c) for c in life.charges]}, indent=1),
         encoding="utf-8",
