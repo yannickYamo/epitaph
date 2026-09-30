@@ -7,9 +7,10 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; root="$(cd "$here/../.." && pwd)"
 minutes="$1"; name="$2"; script="$3"; shift 3
 unit="spike-a-$name"
-# `pi` goes over Wi-Fi via mDNS (epitaph.local); when the laptop cannot resolve it, use the cable.
-host="${PI_SSH:-pi}"
-ssh -o ConnectTimeout=8 "$host" true 2>/dev/null || host=pi-eth
+# `pi` goes over Wi-Fi via mDNS (epitaph.local); when it does not answer, the cable (F12).
+# shellcheck source=tools/pi_host.sh
+. "$root/tools/pi_host.sh"
+host="$(PI_HOST="${PI_SSH:-${PI_HOST:-}}" pi_host)"
 ssh $host 'mkdir -p ~/epitaph-spike/tools/spike ~/epitaph-spike/config ~/epitaph-spike/bench/spike'
 rsync -a "$here/"*.py $host:epitaph-spike/tools/spike/
 rsync -a "$root/config/default.toml" $host:epitaph-spike/config/

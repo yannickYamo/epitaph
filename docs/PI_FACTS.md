@@ -4,8 +4,9 @@
 |---|---|
 | Board | Raspberry Pi 4 Model B Rev 1.5, 4 GB, 4 × Cortex-A72 1.8 GHz, bootloader 2022-04-26 |
 | OS | Raspberry Pi OS 64-bit (Debian 13 trixie, image 2026-09-15), kernel 6.18.50+rpt-rpi-v8, Python 3.13.5, console boot |
-| Hostname / access | `epitaph`; laptop aliases `pi` = `epitaph.local` (Wi-Fi, key only), `pi-eth` = 10.42.0.95 (cable; passwords allowed if one is set) |
-| Network | Wi-Fi `<home-wifi>` (US regdomain, powersave off) carries the default route; the cable is maintenance-only (`never-default`) |
+| Hostname / access | `epitaph`; laptop aliases `pi` = `epitaph.local` (Wi-Fi, key only), `pi-eth` = 10.42.0.95 (cable; passwords allowed if one is set). Tools try `pi`, then `pi-eth` (see "Reaching the Pi") |
+| Network | Wi-Fi `<home-wifi>` (US regdomain, powersave off) carries the default route (metric 600); the cable is the maintenance link and the route of last resort (metric 800, through the laptop's shared connection) |
+| Swap | zram only: 2 GB compressed RAM (zstd), swappiness 10, no swap file on the card (`/etc/rpi/swap.conf.d/90-epitaph.conf`, `/etc/sysctl.d/90-epitaph.conf`). The creature's cgroup has `memory.swap.max = 0` |
 | Storage | 2017 SanDisk 64 GB (SP64G); p1 512 MB vfat, p2 59 GB ext4; about 49 GB free |
 | cgroups | v2, controllers `cpuset cpu io memory pids` (memory enabled via cmdline; firmware injects `cgroup_disable=memory`) |
 | RAM | 3.7 GiB total; about 3.59 GB available at idle on console boot |
@@ -17,6 +18,36 @@
 | Screen | None connected |
 | Hardware class | `pi4` (overlay `pi4-4gb`) |
 | Backup | `~/epitaph-backups/step0-20260929-2124` on the laptop (restore tested) |
+
+## Reaching the Pi
+
+- **Two aliases, one order.** `tools/pi_host.sh` tries `pi` (Wi-Fi, mDNS) and then `pi-eth`
+  (the cable); every tool that talks to the Pi uses it (`PI_HOST` pins one alias). The remote
+  view does the same: `epitaph display --connect pi` means `pi,pi-eth`.
+- **Why `epitaph.local` fails.** On 2026-09-30 the cause was the Pi, not mDNS: its saved Wi-Fi
+  network was out of range, so `wlan0` never came up and avahi (which publishes on `wlan0`
+  only) had nothing to announce. Avahi itself logged no conflicts; its settings were left as
+  they are. When the Pi moves, a person adds the new network on the Pi (`ssh -t pi-eth sudo
+  nmcli --ask device wifi connect "<SSID>"`, in your own terminal) or the Pi stays on the cable.
+- **Plain `ssh pi` with the same fallback** (optional, your own `~/.ssh/config`; put it above
+  `Host pi`, because the first `HostName` wins):
+
+  ```
+  Match originalhost pi exec "! timeout 3 getent hosts epitaph.local >/dev/null"
+      HostName 10.42.0.95
+  ```
+
+  It costs 3 s per connection while mDNS fails.
+- **Address reservations (the owner's option).** A reservation removes the guesswork:
+  - Wi-Fi: reserve the Pi's Wi-Fi MAC in the router's DHCP settings, then point `pi` at that
+    address in `~/.ssh/config` (keep `epitaph.local` as a comment). Nothing on the Pi changes.
+  - Cable: the laptop's shared connection hands out 10.42.0.x through its own dnsmasq, which
+    in practice gives the same Pi the same address. To pin it, on the laptop:
+    `echo 'dhcp-host=<pi-eth0-mac>,10.42.0.95' | sudo tee /etc/NetworkManager/dnsmasq-shared.d/epitaph.conf`
+    and reconnect the cable. A static address on the Pi is not needed.
+- **No Wi-Fi, no clock.** The Pi has no RTC. Without Wi-Fi it reaches NTP only through the
+  cable, which needs the laptop sharing its connection. `pi_bootstrap.sh` reports
+  `clock-synced` so a slow clock is seen before a life or a benchmark relies on it.
 
 ## Lessons from step 0 (read before touching the Pi)
 
