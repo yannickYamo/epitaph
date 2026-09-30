@@ -8,7 +8,7 @@ the rehearsal metrics before and after. At most three rounds before checkpoint A
 - Persona: the v6 groups G1-G5 and the mechanics from `config/default.toml`, unchanged. Golden text
   for every erosion step in `tests/unit/test_prompt.py`.
 - Readings: the 5.4 forms, strings in `config/lang/en.toml`. "(was X)" rules as answered in
-  `docs/QUESTIONS.md` #1: memory only after a real loss and a move of at least 5%; cores after a
+  `docs/process/QUESTIONS.md` #1: memory only after a real loss and a move of at least 5%; cores after a
   0.2-core move or a reload; precision on every step change; speed once measured, then after a >20% move.
 - Metric word lists (notice, demise, specific, clichés, helpdesk): first draft in
   `config/lang/en.toml [metrics]`, to be tuned on the first rehearsal transcripts.
@@ -186,7 +186,7 @@ early deaths of Llama 3.2 1B or of Qwen3 4B with the v6 persona. With the v6 per
 wording seems to have made Qwen3 4B fade earlier than in round 2 (compare
 `voice/round2/life-qwen3-4b-instruct-2507-persona-20260930-121744`, which never says it is gone
 before reload 1, only that it is thinning and losing thoughts); with the original persona it did not. That is the third and last round (BUILD_PLAN
-5.11); whether to keep the round-3 sentence is a question for checkpoint A (docs/QUESTIONS.md).
+5.11); whether to keep the round-3 sentence is a question for checkpoint A (docs/process/QUESTIONS.md).
 
 Gate G0 (every threshold met by two models, in every life): **not met**. What stands in the way,
 threshold by threshold:

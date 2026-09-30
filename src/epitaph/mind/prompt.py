@@ -287,7 +287,7 @@ class Reader:
       cut it, and the budget moved at least `memory_step` (5%) from the one last announced.
       Recall interpolates between keyframes, so it moves a little on almost every reading;
       a budget that shrank without taking anything is not news, and neither is 382 -> 380
-      (answers docs/QUESTIONS.md #1). The forgotten count is always reported.
+      (answers docs/process/QUESTIONS.md #1). The forgotten count is always reported.
     - precision: when the ladder step changed.
     - cores: when the effective cores moved by at least `cores_step` since last announced
       (or at a reload), so a slow CPU-share slope is reported every step, not every reading.

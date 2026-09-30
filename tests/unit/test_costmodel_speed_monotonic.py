@@ -117,7 +117,7 @@ def test_profiles_without_reloads_have_nothing_to_compare(profile: str) -> None:
 _REBASE = (
     "F2: the pi4 profiles are rebased so no reload speeds generation up (ws/v-voice). "
     'When this XPASSes, remove the marker and set [estimate] speed_monotonic = "fail" in '
-    "config/default.toml (docs/QUESTIONS.md, E #12)"
+    "config/default.toml (docs/process/QUESTIONS.md, E #12)"
 )
 
 

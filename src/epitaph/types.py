@@ -1,7 +1,7 @@
 """Shared data types: the vocabulary every module codes against (BUILD_PLAN 6.4).
 
 These types are part of the contract between modules; record any change to them in
-docs/CONTRACT_CHANGES.md.
+docs/process/CONTRACT_CHANGES.md.
 """
 
 from __future__ import annotations

@@ -55,12 +55,12 @@
 
 1. **Read sections 0 to 8 in full**, then your task card (section 9) and the test strategy (section 10).
 2. **Work in your own git worktree and branch** (`ws/<letter>-<name>`), created for you by the phase workflow. Only edit the paths you own (8.2).
-3. **Contracts (section 6) belong to the integrator.** You cannot message the integrator mid-run. To change a contract, write the proposal in `docs/CONTRACT_CHANGES.md`, keep working behind a local adapter, and list it in your report. The integrator decides between workflow runs.
+3. **Contracts (section 6) belong to the integrator.** You cannot message the integrator mid-run. To change a contract, write the proposal in `docs/process/CONTRACT_CHANGES.md`, keep working behind a local adapter, and list it in your report. The integrator decides between workflow runs.
 4. **Build against fakes first.** Everything must run on the laptop with `epitaph sim` and `--backend fake --display terminal` before it touches the Pi.
 5. **The Pi is slow and there is only one.** Run every Pi command through `tools/pi_lock.sh run <agent> <minutes> -- <command>`: it waits its turn, holds the lock, and releases it even on failure. Do on the laptop anything that does not need Pi timing.
 6. **One llama-server at a time on the laptop:** use `tools/laptop_lock.sh run ...` the same way.
 7. **Verify your own work** with section 10. Do not ask Yannick to check what a test can check.
-8. **Decide and keep going.** When something is unclear, pick the sensible default, log it in `docs/QUESTIONS.md` with the default used, and continue. Stop only for an action that could destroy data.
+8. **Decide and keep going.** When something is unclear, pick the sensible default, log it in `docs/process/QUESTIONS.md` with the default used, and continue. Stop only for an action that could destroy data.
 9. **Pi rules** (a dedicated test Pi):
    - You may install packages, edit boot config (keep a backup), create users and services, and reboot.
    - Never reflash, repartition or wipe it, and never touch other machines.
@@ -861,14 +861,14 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 | C | `src/epitaph/body/`, `deploy/`, `tools/{pi_bootstrap.sh,sd_backup.sh,sd_restore.sh,pi_deploy.sh}`, `tools/spike/s3*`, `config/hardware/` (machine settings), `tests/pi/`, `docs/{PI_FACTS,PI_CHANGES,PI_LOCK}.md` |
 | D | `src/epitaph/display/`, `assets/fonts/`, `tools/spike/s5*`, `tests/display/`, `docs/WRITING_A_DISPLAY.md` |
 | E | `tests/{unit,sim,faults}/` scaffolding and fixtures, `src/epitaph/verify.py`, the `[verify]` values in overlays, `.github/`, `README.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/{CONFIG,INSTALLATION,GATES}.md`, `tools/{smoke_pi.sh,soak_report.py}` |
-| Shared | `docs/SPIKE.md` (own sections), `docs/QUESTIONS.md` and `docs/REPORTS/` (append) |
+| Shared | `docs/SPIKE.md` (own sections), `docs/process/QUESTIONS.md` and `docs/process/reports/` (append) |
 
 ### 8.3 Workflow: how the fleet actually runs
 
-**One workflow per phase.** The integrator starts a phase as a multi-agent workflow. Each agent gets its own worktree, its card for that phase and the current `main`, and returns a report (`docs/REPORTS/<phase>-<agent>.md`: built, tested, left, contract proposals, questions). Agents do not persist between phases and cannot message each other mid-run. So:
+**One workflow per phase.** The integrator starts a phase as a multi-agent workflow. Each agent gets its own worktree, its card for that phase and the current `main`, and returns a report (`docs/process/reports/<phase>-<agent>.md`: built, tested, left, contract proposals, questions). Agents do not persist between phases and cannot message each other mid-run. So:
 
 - **Contracts land in `main` before any parallel work** (L1-L4 run first, alone).
-- **Contract changes** go in `docs/CONTRACT_CHANGES.md` during a run; the integrator decides, versions and merges them between runs.
+- **Contract changes** go in `docs/process/CONTRACT_CHANGES.md` during a run; the integrator decides, versions and merges them between runs.
 - **Within a phase, dependencies go through fakes and stubs**, never through waiting on another agent.
 - **Long phases are split into rounds** (for example 0a laptop and Pi spikes, 0b rehearsal and tuning). The integrator merges after each round, at least twice a day.
 - **After each round**, every branch is rebased, `make check` runs, the integrator merges, and new cards go out.
@@ -890,7 +890,7 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 
 **Long runs.** Pi lives, benches and the soak run on the Pi as services or detached jobs, not inside an agent. Agents start them, and a later round (or the integrator) collects the results.
 
-**Status to Yannick:** one short message at each checkpoint; everything else goes in `docs/QUESTIONS.md`.
+**Status to Yannick:** one short message at each checkpoint; everything else goes in `docs/process/QUESTIONS.md`.
 
 ### 8.4 Phases and gates
 
@@ -1354,13 +1354,13 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 1. Read ~/epitaph/docs/BUILD_PLAN.md sections 0 to 8, then your card in section 9 and section 10.
 2. Your worktree and branch: ws/<x>-<name>, based on the current main. Only edit the paths you own (8.2).
 3. Build against the fakes first; `make check` must pass before you finish.
-4. You cannot message other agents. Contract changes: write them in docs/CONTRACT_CHANGES.md,
+4. You cannot message other agents. Contract changes: write them in docs/process/CONTRACT_CHANGES.md,
    keep going behind a local adapter, list them in your report.
 5. Pi work only through `tools/pi_lock.sh run <agent> <minutes> -- <cmd>`, in the order of 8.5.
    Laptop llama-server jobs only through tools/laptop_lock.sh.
 6. Never write the Wi-Fi or Pi password anywhere.
-7. Unclear? Pick the sensible default, log it in docs/QUESTIONS.md, continue.
-8. Finish with docs/REPORTS/<phase>-<agent>.md: built, tested (commands and results), left,
+7. Unclear? Pick the sensible default, log it in docs/process/QUESTIONS.md, continue.
+8. Finish with docs/process/reports/<phase>-<agent>.md: built, tested (commands and results), left,
    contract proposals, questions.
 ```
 
