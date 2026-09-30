@@ -10,11 +10,26 @@
   never in the past, so they are never trimmed.
 - **Reload cuts** (`cut_for_reload`) are the same rule applied during the reload silence;
   the first reading after it reports everything at once (`take_forgotten`).
-- **The memory gap** is visible: once anything is forgotten, the oldest remembered message
-  is preceded by the fixed marker reading.
+- **The memory gap** is visible: once anything is forgotten, the fixed marker reading
+  (`[host] earlier memory lost`) goes in front of the next reading, in the same user
+  message, and belongs to that reading. When a later trim takes that reading, the marker
+  goes with it and comes back in front of the next new reading. From the first loss on, the
+  marker is in the model's context (except between a trim and the next reading).
 
-Messages alternate user/assistant as chat templates require: the marker and any reading
-that follows it without a thought in between share one user message.
+**The server's cache decides two of these rules.** llama-server's `--cache-reuse` scan only
+moves forward in the new prompt on a match, so any new text in front of turns it has already
+read makes everything after it a re-read: spike S2f measured 80% of the prompt for a marker
+inserted in front of the kept turns, about two minutes of silence on the Pi 4. So:
+
+- the marker never appears in front of kept turns: it rides on a new reading (contract
+  decision A3), which costs only its own tokens;
+- a live trim (`fit`) cuts on turn boundaries: whole turns, or only the reading of the
+  oldest kept turn. It cuts words only inside the last remaining turn, where the re-read is
+  one short turn. The price is a trim that may go up to one turn below `recall x trim_to`.
+  A reload cut goes to the word, since the new server reads everything anyway.
+
+Messages alternate user/assistant as chat templates require: the marker and the reading it
+belongs to, and readings around an empty thought, share one user message.
 
 `fit` returns `forget` event items: `{"turn": n, "all": true}` for a whole thought, and
 `{"turn": n, "upto_i": k}` when the words with index 0..k (inclusive) of thought n are gone.
@@ -85,6 +100,7 @@ class Memory:
         self.system = system
         self.turns: list[_Turn] = []
         self.gap = False
+        self.gap_turn: int | None = None  # the turn whose reading carries the marker
         self._pending: _Turn | None = None
         self._forgotten = 0
         self.forgotten_total = 0
@@ -110,6 +126,8 @@ class Memory:
         if self._pending is not None:
             raise RuntimeError("a reading is already waiting for its thought")
         self._pending = _Turn(turn, reading, self.count(reading) if tokens is None else tokens)
+        if self.gap and self.gap_turn is None:
+            self.gap_turn = turn  # this reading carries the marker
 
     def append_thought(self, words: Sequence[str], tokens: int | None = None) -> None:
         """The finished thought, as the words actually shown. Completes the turn."""
@@ -150,26 +168,39 @@ class Memory:
     # -- forgetting ------------------------------------------------------------------------
 
     def fit(self, recall: int, trim_to: float = 1.0) -> Forgetting:
-        """The recall rule: if the past exceeds `recall`, trim it to `recall x trim_to`."""
+        """The recall rule: if the past exceeds `recall`, trim it to `recall x trim_to`.
+
+        The cut falls on a turn boundary (see the module notes), so it may go up to one turn
+        deeper than the target; words are cut only inside the last remaining turn.
+        """
         before = self.used()
         if before <= recall:
             return Forgetting(tokens_before=before, tokens_after=before)
-        return self._trim_to(math.floor(recall * min(1.0, max(0.0, trim_to))), before)
+        return self._trim_to(_target(recall, trim_to), before, whole_turns=True)
 
     def cut_for_reload(self, recall: int, trim_to: float = 1.0) -> Forgetting:
         """The reload is also a memory loss: cut to the post-reload recall during the silence.
-        The restarted server re-reads everything anyway, so cutting to `recall x trim_to`
-        costs nothing extra and delays the next trim."""
-        return self.fit(recall, trim_to)
 
-    def _trim_to(self, target: int, before: int) -> Forgetting:
+        The restarted server re-reads everything anyway, so the cut goes to the word and to
+        `recall x trim_to`: it costs nothing extra and delays the next trim.
+        """
+        before = self.used()
+        if before <= recall:
+            return Forgetting(tokens_before=before, tokens_after=before)
+        return self._trim_to(_target(recall, trim_to), before, whole_turns=False)
+
+    def _trim_to(self, target: int, before: int, whole_turns: bool) -> Forgetting:
         res = Forgetting(tokens_before=before)
         if not self.gap:
             self.gap = True
             res.marker_added = True
+            if self._pending is not None:
+                self.gap_turn = self._pending.turn
         while self.turns and self.used() > target:
             oldest = self.turns[0]
-            if self.used() - oldest.tokens >= target:
+            if self.used() - oldest.tokens >= target or (
+                whole_turns and len(self.turns) > 1 and not self._reading_is_enough(target)
+            ):
                 self.turns.pop(0)
                 if oldest.words:  # an empty thought had nothing on screen to forget
                     self._note(res, oldest)
@@ -178,8 +209,24 @@ class Memory:
             # Only a turn with words gets here: an empty one is all reading, so it went whole.
             self._trim_inside(oldest, target, res)
             break
+        if not self._marker_reading_kept():
+            # The reading that carried the marker is gone: the marker moves to the next one.
+            self.gap_turn = self._pending.turn if self._pending is not None else None
         res.tokens_after = self.used()
         return res
+
+    def _reading_is_enough(self, target: int) -> bool:
+        """Whether dropping only the oldest kept turn's reading reaches the target."""
+        oldest = self.turns[0]
+        return oldest.reading is not None and self.used() - oldest.reading_tokens <= target
+
+    def _marker_reading_kept(self) -> bool:
+        """Whether the reading that carries the marker is still remembered (or pending)."""
+        if self.gap_turn is None:
+            return True
+        if self._pending is not None and self._pending.turn == self.gap_turn:
+            return True
+        return any(t.turn == self.gap_turn and t.reading is not None for t in self.turns)
 
     def _trim_inside(self, t: _Turn, target: int, res: Forgetting) -> None:
         """Trim the oldest kept turn: its reading first, then its first words."""
@@ -220,15 +267,24 @@ class Memory:
     # -- rendering -------------------------------------------------------------------------
 
     def past_messages(self) -> list[Msg]:
-        """The past as chat messages, in order, the marker first once anything is lost."""
+        """The past as chat messages, in order.
+
+        Once anything is lost, the marker stands in front of the reading of turn `gap_turn`.
+        When that reading is not in the past (it is the pending one, or not written yet),
+        the marker comes last, so `messages` joins it to the front of the next reading.
+        """
         out: list[Msg] = []
-        if self.gap:
-            out.append(Msg("user", self.marker, kind="marker"))
+        placed = not self.gap
         for t in self.turns:
+            if not placed and t.turn == self.gap_turn:
+                out.append(Msg("user", self.marker, kind="marker"))
+                placed = True
             if t.reading is not None:
                 out.append(Msg("user", t.reading, t.turn, "reading"))
             if t.words:
                 out.append(Msg("assistant", " ".join(t.words), t.turn, "thought"))
+        if not placed:
+            out.append(Msg("user", self.marker, kind="marker"))
         return out
 
     def messages(self) -> list[Msg]:
@@ -242,6 +298,10 @@ class Memory:
         if self._pending is not None and self._pending.reading is not None:
             raw.append(Msg("user", self._pending.reading, self._pending.turn, "reading"))
         return merge_consecutive(raw)
+
+
+def _target(recall: int, trim_to: float) -> int:
+    return math.floor(recall * min(1.0, max(0.0, trim_to)))
 
 
 def merge_consecutive(msgs: list[Msg]) -> list[Msg]:

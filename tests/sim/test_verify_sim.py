@@ -69,13 +69,14 @@ def test_sim_full_life_structure(recorded_life) -> None:
 
 
 def test_sim_findings(recorded_life) -> None:
-    """Record what verify-life says about the simulator with estimated Pi 4 costs.
+    """Record what verify-life says about the simulator on the measured Pi 4 costs.
 
-    The estimated step-2 generation rate (1.6 tok/s) is higher than step 0 (1.35), so the
-    last 5 minutes run at about 45% of the first: above the 40% limit. Reported to L/B."""
+    With estimated costs the step-2 rate made the last 5 minutes about 45% of the first
+    (limit 40%). The profiles were rebased on measured costs with a lower end CPU share
+    (docs/PROFILES.md), and the cost model now checks the same ratio, so it passes."""
     res = verify(events_of(recorded_life("pi4/default")), "pi4/default")
-    assert res.by_name("speed_decline").status == "fail"
-    assert 0.40 < res.by_name("speed_decline").value < 0.5
+    assert res.by_name("speed_decline").status == "pass"
+    assert res.by_name("speed_decline").value < 0.40
 
 
 def test_unbounded_life(recorded_life) -> None:

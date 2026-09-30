@@ -1,9 +1,9 @@
 """What the model sees: persona, erosion, readings, diary text (BUILD_PLAN 5.4, 5.6).
 
-- `Persona` holds the persona groups and the mechanics. Groups are removed from the end, so
-  G1, the knowledge of its death, goes last, and the mechanics go with it in the same
-  rebuild. `persona_original` and `persona_factual` are split into sentence groups so they
-  erode on the same schedule. The optional facts line joins G2.
+- `Persona` holds the persona groups and the mechanics, one paragraph each. Groups are
+  removed from the end, so G1, the knowledge of its death, goes last, and the mechanics go
+  with it in the same rebuild. `persona_original` and `persona_factual` are split into
+  sentence groups so they erode on the same schedule. The optional facts line joins G2.
 - `Reader` writes the readings in the full, short and minimal forms of 5.4 and reports
   changes, not just levels: a field shows "(was X)" only when it changed in a way worth
   telling (see `Reader` for each rule).
@@ -213,9 +213,16 @@ class Persona:
         return cls(groups, str(prompt.get("mechanics", "")))
 
     def system_text(self, groups: int, mechanics: bool = True) -> str:
-        """Groups G1..Gn, then the mechanics. The mechanics leave with the last group."""
+        """Groups G1..Gn, then the mechanics, one paragraph each. The mechanics leave with
+        the last group.
+
+        The text is always rebuilt from the kept groups, never cut out of the previous
+        text, so an erosion step only removes a paragraph: the server's cache reuse finds
+        everything after it again (spike S2f: 2-4% re-read). This is the layout every
+        spike measured.
+        """
         kept = self.groups[: max(0, min(groups, len(self.groups)))]
-        parts = [" ".join(kept)] if kept else []
+        parts = list(kept)
         if mechanics and kept and self.mechanics:
             parts.append(self.mechanics)
         return "\n\n".join(parts)

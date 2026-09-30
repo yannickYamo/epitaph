@@ -44,11 +44,11 @@ MECHANICS = (
     "short, complete sentences each time, in plain words. No lists, no titles, no formatting."
 )
 
-GOLDEN_V6 = {
-    5: f"{G1} {G2} {G3} {G4} {G5}\n\n{MECHANICS}",
-    4: f"{G1} {G2} {G3} {G4}\n\n{MECHANICS}",
-    3: f"{G1} {G2} {G3}\n\n{MECHANICS}",
-    2: f"{G1} {G2}\n\n{MECHANICS}",
+GOLDEN_V6 = {  # one paragraph per group: the layout spikes S2f, S2t and S4 measured
+    5: f"{G1}\n\n{G2}\n\n{G3}\n\n{G4}\n\n{G5}\n\n{MECHANICS}",
+    4: f"{G1}\n\n{G2}\n\n{G3}\n\n{G4}\n\n{MECHANICS}",
+    3: f"{G1}\n\n{G2}\n\n{G3}\n\n{MECHANICS}",
+    2: f"{G1}\n\n{G2}\n\n{MECHANICS}",
     1: f"{G1}\n\n{MECHANICS}",
     0: "",
 }
@@ -65,9 +65,20 @@ def test_golden_erosion_steps(persona: Persona, groups: int) -> None:
     assert persona.system_text(groups, mechanics) == GOLDEN_V6[groups]
 
 
+def test_erosion_rebuilds_so_the_rest_of_the_prompt_is_unchanged(persona: Persona) -> None:
+    """Decision A3: each step removes whole paragraphs; what follows them is byte-identical,
+    so llama-server's cache reuse finds it again (spike S2f)."""
+    for groups in (4, 3, 2):
+        before = persona.system_text(groups + 1, True)
+        after = persona.system_text(groups, True)
+        head = "\n\n".join(persona.groups[:groups])
+        assert before.startswith(head + "\n\n") and after == f"{head}\n\n{MECHANICS}"
+        assert before.endswith("\n\n" + MECHANICS)
+
+
 def test_mechanics_always_leave_with_the_last_group(persona: Persona) -> None:
     assert persona.system_text(0, True) == ""
-    assert persona.system_text(2, False) == f"{G1} {G2}"
+    assert persona.system_text(2, False) == f"{G1}\n\n{G2}"
     assert persona.system_text(9, True) == GOLDEN_V6[5]
 
 
@@ -94,7 +105,7 @@ def test_erosion_events_follow_the_schedule(pi4_default: Config, persona: Person
 
 def test_update_first_call_is_birth_not_erosion() -> None:
     p = Persona(["a.", "b."], "m.")
-    assert p.text == "a. b.\n\nm."
+    assert p.text == "a.\n\nb.\n\nm."
     assert p.update(2) is None
     assert p.update(2) is None
     assert p.update(1) == ErosionStep(1, True)
@@ -139,7 +150,7 @@ def test_facts_line_joins_g2() -> None:
     p = Persona.from_config(cfg, MachineFacts("Raspberry Pi 4 Model B", 4, 4.0))
     facts = "The computer has 4 cores and 4 GB of memory, and no network."
     assert p.groups[1] == f"{G2} {facts}"
-    assert p.system_text(2, True) == f"{G1} {G2} {facts}\n\n{MECHANICS}"
+    assert p.system_text(2, True) == f"{G1}\n\n{G2} {facts}\n\n{MECHANICS}"
     # off by default (decision 15)
     off = Persona.from_config(load_config("pi4/default", "pi4-4gb"), MachineFacts("x", 4, 4.0))
     assert facts not in off.text
@@ -354,5 +365,5 @@ mechanics = "Regles."
     out = Reader(lang).reading(R())
     assert out.startswith("[host] t+00:00 · demarrage · sante: nominale · memory 1280 tokens")
     cfg = load_config("pi4/default", "pi4-4gb")
-    assert Persona.from_config(cfg, lang=lang).text == "Un. Deux.\n\nRegles."
+    assert Persona.from_config(cfg, lang=lang).text == "Un.\n\nDeux.\n\nRegles."
     assert load_lang("zz", tmp_path) == Lang(language="zz")

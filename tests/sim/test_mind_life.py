@@ -6,7 +6,8 @@ plan asks of them across reloads, erosion and death:
 
 - past tokens never exceed recall (+10%) when a reading is written
 - forgetting goes oldest first, and a forgotten thought is never forgotten again
-- the marker appears once anything is lost, and stays
+- the marker appears once anything is lost, and stays (riding on a reading)
+- cache reuse holds through every trim, erosion step and the marker (decision A3)
 - five erosion steps, the last with the mechanics
 - the sync rule, and the death flush before `death_shown`
 - the first reading after a reload reports the loss
@@ -15,6 +16,7 @@ plan asks of them across reloads, erosion and death:
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import pytest
@@ -35,7 +37,8 @@ LETTERS_PER_TOKEN = 3.4  # non-space letters; the fake's text is a little sparse
 async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any]:
     sch = Schedule.from_profile(cfg)
     costs = load_costs(cfg)
-    backend = FakeBackend(clock, costs, seed=seed)  # type: ignore[arg-type]
+    reuse_min = int(cfg.get("backend.cache_reuse", 32))
+    backend = FakeBackend(clock, costs, seed=seed, cache_reuse_min=reuse_min)  # type: ignore[arg-type]
     body = FakeBody()
     model = cfg.model()
     trim_to = float(cfg.get("output.trim_to", 0.85))
@@ -43,6 +46,8 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
     events: list[dict[str, Any]] = []
     checks: list[tuple[float, int, int]] = []  # (t, used, recall) at each reading
     readings: list[tuple[float, str]] = []
+    # (t, prompt_n, prompt_tokens, first request after a reload, a loss before this reading)
+    requests: list[tuple[float, int, int, bool, bool]] = []
 
     def emit(etype: str, /, **fields: Any) -> None:
         events.append({"type": etype, "t": clock.elapsed(), **fields})
@@ -98,6 +103,7 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
         body.apply(k)
         backend.set_cpu_share(k.cpu_share)
         f = memory.fit(k.recall, trim_to)
+        lost = bool(f)
         if f.items:
             emit("forget", items=f.items)
         step = persona.update(k.persona_groups, k.mechanics)
@@ -120,7 +126,7 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
                 cpu_c=body.vitals().cpu_c,
             )
         )
-        reloaded = False
+        first_after_reload, reloaded = reloaded, False
         readings.append((t, reading))
         checks.append((t, memory.used(), k.recall))
         turn += 1
@@ -136,6 +142,9 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
             emit,
             on_died,
         )
+        req = backend.requests[-1] if backend.requests else None
+        if req is not None:
+            requests.append((t, req.prompt_n, req.prompt_tokens, first_after_reload, lost))
         memory.append_thought([w.text for w in spoken.words])
         emit("thought_end", turn=turn, text=spoken.text)
         if spoken.died is not None:
@@ -150,6 +159,7 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
         "cause": cause,
         "memory": memory,
         "schedule": sch,
+        "requests": requests,
     }
 
 
@@ -192,7 +202,7 @@ def test_forgetting_goes_oldest_first_and_only_once(life: dict[str, Any]) -> Non
     mem: Memory = life["memory"]
     assert mem.gap
     past = [m for m in mem.messages() if m.role != "system"]
-    assert past[0].content.startswith("[host] earlier memory lost")
+    assert any(m.content.startswith("[host] earlier memory lost") for m in past)
 
 
 def test_sync_rule_over_a_whole_life(life: dict[str, Any]) -> None:
@@ -238,4 +248,18 @@ def test_first_reading_after_a_reload_reports_the_loss(life: dict[str, Any]) -> 
         after = next(text for t, text in readings if t >= rt)
         assert "(was" in after and "-bit" in after, after
         if "precision" in after:  # full form
-            assert "cores 2 of 4 (was 3)" in after or "(was 4-bit)" in after
+            assert re.search(r"precision \d+-bit \(was \d+-bit\)", after), after
+
+
+def test_cache_reuse_holds_through_every_loss(life: dict[str, Any]) -> None:
+    """Decision A3 on a whole life: apart from the birth and the re-read after a reload, no
+    request re-reads more than a quarter of its prompt (or 64 tokens, for the tiny prompts
+    at the end), the first loss (the marker) included. The fake backend models
+    llama-server's `--cache-reuse` scan (spike S2f)."""
+    reqs: list[tuple[float, int, int, bool, bool]] = life["requests"]
+    first_loss = next(i for i, r in enumerate(reqs) if r[4])
+    for i, (t, prompt_n, total, after_reload, _) in enumerate(reqs):
+        if i == 0 or after_reload:
+            continue
+        assert prompt_n <= max(64, 0.25 * total), (life["profile"], i, t, prompt_n, total)
+    assert not reqs[first_loss][3] or life["profile"] == "pi4/skeleton-1200"
