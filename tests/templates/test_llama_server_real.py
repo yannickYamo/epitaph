@@ -43,9 +43,12 @@ async def backend():
     await b.aclose()
 
 
-def system() -> str:
+def system(groups: int = 5) -> str:
+    """Rebuilt from the kept groups: a string replace leaves a novel run of newlines, which
+    blocks cache reuse like any inserted text (the mind must rebuild, not cut)."""
     cfg = load_config("pi4/default", "dev", validate=False)
-    return "\n\n".join([*cfg.get("prompt.persona_groups"), cfg.get("prompt.mechanics")])
+    kept = list(cfg.get("prompt.persona_groups"))[:groups]
+    return "\n\n".join([*kept, cfg.get("prompt.mechanics")])
 
 
 def reading(i: int) -> str:
@@ -65,7 +68,7 @@ async def test_stream_timings_and_count(backend: LlamaServerBackend) -> None:
     msgs = [Msg("system", system()), Msg("user", reading(0))]
     text, prompt_n, predicted = await thought(backend, msgs)
     assert text.strip() and 0 < predicted <= 40
-    assert "<think>" not in text and "[host]" not in text
+    assert "<think>" not in text  # [host] echoes are the sanitizer's job (voice, not backend)
     past = [Msg("user", reading(0)), Msg("assistant", text)]
     n = await backend.count_past_tokens(past)
     content = len(text) // 6
@@ -99,9 +102,7 @@ async def test_cache_reuse_after_front_trim_and_erosion(backend: LlamaServerBack
 
     _, trim_n, _ = await thought(backend, build(sys_full, reading(20)), 5)
     assert trim_n <= 0.25 * total
-    eroded = sys_full.replace(
-        load_config("pi4/default", "dev", validate=False).get("prompt.persona_groups")[4], ""
-    )
+    eroded = system(4)
     _, erosion_n, _ = await thought(backend, build(eroded, reading(21)), 5)
     assert erosion_n <= 0.25 * total
 
