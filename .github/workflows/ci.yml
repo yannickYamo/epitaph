@@ -42,9 +42,15 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: System packages (OCR for display test D13)
+        timeout-minutes: 8
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          # A stalled Ubuntu mirror once hung this step for the whole job; bound it and retry once.
+          for attempt in 1 2; do
+            timeout 180 sudo apt-get update -q \
+              && timeout 180 sudo apt-get install -y -q --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+              && break
+            echo "::warning::apt attempt $attempt failed; retrying"
+          done
           tesseract --version | head -1
 
       - name: Virtual environment
