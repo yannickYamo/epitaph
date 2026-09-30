@@ -4,7 +4,7 @@ It answers one question before any Pi time is spent: with these costs, does the 
 the model enough thoughts after every loss to notice it? Costs come from bench/*.json
 (measured by spikes S1b, S2 and S4) or, until then, from the hardware overlay's estimates.
 
-Besides the thought-count rule (a)-(d), an estimate fails two checks that verify-life makes
+Besides the thought-count rule (a)-(d), an estimate fails three checks that verify-life makes
 on real lives, because a profile is where they are won or lost:
 
 - **reload silence** (`verify.max_reload_silence_s`): the load plus the full re-read of a
@@ -16,7 +16,8 @@ on real lives, because a profile is where they are won or lost:
   Speeds here follow the context, which a reload cuts: when the bench measured a short
   context (the birth thought) and a deep one, the speed at a thought is interpolated
   between them by its prompt size and held at the nearer end outside that range; otherwise
-  the deep rate stands for every context. The life drift (below) is left out on both sides,
+  the deep rate stands for every context. Thought timing still charges the deep rate, which
+  errs slow for the thought-count rule. The life drift (below) is left out on both sides,
   because a reload restarts the server and whether that resets the drift is not measured
   (F8). `estimate.speed_monotonic = "warn"` reports a violation as a note instead.
 
