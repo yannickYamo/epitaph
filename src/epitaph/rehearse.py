@@ -54,7 +54,7 @@ import threading
 import time
 import tomllib
 from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
@@ -67,7 +67,16 @@ from epitaph.config import REPO_ROOT, Config, deep_merge, load_config, parse_dur
 from epitaph.costmodel import Costs, estimate, load_costs
 from epitaph.events import Event, make_event
 from epitaph.mind.memory import Memory
-from epitaph.mind.prompt import Lang, Persona, Reader, ReadingInput, load_lang
+from epitaph.mind.prompt import (
+    Lang,
+    Persona,
+    Reader,
+    ReadingInput,
+    load_lang,
+    render_diary,
+    speaks_raw,
+)
+from epitaph.mind.sampling import sampling_for
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
 from epitaph.verify import (
@@ -101,6 +110,7 @@ __all__ = [
     "highlights",
     "keyword_matchers",
     "laptop_settings",
+    "life_meta",
     "main",
     "moments",
     "parse_set",
@@ -110,6 +120,7 @@ __all__ = [
     "score_thought",
     "screen_moment",
     "thoughts_text",
+    "with_ladder",
     "write_life_outputs",
 ]
 
@@ -120,6 +131,7 @@ DEFAULT_BENCH = REPO_ROOT / "bench" / "measured"
 DEFAULT_MODELS_DIR = "~/epitaph-models"
 LAPTOP_PORT = 8093  # not the controller's 8081, so a rehearsal never meets a dev server
 STAGES = ("screen", "life")
+MAX_REVIVALS = 3  # laptop server restarts per life before a loss counts as a crash
 MOMENTS = ("birth", "reload1", "reload2", "erosion_end")
 PERSONAS = ("persona", "persona_original", "persona_factual")
 
@@ -148,7 +160,11 @@ PI4_SLOT_BYTES_PER_S = 450e6
 
 
 class PiCosts:
-    """Pi 4 costs for one model: measured bench files first, then the overlay's estimates."""
+    """Pi 4 costs for one model: measured bench files first, then the overlay's estimates.
+
+    A bench file marked `"estimated": true` (a rate extrapolated for a tuning run, not a
+    measurement) supplies its rates but is labelled an estimate.
+    """
 
     def __init__(
         self,
@@ -178,6 +194,8 @@ class PiCosts:
         )
         for path in files:
             rec: dict[str, Any] = json.loads(path.read_text())
+            if rec.get("estimated"):
+                continue  # used for the rates, but reported as an estimate
             key = f"{rec['step']}-{rec['threads']}"
             if "pp_tok_s" in rec:
                 pp.add(key)
@@ -276,10 +294,20 @@ class TokenCounter:
     worker) how many tokens the text adds as one chat message, and caches the answers.
     """
 
-    def __init__(self, worker: LaptopWorker, backend: Backend) -> None:
-        """Count through `backend`, which lives on `worker`'s loop."""
+    def __init__(
+        self,
+        worker: LaptopWorker,
+        backend: Backend,
+        on_lost: Callable[[], None] | None = None,
+    ) -> None:
+        """Count through `backend`, which lives on `worker`'s loop.
+
+        `on_lost` restarts the laptop server when a count finds it gone; the count is then
+        tried once more (a harness fault, not a death: see `PiClockBackend.revive`).
+        """
         self.worker = worker
         self.backend = backend
+        self.on_lost = on_lost
         self.cache: dict[str, int] = {}
 
     def __call__(self, text: str) -> int:
@@ -288,9 +316,21 @@ class TokenCounter:
             return 0
         n = self.cache.get(text)
         if n is None:
-            n = self.worker.call(self.backend.count_past_tokens([Msg("user", text)]))
+            n = self._count(text)
             self.cache[text] = n
         return n
+
+    def _count(self, text: str) -> int:
+        def ask() -> int:
+            return self.worker.call(self.backend.count_past_tokens([Msg("user", text)]))
+
+        if self.on_lost is None:
+            return ask()
+        try:
+            return ask()
+        except (BackendError, CreatureDied):
+            self.on_lost()
+            return ask()
 
 
 # ---------------------------------------------------------------------------------------
@@ -358,6 +398,9 @@ class PiClockBackend:
         self._status = CreatureStatus(alive=False)
         self._kill_at: float | None = None  # absolute clock time
         self._timer: asyncio.TimerHandle | None = None
+        self._model: ModelSpec | None = None
+        self.revivals = 0  # laptop server restarts after it quit on its own (harness faults)
+        self._rewarm = False
 
     # -- time ------------------------------------------------------------------------------
 
@@ -433,6 +476,7 @@ class PiClockBackend:
     async def start(self, model: ModelSpec, quant: str, threads: int) -> None:
         """Restart the laptop server at `quant`, then charge the Pi's load time for its step."""
         self.alive = False
+        self._model = model
         self.worker.call(self.inner.start(model, quant, self.laptop_threads or threads))
         self.step = list(model.ladder).index(quant) if quant in model.ladder else 0
         self.threads = threads
@@ -458,6 +502,28 @@ class PiClockBackend:
         self.alive = False
         self.worker.call(self.inner.stop(hard))
         self._status = CreatureStatus(alive=False, pid=self._status.pid)
+
+    def revive(self) -> None:
+        """Restart the laptop server at the same quant after it quit on its own.
+
+        The laptop server sometimes exits mid-life for reasons of its own (phase 0c round 2:
+        a clean shutdown between two requests, twice in five lives). That is the harness, not
+        the creature, so nothing is charged: the Pi would not have noticed. Before the next
+        request, everything but its new reading is read into the new server's cache,
+        uncharged, so that request re-reads only what is new, as on the old server.
+        """
+        if self._model is None or self.quant is None:
+            raise BackendError("the laptop server quit before it was started")
+        self.revivals += 1
+        self._rewarm = True
+        self.worker.call(
+            self.inner.start(self._model, self.quant, self.laptop_threads or self.threads)
+        )
+
+    def _rewarm_with(self, messages: Sequence[Msg]) -> None:
+        if self._rewarm and len(messages) > 1:
+            self.worker.call(self.inner.prefill(list(messages[:-1])))
+        self._rewarm = False
 
     def set_cpu_share(self, share: float) -> None:
         """The CPU share (cores) the Pi creature has now; speeds scale with it."""
@@ -492,12 +558,17 @@ class PiClockBackend:
     ) -> AsyncIterator[Chunk]:
         if not self.alive:
             raise CreatureDied(self.status())
+        self._rewarm_with(messages)
         try:
             chunks = self.worker.call(_collect(request()))
-        except CreatureDied as e:  # the laptop server itself died: a crash, not the schedule
-            self.alive = False
-            self._status = e.status
-            raise
+        except CreatureDied as e:  # the laptop server itself died: not the schedule
+            if self.revivals >= MAX_REVIVALS:
+                self.alive = False
+                self._status = e.status
+                raise
+            self.revive()
+            self._rewarm_with(messages)
+            chunks = self.worker.call(_collect(request()))
         final = chunks[-1] if chunks and chunks[-1].done else Chunk("", done=True)
         tokens = [c for c in chunks if not c.done and c.text]
         prompt_n = final.prompt_n
@@ -584,6 +655,7 @@ class RehearsedLife:
     thoughts: int = 0
     laptop_s: float = 0.0
     seeded_turns: int = 0
+    revivals: int = 0  # laptop server restarts (harness faults, not deaths)
 
 
 class _Life:
@@ -789,15 +861,8 @@ class _Life:
         return k, reading
 
     def _sampling(self, k: Knobs) -> Sampling:
-        s = self.cfg.section("sampling")
-        return Sampling(
-            temperature=k.temperature,
-            min_p=k.min_p,
-            top_p=float(s.get("top_p", 1.0)),
-            repeat_penalty=float(s.get("repeat_penalty", 1.1)),
-            dry_multiplier=float(s.get("dry_multiplier", 0.8)),
-            seed=self.seed * 1000 + self.turn,
-            latin_only=bool(s.get("latin_only", False)),
+        return sampling_for(
+            self.cfg.section("sampling"), k, self.cur[0], seed=self.seed * 1000 + self.turn
         )
 
     async def thought(self, t: float) -> Spoken:
@@ -807,7 +872,14 @@ class _Life:
         sampling = self._sampling(k)
         self.emit("thought_start", turn=self.turn)
 
+        prompt = self.cfg.section("prompt")
+        raw = speaks_raw(prompt, self.persona.text)
+        prefix = str(prompt.get("raw_prefix", "")) if raw else ""
+
         def stream() -> AsyncIterator[Chunk]:
+            if raw:
+                text = render_diary(msgs) + prefix
+                return _led_by(prefix, self.backend.complete(text, sampling, k.max_tokens))
             return self.backend.chat(msgs, sampling, k.max_tokens)
 
         spoken = await speak(self.pacer, stream, k, self.turn, self.emit, self.on_death)
@@ -863,6 +935,14 @@ class _Life:
             self.memory.append_thought(script[n % len(script)].split())
             n += 1
         return n
+
+
+async def _led_by(prefix: str, stream: AsyncIterator[Chunk]) -> AsyncIterator[Chunk]:
+    """`stream`, with `prefix` (the words the raw prompt ended with) shown first."""
+    if prefix:
+        yield Chunk(prefix)
+    async for c in stream:
+        yield c
 
 
 # ---------------------------------------------------------------------------------------
@@ -930,7 +1010,8 @@ async def run_life(
         out.events.append(e)
         emit(e)
 
-    life = _Life(cfg, clock, backend, TokenCounter(worker, inner), record, seed=seed)
+    counter = TokenCounter(worker, inner, on_lost=backend.revive)
+    life = _Life(cfg, clock, backend, counter, record, seed=seed)
     wall = time.monotonic()
     k = life.sch.at(0)
     try:
@@ -953,6 +1034,7 @@ async def run_life(
     silence = float(cfg.get("life.silence_seconds", 90))
     life.emit("silence", seconds=silence, style=str(cfg.get("display.silence_style", "dark")))
     out.charges = backend.charges
+    out.revivals = backend.revivals
     out.cause = life.dead or "crash"
     out.thoughts = life.turn
     out.laptop_s = time.monotonic() - wall
@@ -1064,7 +1146,8 @@ async def screen_moment(
         threads_batch=_threads_batch(cfg),
     )
     out = RehearsedLife()
-    life = _Life(cfg, clock, backend, TokenCounter(worker, inner), out.events.append, seed=seed)
+    counter = TokenCounter(worker, inner, on_lost=backend.revive)
+    life = _Life(cfg, clock, backend, counter, out.events.append, seed=seed)
     wall = time.monotonic()
     sch = life.sch
     k0 = sch.at(0)
@@ -1102,6 +1185,7 @@ async def screen_moment(
         rows.append({"t": vit["t"], "reading": vit["reading"], "text": text, "previous": past[-1:]})
     backend.arm_death(None)
     out.charges = backend.charges
+    out.revivals = backend.revivals
     out.thoughts = life.turn
     out.laptop_s = time.monotonic() - wall
     return out, rows
@@ -1257,7 +1341,23 @@ def _config(args: argparse.Namespace, persona: str, model: str, profile: str) ->
         {"prompt": {"persona_active": persona}, "life": {"models": [model]}},
     )
     lifespan = parse_duration(args.lifespan) if args.lifespan else None
-    return load_config(profile, args.hardware, lifespan, overrides)
+    cfg = load_config(profile, args.hardware, lifespan, overrides)
+    if getattr(args, "ladder", None):
+        cfg.models[model] = with_ladder(cfg.model(model), args.ladder)
+    return cfg
+
+
+def with_ladder(spec: ModelSpec, ladder: str) -> ModelSpec:
+    """`spec` with its precision ladder replaced by a comma list ("Q8_0,Q4_K_M,Q3_K_M").
+
+    For tuning runs that compare a last step (review 2, F3). The Pi costs stay keyed by
+    step, so a quant that was never benched is charged at the rates of the step it replaces;
+    the report says which ladder ran. Raises ValueError for an empty list.
+    """
+    quants = tuple(q.strip() for q in ladder.split(",") if q.strip())
+    if not quants:
+        raise ValueError(f"--ladder wants quant names, got {ladder!r}")
+    return replace(spec, ladder=quants)
 
 
 def _default_model(profile: str, hardware: str) -> str:
@@ -1377,7 +1477,9 @@ def screen_markdown(
         "",
         f"Profile `{profile}`, hardware `{args.hardware}`, backend `{args.backend}`, "
         f"{args.thoughts} thoughts per moment, seed {args.seed}, overrides "
-        f"{', '.join(args.set or []) or 'none'}. Scores (0-4 per thought): "
+        f"{', '.join(args.set or []) or 'none'}"
+        f"{f', ladder {args.ladder}' if getattr(args, 'ladder', None) else ''}. "
+        "Scores (0-4 per thought): "
         "notices the moment's change, names its state or its end, clean voice, complete "
         "sentences. Keywords catch failures; they do not prove quality.",
         "",
@@ -1465,13 +1567,37 @@ def run_life_stage(args: argparse.Namespace) -> Path:
     return out_dir
 
 
+def life_meta(cfg: Config, args: argparse.Namespace, measured: bool) -> dict[str, Any]:
+    """The rehearsal header verify-life reads from `meta.json` (proposal E10).
+
+    `measured` says whether every Pi rate the life was charged at was a measurement.
+    """
+    model = cfg.model()
+    return {
+        "type": "rehearsal",
+        "stage": "full",
+        "model": model.name,
+        "quant": model.quant(0),
+        "ladder": list(model.ladder),
+        "persona": str(cfg.get("prompt.persona_active", "persona")),
+        "seed": args.seed,
+        "profile": cfg.profile.name,
+        "hardware": cfg.hardware,
+        "lifespan_s": Schedule(cfg.profile).lifespan_s,
+        "costs": "measured" if measured else "estimated",
+        "overrides": list(args.set or []),
+    }
+
+
 def write_life_outputs(
     out_dir: Path, cfg: Config, life: RehearsedLife, costs: PiCosts, args: argparse.Namespace
 ) -> None:
-    """thoughts.txt, highlights.md, charges.json, verify.json and report.md for one life."""
+    """thoughts.txt, highlights.md, charges.json, verify.json, report.md and meta.json."""
+    summary = charge_summary(life.charges)
+    meta = life_meta(cfg, args, measured=not summary["not_measured"])
+    _write(out_dir / "meta.json", json.dumps(meta, indent=1) + "\n")
     _write(out_dir / "thoughts.txt", thoughts_text(life.events))
     _write(out_dir / "highlights.md", highlights(life.events))
-    summary = charge_summary(life.charges)
     (out_dir / "charges.json").write_text(
         json.dumps({"summary": summary, "charges": [asdict(c) for c in life.charges]}, indent=1),
         encoding="utf-8",
@@ -1488,7 +1614,8 @@ def write_life_outputs(
         "",
         f"- profile `{cfg.profile.name}` on `{cfg.hardware}`, persona "
         f"`{cfg.get('prompt.persona_active')}`, backend `{args.backend}`, seed {args.seed}",
-        f"- overrides: {', '.join(args.set or []) or 'none'}",
+        f"- overrides: {', '.join(args.set or []) or 'none'}; ladder "
+        f"{', '.join(cfg.model().ladder)}",
         f"- Pi costs: {costs.describe()}",
         f"- rates not measured (used anyway): {', '.join(summary['not_measured']) or 'none'}",
         f"- cause {life.cause}, {life.thoughts} thoughts, lived "
@@ -1496,6 +1623,7 @@ def write_life_outputs(
         f"- the cost model on the same costs: {est.thoughts} thoughts "
         f"({'PASS' if est.ok else 'FAIL'})",
         f"- reload silences (load + prefill): {silences}",
+        f"- laptop server restarts (harness faults, not charged, not deaths): {life.revivals}",
         f"- Pi time by kind: {json.dumps(summary['by_kind'])}",
         f"- prompt tokens reused from the laptop cache: {summary['cache_reused_share']}",
         f"- thoughts that mostly repeat the previous one (4-gram overlap >= 0.5): "
@@ -1541,6 +1669,10 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--models-dir", default=DEFAULT_MODELS_DIR)
     p.add_argument("--bench-dir", default=str(DEFAULT_BENCH), help="measured Pi costs")
     p.add_argument("--out", default=str(DEFAULT_OUT), help="where run folders go (untracked)")
+    p.add_argument(
+        "--ladder",
+        help="replace the model's precision ladder for this run, e.g. Q8_0,Q4_K_M,Q3_K_M",
+    )
     p.add_argument(
         "--set",
         action="append",

@@ -41,6 +41,34 @@ _PROBE = Msg("user", "x")
 _log = logging.getLogger(__name__)
 HANDOVERS = ("reread", "slot")
 
+# The first turn of a strict template after a trim that left a thought at the front: the
+# memory-gap reading the model would have seen before it (BUILD_PLAN 5.4).
+GAP_TURN = Msg("user", "[host] earlier memory lost", kind="marker")
+
+
+def alternate_roles(messages: list[Msg]) -> list[Msg]:
+    """`messages` shaped for a template that wants user and assistant turns to alternate.
+
+    Gemma 3's template raises unless the turns after the system prompt go user, assistant,
+    user, ... Consecutive turns of one role are joined into one (with a newline), and a
+    history that starts with a thought (its reading was trimmed) gets the memory-gap reading
+    in front. Other templates never see this: it applies only when the server refuses two
+    user turns in a row (`LlamaServerBackend.strict_roles`).
+    """
+    out: list[Msg] = []
+    for m in messages:
+        if m.role == "system" and not any(o.role != "system" for o in out):
+            out.append(m)
+            continue
+        if not any(o.role != "system" for o in out) and m.role == "assistant":
+            out.append(GAP_TURN)
+        if out and out[-1].role == m.role and m.role != "system":
+            prev = out[-1]
+            out[-1] = Msg(prev.role, f"{prev.content}\n{m.content}", prev.turn, prev.kind)
+        else:
+            out.append(m)
+    return out
+
 
 class _Spawner:
     """What the backend needs from the body: placing the child in its cgroup."""
@@ -305,6 +333,7 @@ class LlamaServerBackend:
         self.last_handover = Handover()
         self._model_name: str | None = None
         self._restored = False
+        self.strict_roles = False  # set at start(): the template wants alternating turns
 
     # -- process -----------------------------------------------------------------------------
 
@@ -533,6 +562,9 @@ class LlamaServerBackend:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(asyncio.shield(proc.wait()), 2.0)
 
+    def _roles(self, messages: list[Msg]) -> list[Msg]:
+        return alternate_roles(messages) if self.strict_roles else messages
+
     def chat(
         self, messages: list[Msg], sampling: Sampling, max_tokens: int
     ) -> AsyncIterator[Chunk]:
@@ -541,11 +573,32 @@ class LlamaServerBackend:
         Raises CreatureDied when the process died, ContextFull when the prompt does not fit,
         and BackendError for any other server or stream error.
         """
-        return self._stream(
-            "/v1/chat/completions",
-            request_body(messages, sampling, max_tokens, None, self._dry_last_n()),
-            chat=True,
-        )
+        return self._chat(messages, sampling, max_tokens)
+
+    async def _chat(
+        self, messages: list[Msg], sampling: Sampling, max_tokens: int
+    ) -> AsyncIterator[Chunk]:
+        for attempt in range(2):
+            body = request_body(
+                self._roles(messages), sampling, max_tokens, None, self._dry_last_n()
+            )
+            try:
+                async for c in self._stream("/v1/chat/completions", body, chat=True):
+                    yield c
+                return
+            except BackendError as e:
+                if attempt or not self._learn_strict(e):
+                    raise
+
+    def _learn_strict(self, err: Exception) -> bool:
+        """True (and strict from now on) when `err` is a template refusing the turn order.
+
+        Nothing has been streamed then: the server refuses before it reads the prompt.
+        """
+        if self.strict_roles or "must alternate" not in str(err):
+            return False
+        self.strict_roles = True
+        return True
 
     def complete(self, prompt: str, sampling: Sampling, max_tokens: int) -> AsyncIterator[Chunk]:
         """Stream a raw completion of `prompt` from /completion (diary mode); errors as chat()."""
@@ -573,18 +626,24 @@ class LlamaServerBackend:
             # it; a prefill request would cut the cache back to the system prompt.
             self._restored = False
             return 0
-        body = request_body([*messages, _PROBE], Sampling(temperature=0.0, min_p=0.0), 1)
-        body["stream"] = False
-        try:
-            r = await self.client().post("/v1/chat/completions", json=body)
-        except httpx.TransportError as e:
-            await self._settle()
-            if not self._alive():
-                raise CreatureDied(self.status()) from e
-            raise BackendError(f"prefill failed: {e!r}") from e
-        if r.status_code != 200:
-            raise _error_from(r.json().get("error", r.text))
-        return int(r.json().get("timings", {}).get("prompt_n") or 0)
+        for attempt in range(2):
+            body = request_body(
+                [*self._roles(messages), _PROBE], Sampling(temperature=0.0, min_p=0.0), 1
+            )
+            body["stream"] = False
+            try:
+                r = await self.client().post("/v1/chat/completions", json=body)
+            except httpx.TransportError as e:
+                await self._settle()
+                if not self._alive():
+                    raise CreatureDied(self.status()) from e
+                raise BackendError(f"prefill failed: {e!r}") from e
+            if r.status_code == 200:
+                return int(r.json().get("timings", {}).get("prompt_n") or 0)
+            err = _error_from(r.json().get("error", r.text))
+            if attempt or not self._learn_strict(err):
+                raise err
+        raise AssertionError("unreachable")  # pragma: no cover
 
     async def _render_count(self, messages: list[Msg]) -> int:
         c = self.client()
@@ -608,9 +667,14 @@ class LlamaServerBackend:
         if not self._alive():
             raise CreatureDied(self.status())
         try:
-            return await self._render_count([*messages, _PROBE]) - await self._render_count(
-                [_PROBE]
-            )
+            try:
+                return await self._render_count([*messages, _PROBE]) - await self._render_count(
+                    [_PROBE]
+                )
+            except httpx.HTTPStatusError:
+                # Strict templates (Gemma 3) refuse two user turns in a row: count the
+                # messages alone, which adds the few template tokens of an empty chat.
+                return await self._render_count(messages)
         except httpx.TransportError as e:
             await self._settle()
             if not self._alive():
