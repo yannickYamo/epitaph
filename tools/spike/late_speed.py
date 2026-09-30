@@ -11,9 +11,10 @@ gives the speed at any context. Attention runs over n_kv = the highest used cell
 n_kv stays at the largest context the life has held: on the Pi 4 default that is the system
 prompt + recall 1280 + a reading + a thought, about 1700 tokens, so n_kv = 1792 (--ctx).
 
-Writes into each file: tg_tok_s_late, late_after_s (when the memory has grown to it; the cost
-model eases the rate down over that time), late_ctx, and tg_ctx_model {a, b} for a cost model
-that wants the speed at any context.
+Writes tg_ctx_model {a, b} into each file, for a cost model that wants the speed at any context,
+and into step-0 files also tg_tok_s_late, late_after_s (when the memory has grown to it; the
+cost model eases every rate down to the lowest late ratio over that time) and late_ctx. Only
+step 0 reaches the largest context: after reload 1 the recall is 300 at most.
 
   python3 tools/spike/late_speed.py bench/measured/pi4-llama-3.2-3b-instruct-*.json --write
 """
@@ -60,7 +61,12 @@ def main() -> None:
             f"{path.name}: {rec['tg_tok_s_birth']:.3f} (birth) {rec['tg_tok_s']:.3f} (deep) "
             f"-> {late:.3f} tokens/s at context {args.ctx} ({late / rec['tg_tok_s']:.0%} of deep)"
         )
-        if args.write:
+        if args.write and rec.get("step", 0) > 0:
+            # Only step 0 runs at the largest context (after reload 1 the recall is 300 at
+            # most), and the cost model applies the lowest late ratio to every step.
+            rec["tg_ctx_model"] = {"a_s": round(a, 5), "b_s_per_token": round(b, 8)}
+            path.write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n")
+        elif args.write:
             rec["tg_ctx_model"] = {"a_s": round(a, 5), "b_s_per_token": round(b, 8)}
             rec["late_ctx"] = args.ctx
             rec["tg_tok_s_late"] = round(late, 3)
