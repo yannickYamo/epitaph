@@ -55,6 +55,10 @@ class ServerSettings:
     swa_full: str | bool = "auto"
     cache_type_k: str = "f16"
     cache_type_v: str = "f16"
+    # Prompt-processing threads; None = the generation threads. S4: keeping 3 for the re-read
+    # after a reload to 2 generation threads cuts the reload silence (pp scales with threads,
+    # generation barely does on the Pi 4).
+    threads_batch: int | None = None
     load_timeout_s: float = 300.0
     stop_timeout_s: float = 10.0
     log_path: str | None = None
@@ -79,6 +83,11 @@ class ServerSettings:
             swa_full=cfg.get("backend.swa_full", "auto"),
             cache_type_k=str(cfg.get("backend.cache_type_k", "f16")),
             cache_type_v=str(cfg.get("backend.cache_type_v", "f16")),
+            threads_batch=(
+                int(cfg.get("backend.threads_batch"))
+                if cfg.get("backend.threads_batch") is not None
+                else None
+            ),
             load_timeout_s=float(cfg.get("life.load_timeout_s", 300)),
         )
 
@@ -93,7 +102,7 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
         "--port", str(s.port),
         "-c", str(s.ctx),
         "-t", str(threads),
-        "-tb", str(threads),
+        "-tb", str(s.threads_batch or threads),
         "-np", "1",
         "--cache-ram", "0",
         "--jinja",
