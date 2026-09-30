@@ -831,10 +831,8 @@ class _Life:
         the reader reports it all, exactly as in a life; only the thoughts are scripted.
         Returns the number of scripted turns.
         """
-        reads = [0.0, *[x for x in times if x < until]]
-        reads = [x for x in reads if x < until]
         n = 0
-        for t in reads:
+        for t in [x for x in (0.0, *times) if x < until]:
             k = self.sch.at(t)
             if (k.step, k.threads) != self.cur and t - self.last_reload >= self.min_gap:
                 self.memory.cut_for_reload(k.recall, self.trim_to)
