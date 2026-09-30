@@ -214,11 +214,13 @@ def drop_cache(path: str) -> None:
 
 class Server:
     def __init__(self, body: CgroupBody, binary: str, model: str, threads: int, mmap: bool,
-                 ctx: int = 2048, args_cold: bool = True) -> None:
+                 ctx: int = 2048, args_cold: bool = True, load_mode: str = "") -> None:
         argv = [binary, "-m", model, "-t", str(threads), "-c", str(ctx), "--host", "127.0.0.1",
                 "--port", str(PORT), "-ngl", "0", "--no-warmup"]
-        if not mmap:
-            argv.append("--no-mmap")
+        if load_mode:  # b11277 replaced --no-mmap with --load-mode none|mmap|dio|...
+            argv += ["--load-mode", load_mode]
+        elif not mmap:
+            argv += ["--load-mode", "none"]
         if args_cold:
             drop_cache(model)
         self.log_path = Path(f"server-{int(time.time() * 1000)}.log")
@@ -295,10 +297,11 @@ def mem_snapshot(body: CgroupBody) -> dict[str, int]:
 
 
 def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction: float,
-                wait_s: float, basis: str = "current") -> dict[str, Any]:
+                wait_s: float, basis: str = "current", mode: str = "") -> dict[str, Any]:
     body.reset_creature_cgroup()
-    srv = Server(body, args.server, args.model, 3, mmap)
-    trial: dict[str, Any] = {"mmap": mmap, "fraction": fraction, "basis": basis,
+    srv = Server(body, args.server, args.model, 3, mmap, load_mode=mode)
+    trial: dict[str, Any] = {"mmap": mmap, "mode": mode or ("mmap" if mmap else "none"),
+                             "fraction": fraction, "basis": basis,
                              "env_before": body_env()}
     try:
         trial["load_s"] = round(srv.wait_ready(), 2)
@@ -391,9 +394,10 @@ def eviction_probe(body: CgroupBody, args: argparse.Namespace) -> dict[str, Any]
 def s3(args: argparse.Namespace) -> dict[str, Any]:
     body = CgroupBody.delegated(CgroupSettings(creature_cpus="1-3"))
     res: dict[str, Any] = {"model": args.model, "fraction": args.fraction, "trials": []}
-    for mmap in (False, True):
+    for mode in args.modes:
         for _ in range(args.reps):
-            res["trials"].append(death_trial(body, args, mmap, args.fraction, args.wait))
+            res["trials"].append(
+                death_trial(body, args, mode == "mmap", args.fraction, args.wait, mode=mode))
     for _ in range(args.anon_reps):  # mmap with the limit below the anonymous memory
         res["trials"].append(death_trial(body, args, True, args.fraction, args.wait, "anon"))
     if args.eviction:
@@ -452,6 +456,7 @@ def main() -> int:
     ap.add_argument("--wait", type=float, default=30.0)
     ap.add_argument("--eviction", action="store_true")
     ap.add_argument("--anon-reps", type=int, default=2)
+    ap.add_argument("--modes", nargs="+", default=["none", "mmap"])
     ap.add_argument("--no-mmap", action="store_true")
     ap.add_argument("--tokens", type=int, default=48)
     ap.add_argument("--levels", type=int, nargs="+", default=[200, 170, 140, 110, 90, 70])
