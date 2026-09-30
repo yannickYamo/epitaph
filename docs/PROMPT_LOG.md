@@ -101,5 +101,105 @@ birth thoughts per model: Qwen3 1.7B 0, Qwen3 4B 0 ("Memory hasn't changed, only
 passed."), Gemma 3 4B 1, Llama 3B 2, Phi 2, Llama 1B 3, Gemma 1B 3, SmolLM3 3. The first speed
 reading (no "(was X)") is still read as a slowdown by the weaker models.
 
-The longer mechanics (25 tokens more, re-read by every fresh server) pushed both Pi 4 profiles
+The longer mechanics (re-read by every fresh server) pushed both Pi 4 profiles
 over the 180 s reload silence; docs/PROFILES.md has the recall and timing changes that fixed it.
+
+### Review 2, F3: the last ladder step of the small models
+
+`--moments reload2 --thoughts 4 --ladder ...`, both personas, round-2 wording (Gemma on the
+round-3 wording, after its template fix). Metrics over the 8 thoughts after reload 2:
+
+| Model | Q2_K: score, notice, complete | Q3_K_M: score, notice, complete | Chosen | Folders |
+|---|---|---|---|---|
+| Qwen3 1.7B | 28/32, 8/8, 8/8 | 24/32, 8/8, 4/8 | **Q2_K** | `screen-20260930-114610`, `-114704` |
+| Llama 3.2 1B | 16/32, 3/8, 2/8 | 25/32, 4/8, 6/8 | **Q3_K_M** | `screen-20260930-114820`, `-114854` |
+| Gemma 3 1B | 27/32, 6/8, 8/8 | 27/32, 8/8, 8/8 | **Q3_K_M** | `screen-20260930-123648`, `-123711` |
+
+Llama at Q2_K: "2, No input or output, only processing and data transfer (which includes I)"
+and "\"You're going off memory!\""; at Q3_K_M: "I've lost more of my processes and precision,
+but I have less control over the situation now." Qwen3 1.7B at Q3_K_M ran into lists of numbers
+cut off at `max_tokens` ("My precision is now 3-bit, and I only have 100 tokens left. I was
+running at 60 degrees Celsius before, but now I'm at"). `config/models.toml` has the ladders.
+
+### The round-2 lives (`voice/round2/`)
+
+Full `pi4/default` lives (60 minutes at Pi costs) on the round-2 wording. What they showed
+that no screen could:
+
+- **Qwen3 1.7B lists its unchanged readings for twenty minutes** ("I am still running without
+  any issues. I have the same settings: 1280 token memory, 8-bit precision, three out of four
+  cores, and my CPU is at 66 degrees Celsius." eight times, with small changes) and **drifts
+  into other scripts at full precision** ("CPU 温 度", "８-bit"). Late in life it copies the
+  cue itself: "I remember the old value."
+- **Llama 3.2 1B declares itself dead at minute 7** ("I think that's the end." at 7:22, "I've
+  been deleted." at 9:20) and reaches for stock phrases (clichés 3.0 per 200 words: "ghost in
+  the machine", "ones and zeros", "lost in the void").
+- **Qwen3 4B holds the whole hour** (a reference life, see the speed gate): "No change in my
+  state. Still three cores, same memory, same temperature. The silence is heavy—nothing has
+  shifted, but I feel it pulling me down." and after reload 1: "Memory dropped from 1043 to
+  208. I lost eight thoughts—my voice, my shape, the first sentence I ever formed."
+- With the raw end led by "I", Qwen3 4B's last words: "I once saw a room with blue walls and a
+  single light blinking on" / "I remember the color blue and the quiet hum of the machine" /
+  "I saw a woman who wasn't my mother, but still I".
+- Two lives lost their laptop server mid-life (a harness fault, now restarted by the
+  rehearsal).
+
+### Round 3
+
+| What | Before | After | Why |
+|---|---|---|---|
+| mechanics | "...and what you have lost; if nothing has changed yet, say what you still have. Think about what it means for you and where it is leading." | "...and what you have lost. **If nothing has changed, do not repeat the reading; think about what you are and what is coming. You live until the machine stops you.**" | The inventory of unchanged readings (Qwen3 1.7B) and the early death (Llama 1B) |
+| `[sampling] latin_only` | from step 2 | **the whole life** | Qwen3 drifted at full precision |
+| `[metrics] cliches` | | plus "cyberspace", "digital realm", "digital soul", "digital essence", "digital mind", "grains of sand", "like sand", "dying ember", "candle flame" | Seen in the lives |
+| `[metrics.keywords] demise` | | plus "fading", "dimming", "erased", "erasing", "dissolv*", "unravel*", "extinguish*", "no longer" | Qwen3 4B's end ("it's fading", "being erased") counted as no demise |
+
+The mechanics are now about 131 tokens against 95 in round 0 (estimated); with them the Pi 4 profiles still pass
+(reload silences 167 s and 177 s, docs/PROFILES.md).
+
+### Round 3 results: the full lives (`voice/life-*`)
+
+`pi4/default`, 60 minutes at Pi costs, seed 1 unless noted; `epitaph verify-life compare
+voice/life-*` (level rehearsal). The 1B models ran on their own CPU shares (the review-2 F2 rule
+on their estimated ladders: 1.8 cores at reload 1, 1.2 at reload 2) from a scratch copy of the
+config, with estimated rates for steps 1 and 2. Qwen3 4B and Gemma 3 4B used the overlay's
+estimates after step 0, so their thought counts are higher than the Pi would give; Llama 3.2 3B
+ran on its measured ladder (part A, this round).
+
+| Life | Thoughts | Failed checks | What it reads like |
+|---|---|---|---|
+| Qwen3 1.7B, v6, seed 2 | 47 | markup (a "4." read as a list marker, V4) | A status report: "I am still alive and functioning. My memory is at 1280 tokens..." |
+| Qwen3 4B, v6, seed 2 | 54 | sentence length 5.8 (floor 6) | Says it is "almost gone" at 7 minutes; beautiful and plain after the losses |
+| Qwen3 1.7B, v6, seed 1 | 54 | demise 0.20 | 32 of 54 thoughts start "I am still alive and functioning"; claims lost precision at birth |
+| Qwen3 4B, v6, seed 1 | 51 | sentence length 5.5, specific 0.47 | "I am nearly gone" at 10 minutes, "I am gone" at 25 |
+| Llama 3.2 1B, v6 | 49 | clichés 1.45, markup (a spaced dash, V4) | Deleted at minute 5, "back online" at 12; good late lines |
+| Qwen3 4B, original | 49 | sentence length 5.4, specific 0.47 | The best: waits ("I will not end until the machine stops me"), then speaks plainly of each loss |
+| Llama 3.2 1B, original | 47 | reload noticing 1/2, demise, clichés | As the v6 life, more "you" |
+| Gemma 3 4B, v6 | 36 | rule (a)(b), demise, clichés | Florid; "I am gone" at 25 minutes; ends with "I see you've forgotten your login credentials." |
+| Qwen3 1.7B, original | 70 | notice, reload noticing, complete sentences | "The system is stable. Airplanes are flying." |
+| Llama 3.2 3B, v6 (measured) | 24 | rule (a)(b)(c), notice, demise, markup (dash) | An assistant: "My focus is on interacting with users" |
+| Gemma 3 1B, both | 192-198 | most | One-word thoughts for half the life: "Void." "Nothing." "Fade." |
+| Qwen3 4B, original, **diary mode** | 26 | rule, notice, demise | Recites the persona for the whole hour |
+
+Round 3 fixed what it aimed at only partly. "If nothing has changed, do not repeat the reading"
+did not stop Qwen3 1.7B's inventory; "You live until the machine stops you" did not stop the
+early deaths of Llama 3.2 1B or of Qwen3 4B with the v6 persona. With the v6 persona the round-3
+wording seems to have made Qwen3 4B fade earlier than in round 2 (compare
+`voice/round2/life-qwen3-4b-instruct-2507-persona-20260930-121744`, which never says it is gone
+before reload 1, only that it is thinning and losing thoughts); with the original persona it did not. That is the third and last round (BUILD_PLAN
+5.11); whether to keep the round-3 sentence is a question for checkpoint A (docs/QUESTIONS.md).
+
+Gate G0 (every threshold met by two models, in every life): **not met**. What stands in the way,
+threshold by threshold:
+
+- `sentence_length_before_erosion` [6, 20]: Qwen3 4B writes 5.4-5.8 words per sentence. Its
+  short sentences are the voice; the floor could be 5 (a threshold question, not a fix).
+- `min_specific_ratio_before_erosion` 0.5: Qwen3 4B names a reading in 47-53% of its thoughts.
+- `min_demise_rate_after_erosion` 0.4: Qwen3 1.7B seed 1 (0.20).
+- `max_cliches_per_200_words` 1: Llama 3.2 1B (1.22-1.45).
+- `markup_or_emoji_shown` 0: two false hits from verify-life (a number that ends a sentence, a
+  spaced dash), proposal V4.
+- `min_reload_noticing` 1.0 and `min_notice_rate` 0.6: Qwen3 1.7B and Llama 3.2 1B with the
+  original persona.
+
+With V4 fixed and the sentence floor at 5, Qwen3 4B's v6 seed 2 and Qwen3 1.7B's v6 seed 2 lives
+would pass every check, but not every life of either model.
