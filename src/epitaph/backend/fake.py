@@ -126,7 +126,7 @@ class FakeBackend:
         cache_reuse_min: int = 256,
         faults: FakeFaults | None = None,
         reload_handover: str = "reread",
-        handover_s: float = 2.0,
+        handover_s: float = 0.3,
     ) -> None:
         """Create a stopped creature on `clock`, with the speeds of `costs`.
 
@@ -134,7 +134,7 @@ class FakeBackend:
         says whether `--cache-reuse` works (default: `costs.cache_reuse_works`), and
         `cache_reuse_min` is the shortest reusable run, in tokens. `reload_handover` is
         "reread" or "slot" (the cache survives a reload of the same model; saving and
-        restoring it takes `handover_s` seconds).
+        restoring it takes `handover_s` seconds; S4b: 0.28-0.29 s on the Pi 4).
         """
         self.clock = clock
         self.costs = costs
