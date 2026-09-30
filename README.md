@@ -114,7 +114,7 @@ Everything runs on a laptop with a fake model on a virtual clock.
 ```sh
 git clone https://github.com/yannickYamo/epitaph && cd epitaph
 make venv                                  # Python 3.11+
-make check                                 # lint, types, ~570 tests, a simulated life, the cost model
+make check                                 # lint, types, ~600 tests, a simulated life, the cost model
 
 # Simulate a whole 45-minute life in under a second, then watch it replayed 20x faster:
 .venv/bin/epitaph sim --profile pi4/compressed-2700 --hardware pi4-4gb --events > life.jsonl
@@ -165,6 +165,8 @@ Other pieces worth a look:
 - **The life checker** ([`verify.py`](src/epitaph/verify.py), `epitaph verify-life`) replays a
   recorded life and checks timing, memory budgets, the one-thought-at-a-time rule, typing speed and
   voice metrics (does it notice each loss, does it turn toward its end, is it specific).
+  `epitaph verify-life compare DIR...` ranks many rehearsal lives by those metrics in a Markdown
+  table, so choosing a model starts from numbers and ends with reading the transcripts.
 - **The pacer** ([`pacing.py`](src/epitaph/pacing.py)) holds back only words that could start a
   banned phrase, and types at 88% of the real generation rate so letters neither burst nor starve.
 - **Readability is tested:** OCR on rendered screens at four resolutions reads 100% of the words;
