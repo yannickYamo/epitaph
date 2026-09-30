@@ -85,13 +85,28 @@ async def iterate(events: list[Event]) -> AsyncIterator[Event]:
 
 
 def display_config(hardware: str | None = None, profile: str | None = None) -> dict[str, Any]:
-    """The `[display]` section, or the built-in defaults when no config can be loaded."""
-    try:
-        from epitaph.config import load_config
+    """The `[display]` section (default.toml + hardware overlay), plus `events_port`.
 
-        return dict(load_config(profile, hardware or "dev", validate=False).section("display"))
-    except Exception:
+    No profile is needed to draw, so none is loaded (`profile` is accepted and ignored).
+    Falls back to the built-in defaults when the files cannot be read.
+    """
+    import tomllib
+
+    from epitaph.config import CONFIG_DIR, deep_merge, detect_hardware
+
+    try:
+        data = tomllib.loads((CONFIG_DIR / "default.toml").read_text())
+        hw = hardware or str(data.get("life", {}).get("hardware", "auto"))
+        if hw == "auto":
+            hw = detect_hardware()
+        overlay = CONFIG_DIR / "hardware" / f"{hw}.toml"
+        if overlay.exists():
+            data = deep_merge(data, tomllib.loads(overlay.read_text()))
+    except (OSError, tomllib.TOMLDecodeError):
         return {}
+    out = dict(data.get("display", {}))
+    out.setdefault("events_port", int(data.get("events", {}).get("port", 7707)))
+    return out
 
 
 def parse_size(text: str | None) -> tuple[int, int] | None:

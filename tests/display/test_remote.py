@@ -285,3 +285,27 @@ def remote_make_driver():
     from epitaph.display.app import make_driver
 
     return make_driver
+
+
+def test_pick_driver() -> None:
+    assert remote.pick_driver("screen", remote=True) == "screen"
+    assert remote.pick_driver("terminal", remote=False) == "terminal"
+    assert remote.pick_driver("auto", remote=True) == "terminal"
+    assert remote.pick_driver("auto", remote=False, present=lambda: True) == "screen"
+    assert remote.pick_driver("auto", remote=False, present=lambda: False) == "terminal"
+
+
+def test_display_config_has_the_bus_port() -> None:
+    from epitaph.display.app import display_config
+
+    cfg = display_config("dev")
+    assert cfg["events_port"] == 7707 and cfg["line_chars"] == 48
+    assert display_config("no-such-overlay")["theme"] == "plain"  # overlay missing: defaults
+
+
+def test_display_config_unreadable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import epitaph.config as config
+    from epitaph.display.app import display_config
+
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    assert display_config("dev") == {}

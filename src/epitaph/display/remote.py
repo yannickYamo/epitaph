@@ -159,6 +159,15 @@ def screen_present(drm: Path = Path("/sys/class/drm")) -> bool:
     return False
 
 
+def pick_driver(configured: str, remote: bool, present: Callable[[], bool] = screen_present) -> str:
+    """`auto`: the terminal for a remote view, the screen when one is connected locally."""
+    if configured in ("terminal", "screen"):
+        return configured
+    if remote:
+        return "terminal"
+    return "screen" if present() else "terminal"
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="epitaph display", description=(__doc__ or "").split("\n\n")[0]
@@ -186,9 +195,7 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = display_config(args.hardware, args.profile)
     port = args.port or int(cfg.get("events_port", 7707))
-    name = args.driver or (
-        "screen" if str(cfg.get("driver", "terminal")) == "screen" else "terminal"
-    )
+    name = args.driver or pick_driver(str(cfg.get("driver", "auto")), remote=bool(args.connect))
     opts: dict[str, Any] = {"layout": args.layout, "theme": args.theme}
     if name == "screen":
         opts.update(size=parse_size(args.size), fullscreen=args.fullscreen)
