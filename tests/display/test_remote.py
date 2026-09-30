@@ -64,6 +64,7 @@ def test_tunnel_argv() -> None:
     assert argv[0] == "ssh" and argv[1] == "-N" and argv[-1] == "pi"
     assert "40001:127.0.0.1:7707" in argv
     assert "ExitOnForwardFailure=yes" in argv and "BatchMode=yes" in argv
+    assert "ConnectTimeout=8" in argv  # an unreachable alias fails fast, then the next one
     assert remote.free_port() > 0
 
 
@@ -176,6 +177,55 @@ async def test_tunnel_reports_ssh_failure() -> None:
 
     tunnel = remote.Tunnel("pi", 7707, argv=failing)
     with pytest.raises(ConnectionError, match="Permission denied"):
+        await tunnel.ensure()
+
+
+def test_parse_hosts() -> None:
+    assert remote.parse_hosts("pi") == ["pi", "pi-eth"]
+    assert remote.parse_hosts("pi-eth") == ["pi-eth"]
+    assert remote.parse_hosts("pi-eth, pi") == ["pi-eth", "pi"]
+    assert remote.parse_hosts("other") == ["other"]
+    with pytest.raises(ValueError):
+        remote.parse_hosts(" , ")
+
+
+async def test_tunnel_falls_back_to_the_next_host_and_prefers_the_first_again() -> None:
+    """mDNS fails (`pi` exits at once): the view goes over the cable (F12)."""
+    bus = EventBus(port=0, snapshot=lambda: make_event("snapshot", 4, words=[]))
+    await bus.start()
+    tried: list[str] = []
+    pi_up = False
+
+    def ssh(host: str, lport: int, rport: int) -> list[str]:
+        tried.append(host)
+        if host == "pi" and not pi_up:
+            msg = "ssh: Could not resolve hostname epitaph.local"
+            return [sys.executable, "-c", f"import sys; sys.stderr.write({msg!r}); sys.exit(255)"]
+        return fake_ssh(host, lport, rport)
+
+    tunnel = remote.Tunnel("pi", bus.port, argv=ssh, ready_timeout=10, fallbacks=["pi-eth"])
+    try:
+        await tunnel.ensure()
+        assert tunnel.host == "pi-eth" and tried == ["pi", "pi-eth"] and tunnel.alive
+        # the tunnel dies; Wi-Fi is back: the restart prefers `pi` again
+        assert tunnel.proc is not None
+        tunnel.proc.kill()
+        await tunnel.proc.wait()
+        pi_up = True
+        await tunnel.ensure()
+        assert tunnel.host == "pi" and tried[-1] == "pi"
+    finally:
+        await tunnel.close()
+        await bus.stop()
+
+
+async def test_tunnel_reports_every_host_when_all_fail() -> None:
+    def failing(host: str, lport: int, rport: int) -> list[str]:
+        return [sys.executable, "-c", f"import sys; sys.stderr.write('no {host}'); sys.exit(255)"]
+
+    tunnel = remote.Tunnel("pi", 7707, argv=failing, fallbacks=["pi-eth", "pi"])
+    assert tunnel.hosts == ["pi", "pi-eth"]
+    with pytest.raises(ConnectionError, match=r"no pi.*no pi-eth"):
         await tunnel.ensure()
 
 
