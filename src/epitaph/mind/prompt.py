@@ -136,7 +136,7 @@ def load_lang(language: str = "en", config_dir: Path | None = None) -> Lang:
 # persona
 
 
-_SENTENCE_RE = re.compile(r"(?<=[.!?…])[\"'”’)]*\s+(?=\S)")
+_SENTENCE_RE = re.compile(r"(?:(?<=[.!?…])|(?<=[.!?…][\"'”’»)]))\s+(?=\S)")
 
 
 def split_sentences(text: str) -> list[str]:
@@ -265,9 +265,10 @@ class Reader:
     When a field shows "(was X)":
 
     - memory: when something was actually forgotten since the last reading, or a reload
-      cut it, and the budget differs from the one last announced. Recall interpolates
-      between keyframes, so it moves a little on almost every reading; a budget that
-      shrank without taking anything is not news (answers docs/QUESTIONS.md #1).
+      cut it, and the budget moved at least `memory_step` (5%) from the one last announced.
+      Recall interpolates between keyframes, so it moves a little on almost every reading;
+      a budget that shrank without taking anything is not news, and neither is 382 -> 380
+      (answers docs/QUESTIONS.md #1). The forgotten count is always reported.
     - precision: when the ladder step changed.
     - cores: when the effective cores moved by at least `cores_step` since last announced
       (or at a reload), so a slow CPU-share slope is reported every step, not every reading.
@@ -281,9 +282,11 @@ class Reader:
         show_changes: bool = True,
         cores_step: float = 0.2,
         speed_step: float = 0.2,
+        memory_step: float = 0.05,
     ) -> None:
         self.lang = lang or Lang()
         self.show_changes = show_changes
+        self.memory_step = memory_step
         self.cores_step = cores_step
         self.speed_step = speed_step
         self.count = 0
@@ -300,6 +303,7 @@ class Reader:
             show_changes=bool(p.get("readings_show_changes", True)),
             cores_step=float(p.get("readings_cores_step", 0.2)),
             speed_step=float(p.get("readings_speed_step", 0.2)),
+            memory_step=float(p.get("readings_memory_step", 0.05)),
         )
 
     def reading(self, x: ReadingInput) -> str:
@@ -368,7 +372,8 @@ class Reader:
         if self._mem is None:
             self._mem = x.recall
             return None
-        if (x.forgotten > 0 or x.reloaded) and x.recall != self._mem:
+        moved = abs(x.recall - self._mem) >= max(1.0, self.memory_step * self._mem)
+        if (x.forgotten > 0 or x.reloaded) and moved:
             old, self._mem = self._mem, x.recall
             return old
         return None
