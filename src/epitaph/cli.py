@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from epitaph.config import ConfigError, load_config, parse_duration
@@ -22,7 +23,6 @@ PLANNED: dict[str, tuple[str, str]] = {
     "calibrate": ("measure working sets and set the death limit per model", "phase 2"),
     "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
     "bench": ("measure model speeds into bench/", "phase 2"),
-    "rehearse": ("accelerated lives with a real model on a laptop", "phase 0c"),
     "post": ("publish each life's last line (V1.5)", "V1.5"),
     "archive": ("render every life as a static page (V1.5)", "V1.5"),
 }
@@ -74,7 +74,7 @@ def cmd_estimate(args: argparse.Namespace) -> int:
     from epitaph.costmodel import estimate, format_report, load_costs
 
     cfg = _load(args)
-    costs = load_costs(cfg)
+    costs = load_costs(cfg, bench_dir=Path(args.bench) if args.bench else None)
     if args.no_cache_reuse:
         costs.cache_reuse_works = False
     report = estimate(cfg, costs)
@@ -133,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("estimate", help="thought-count report for a profile (cost model)")
     _common(p)
     p.add_argument("--no-cache-reuse", action="store_true")
+    p.add_argument("--bench", help="directory of measured cost files (default: bench/)")
     p.set_defaults(fn=cmd_estimate)
 
     p = sub.add_parser("ctl", help="talk to the running controller")
@@ -143,7 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=7707)
     p.set_defaults(fn=cmd_ctl)
 
-    from epitaph import verify
+    from epitaph import rehearse, verify
+
+    p = sub.add_parser("rehearse", help="accelerated lives with a real model, charged at Pi costs")
+    rehearse.add_arguments(p)
+    p.set_defaults(fn=rehearse.run)
 
     p = sub.add_parser("verify-life", help="check a recorded life (BUILD_PLAN 10.3)")
     verify.add_arguments(p)

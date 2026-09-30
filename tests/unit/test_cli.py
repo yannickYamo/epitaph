@@ -11,8 +11,8 @@ def test_sim_and_estimate(capsys) -> None:
 
 
 def test_stub_names_owner(capsys) -> None:
-    assert main(["rehearse"]) == 3
-    assert "planned for phase 0c" in capsys.readouterr().err
+    assert main(["bench"]) == 3
+    assert "planned for phase 2" in capsys.readouterr().err
 
 
 def test_config_error_exit_code(capsys) -> None:
@@ -63,3 +63,16 @@ def test_verify_life_is_wired(tmp_path, capsys) -> None:
             ]
         )
     assert rc == 0
+
+
+def test_rehearse_is_wired_and_estimate_takes_a_bench_dir(tmp_path, capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit) as e:
+        main(["rehearse", "--help"])
+    assert e.value.code == 0
+    capsys.readouterr()
+    rc = main(
+        ["estimate", "--profile", "pi4/default", "--hardware", "pi4-4gb", "--bench", str(tmp_path)]
+    )
+    assert rc in (0, 1) and "costs from" in capsys.readouterr().out

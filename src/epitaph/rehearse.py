@@ -1062,7 +1062,8 @@ async def screen_moment(
             await backend.prefill(life.memory.messages())  # a warm cache, as on a live creature
         backend.charging = True
         life.rate_estimate(k_before)
-        backend.arm_death(life.kill_time())
+        # A screen samples thoughts at a moment; the scheduled death must not cut the sample.
+        backend.arm_death(None)
     rows: list[dict[str, Any]] = []
     for _ in range(thoughts):
         mem = getattr(life, "memory", None)
