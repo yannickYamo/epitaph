@@ -146,7 +146,7 @@ Sources: the artist's build video script and the piece's description, both suppl
 | Credentials | The Pi password was generated earlier in this session and appears in the chat transcript and a scratch file | Step 0 deletes the file; Yannick sets a new password in his own terminal |
 | Screen | Both HDMI ports disconnected | Headless first: controller only, remote view on the laptop |
 | Session | Wayland desktop, `graphical.target` | Console boot frees about 350 MB and core 0 |
-| Network | Internet through the laptop's Ethernet sharing (10.42.0.95; laptop 10.42.0.1); `raspberrypi.local` resolves via mDNS on the laptop | Wi-Fi becomes the default route; the cable becomes maintenance-only (`never-default`) |
+| Network | Internet through the laptop's Ethernet sharing (10.42.0.95; laptop 10.42.0.1); `raspberrypi.local` resolves via mDNS on the laptop | Wi-Fi becomes the default route; the cable becomes maintenance-only (`never-default`; since 0c round 2 a fallback route at metric 800, behind Wi-Fi) |
 | Clock | No RTC, no UART debug connector; NTP synced | Exhibition hours depend on NTP over Wi-Fi |
 | Watchdog | `/dev/watchdog` present (bcm2835). Raspberry Pi OS ships `/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf` (`RuntimeWatchdogSec=1m`), and the hardware accepts the 1 min timeout (verified in step 0) | Keep the OS default; no drop-in needed |
 | Power | **Under-voltage under load:** the Pi browned out and rebooted during a 4-core build and under a 3-core busy loop (`throttled=0x50000`, dmesg "Undervoltage detected!") | **Blocker for every Pi phase.** The official 5.1 V / 3 A USB-C supply is required; S1c re-checks under sustained load |
@@ -817,7 +817,7 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 | Old SD card | Corruption during power-cut tests or 24/7 writes | Partition-aware image (8.6) | `tools/sd_restore.sh`; new A2 card (decision 21) |
 | Losing SSH access | Wi-Fi fails after console boot; keys break | Step 0 checks | Password login over the cable; restore the image |
 | Hostname reverts | cloud-init resets it at boot | Step 0 disables cloud-init | |
-| Pi offline when the laptop is off | The cable's default route wins | Step 0 `never-default` on the Pi's wired connection | |
+| Pi offline when the laptop is off | The cable's default route wins | Step 0: the cable's route sits behind Wi-Fi (metric 800 against 600; `never-default` until 0c round 2) | |
 | Headless display crash loop | Display unit without a screen | Headless boot test | `ExecCondition`, remote view |
 | Laptop limits | About 9 GB free; CPU rehearsal is slow; agents compete | Laptop lock | Two-stage rehearsal |
 | Workflow agents are ephemeral | Mid-run coordination, long waits, soak supervision | 8.3 | File-based coordination; one workflow per phase; soak runs on the Pi unattended |
@@ -955,8 +955,8 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
 5. **Wi-Fi.**
    - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in his own terminal**, not through a non-interactive shell, which is not an interactive tty and would put the output in the transcript. This creates a system connection with the secret in a root-only keyfile.
    - Then: `wifi.powersave 2`.
-   - On the Pi's wired connection: `ipv4.never-default yes`, `ipv6.never-default yes`, so the cable is maintenance-only and Wi-Fi carries the internet and NTP.
-   - Verify: `ip route` default via Wi-Fi; `ping` works with the cable unplugged.
+   - On the Pi's wired connection: `ipv4.never-default yes`, `ipv6.never-default yes`, so the cable is maintenance-only and Wi-Fi carries the internet and NTP. Changed in 0c round 2 (F12): `ipv4.never-default no` with `ipv4.route-metric 800`, so Wi-Fi (600) still wins whenever it is up and the cable is the route of last resort when the Pi is off Wi-Fi (it had lost NTP and run 88 min slow); IPv6 stays `never-default`.
+   - Verify: `ip route` default via Wi-Fi first (the cable, if listed, at metric 800); `ping` works with the cable unplugged.
 6. **cloud-init and hostname.**
    - Confirm first-boot work is done (`cloud-init status`), then disable it (`touch /etc/cloud/cloud-init.disabled`) so it stops rewriting the hostname and `/etc/hosts`.
    - Set the hostname to `epitaph` (`hostnamectl`, `/etc/hosts`).
