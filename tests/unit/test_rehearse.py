@@ -75,7 +75,7 @@ def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
     assert costs.tg(0, 3, 3.0).source == "estimate"
     assert costs.load(1) == costs.load(1) and costs.load(1).source == "measured"
     assert costs.load(0).source == "estimate"
-    assert "pi4-qwen3-1.7b-1-2.json" in costs.describe()
+    assert "pi4-qwen3-1.7b-1-2.json" in costs.describe() and "1-2" in costs.describe()
     empty = PiCosts.from_bench(cfg, "no-such-model", tmp_path)
     assert not empty.any_measured and "ESTIMATED" in empty.describe()
 

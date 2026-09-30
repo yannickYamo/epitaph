@@ -226,6 +226,29 @@ Findings:
    tokens (38-51%): the kept tail is below the 256-token reuse chunk. Cheap in absolute terms.
 6. `cache_reuse_works = true` for every candidate except Gemma without `--swa-full`.
 
+**Addendum (phase 0c, rehearsal): word-level trims break reuse.** The S2f trims dropped whole
+turns. `mind.memory.Memory` also trims inside the oldest kept turn (its reading, then its first
+words: BUILD_PLAN 5.4 "order of loss"). The first rehearsal life showed trims re-reading
+everything after the system prompt, and a probe with `Memory` on the laptop (Qwen3 1.7B Q4_K_M,
+`--cache-reuse 32`, marker already present) confirmed it:
+
+| Trim | Re-read |
+|---|---|
+| whole turns only | 70 of 460 tokens (15%) |
+| ending inside a turn (`upto_i`) | 365-467 of 434-536 (84-87%) |
+
+The cause is the same as the marker's: after a word-level cut, the prompt continues
+`<end of the marker's message><assistant>` + the thought's remaining words, a junction that is
+nowhere in the cache, and llama-server's reuse scan never moves past a new prompt position that
+has no 32-token match. At the Pi's post-reload prompt rate (about 3.9 tokens/s at 2 cores) a
+380-token re-read is about 100 s of silence, every few thoughts from reload 1 on. Proposal to B
+in CONTRACT_CHANGES (A14): trim whole turns only, and cut inside a turn only when a single turn
+is larger than the budget.
+
+**Addendum: DRY's window.** At b11277 `dry_penalty_last_n` defaults to 64 tokens (seen in
+`/completion`'s `generation_settings`), so DRY never sees the previous thought, and negative
+values are rejected. The backend now sends the context size (QUESTIONS A #12).
+
 ### S1a and S1b on the Pi
 
 Step 0 of every candidate, 3 threads, cold load (page cache dropped). "Birth thought" is measured
