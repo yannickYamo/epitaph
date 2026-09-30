@@ -1,0 +1,390 @@
+{
+ "model": "/var/lib/epitaph/models/llama-3.2-3b-instruct/Q4_K_M.gguf",
+ "fraction": 0.5,
+ "trials": [
+  {
+   "via_body": true,
+   "mmap": true,
+   "mode": "mmap",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 45.8,
+    "throttled": "0x0"
+   },
+   "load_s": 48.88,
+   "warm": {
+    "current_mb": 2246,
+    "anon_mb": 299,
+    "file_mb": 1937,
+    "pgmajfault": 104
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.81,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 5161,
+    "oom": 405,
+    "oom_kill": 2,
+    "oom_group_kill": 1
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": true,
+   "mode": "mmap",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.1,
+    "throttled": "0x0"
+   },
+   "load_s": 48.88,
+   "warm": {
+    "current_mb": 2246,
+    "anon_mb": 299,
+    "file_mb": 1937,
+    "pgmajfault": 211
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.83,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 10455,
+    "oom": 23238,
+    "oom_kill": 4,
+    "oom_group_kill": 2
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.6,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": true,
+   "mode": "mmap",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   },
+   "load_s": 48.88,
+   "warm": {
+    "current_mb": 2246,
+    "anon_mb": 299,
+    "file_mb": 1937,
+    "pgmajfault": 318
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.83,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 15775,
+    "oom": 47594,
+    "oom_kill": 6,
+    "oom_group_kill": 3
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": true,
+   "mode": "mmap",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   },
+   "load_s": 48.63,
+   "warm": {
+    "current_mb": 2246,
+    "anon_mb": 299,
+    "file_mb": 1937,
+    "pgmajfault": 425
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.81,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 21083,
+    "oom": 47906,
+    "oom_kill": 8,
+    "oom_group_kill": 4
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": true,
+   "mode": "mmap",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   },
+   "load_s": 48.65,
+   "warm": {
+    "current_mb": 2246,
+    "anon_mb": 299,
+    "file_mb": 1937,
+    "pgmajfault": 532
+   },
+   "limit_mb": 149,
+   "killed": true,
+   "kill_s": 0.81,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26363,
+    "oom": 48075,
+    "oom_kill": 10,
+    "oom_group_kill": 5
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": false,
+   "mode": "dio",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.6,
+    "throttled": "0x0"
+   },
+   "load_s": 51.86,
+   "warm": {
+    "current_mb": 2256,
+    "anon_mb": 2231,
+    "file_mb": 19,
+    "pgmajfault": 639
+   },
+   "limit_mb": 1115,
+   "killed": true,
+   "kill_s": 0.36,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26445,
+    "oom": 48149,
+    "oom_kill": 12,
+    "oom_group_kill": 6
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": false,
+   "mode": "dio",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.1,
+    "throttled": "0x0"
+   },
+   "load_s": 51.84,
+   "warm": {
+    "current_mb": 2256,
+    "anon_mb": 2231,
+    "file_mb": 19,
+    "pgmajfault": 746
+   },
+   "limit_mb": 1115,
+   "killed": true,
+   "kill_s": 0.34,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26539,
+    "oom": 48332,
+    "oom_kill": 14,
+    "oom_group_kill": 7
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 52.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": false,
+   "mode": "dio",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 52.1,
+    "throttled": "0x0"
+   },
+   "load_s": 51.59,
+   "warm": {
+    "current_mb": 2256,
+    "anon_mb": 2231,
+    "file_mb": 19,
+    "pgmajfault": 853
+   },
+   "limit_mb": 1115,
+   "killed": true,
+   "kill_s": 0.38,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26613,
+    "oom": 50301,
+    "oom_kill": 16,
+    "oom_group_kill": 8
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.1,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": false,
+   "mode": "dio",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 53.6,
+    "throttled": "0x0"
+   },
+   "load_s": 52.1,
+   "warm": {
+    "current_mb": 2256,
+    "anon_mb": 2231,
+    "file_mb": 19,
+    "pgmajfault": 960
+   },
+   "limit_mb": 1115,
+   "killed": true,
+   "kill_s": 0.34,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26701,
+    "oom": 50361,
+    "oom_kill": 18,
+    "oom_group_kill": 9
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 54.0,
+    "throttled": "0x0"
+   }
+  },
+  {
+   "via_body": true,
+   "mmap": false,
+   "mode": "dio",
+   "fraction": 0.5,
+   "basis": "current",
+   "env_before": {
+    "cpu_c": 53.6,
+    "throttled": "0x0"
+   },
+   "load_s": 51.57,
+   "warm": {
+    "current_mb": 2256,
+    "anon_mb": 2231,
+    "file_mb": 19,
+    "pgmajfault": 1067
+   },
+   "limit_mb": 1115,
+   "killed": true,
+   "kill_s": 0.36,
+   "rc": -9,
+   "tokens_after_squeeze": 0,
+   "majfault_during": 3,
+   "io_read_mb_during": 0,
+   "events": {
+    "low": 0,
+    "high": 0,
+    "max": 26782,
+    "oom": 50365,
+    "oom_kill": 20,
+    "oom_group_kill": 10
+   },
+   "cause": "oom",
+   "env_after": {
+    "cpu_c": 53.6,
+    "throttled": "0x0"
+   }
+  }
+ ],
+ "spike": "s3",
+ "started": "2026-09-30T00:02:36-0700",
+ "finished": "2026-09-30T00:17:26-0700",
+ "kernel": "6.18.50+rpt-rpi-v8"
+}
