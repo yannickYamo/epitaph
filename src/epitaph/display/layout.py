@@ -552,7 +552,8 @@ def flow_metrics(
     # a screen too small even for min_font_px still gets at least one column
     cell_w = font_px * advance
     cols = max(1, min(line_chars, int(usable_w // cell_w)))
-    strip_h = round(font_px * strip_scale * line_height) if status_strip else 0
+    # the strip line plus a gap, so it never crowds the first line of text
+    strip_h = round(font_px * (strip_scale * line_height + 0.4)) if status_strip else 0
     line_h = font_px * line_height
     usable_h = height - 2 * margin_y - strip_h
     rows = max(1, int(usable_h // line_h))
