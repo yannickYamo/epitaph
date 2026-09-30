@@ -126,7 +126,7 @@ adds the `speed_monotonic` check to verify-life and to the cost model, with G0 a
 - BUILD_PLAN 10.3 and 5.11 tables: add the check (E18, the integrator's file).
 - G0.12 and G2.6 stay open until the profiles and the Pi lives exist.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2 (E)")
+## Contract proposals (docs/process/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2 (E)")
 
 - E14: the `speed_monotonic` contract, the numbers the profiles must meet.
 - E15: the flip to `"fail"` and the removal of the xfail marks at the merge.
@@ -135,7 +135,7 @@ adds the `speed_monotonic` check to verify-life and to the cost model, with G0 a
 - E17: the rehearsal clock charges context-aware generation rates.
 - E18: add the check to BUILD_PLAN 10.3, 5.11 and 5.3.
 
-## Questions (docs/QUESTIONS.md)
+## Questions (docs/process/QUESTIONS.md)
 
 - E #12: how `make check` stays green until the profiles land (warn mode).
 - E #13: context-aware speeds and the drift, with what they mean for the rebased profiles.

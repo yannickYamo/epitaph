@@ -106,7 +106,7 @@ thoughts and die of `oom`; verify-life passes `speed_decline` (0.33), `reload_si
 
 Also: `pi5/default` gets the same end slope (CPU share 0.8 -> 0.3 over the erosion) and passes
 its estimate on both Pi 5 overlays (speed 0.29). `pi5/skeleton-600` and `pi5/compressed-600`
-failed before this round and still do (docs/QUESTIONS.md, E #5: informational in CI).
+failed before this round and still do (docs/process/QUESTIONS.md, E #5: informational in CI).
 
 ### Risks and checks for the Pi
 

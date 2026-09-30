@@ -122,7 +122,7 @@ system changes were made, so there is nothing to add to PI_CHANGES.
 - P1 onwards: E4 (`tools/smoke_pi.sh`, the headless boot test, G1 sign-off), E6 (full level
   on real Pi lives, the fault matrix automated), E7 (`soak_report.py`), E8 (docs).
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 - E1: wire `verify-life` in `cli.py` with `verify.add_arguments`/`verify.run`.
 - E2: `birth_loading` carries `profile`, `hardware`, `lifespan_s`.
@@ -134,7 +134,7 @@ system changes were made, so there is nothing to add to PI_CHANGES.
   targets `verify-sim` and `coverage`.
 - E8: D's `display.layout.verify_probe(cfg)` LayoutProbe.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - Q2: birth speed is judged on the phase median; writing speed on every thought.
 - Q3: a CPU-share drop counts as a change when it is at least 0.25 cores.

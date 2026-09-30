@@ -13,7 +13,7 @@ time was needed or used.
 | B4 | `src/epitaph/mind/sanitize.py`, `mind/words.py` | Streaming sanitizer: thinking blocks, markdown, links, tags, emoji, control and zero-width characters; cut at `[host]` and template tokens; holds back partial constructs so the output is append-only and equals the whole-text result. Word segmenter: whole words, punctuation attached (a lone dash joins the previous word), CJK per character, the final unfinished word from `finish()`; `normalize()` for phrase matching. |
 | B5 | `src/epitaph/pacing.py` | `Lookahead` (prefix-aware, cap), `Pacer` (`push`, `finish_thought`, `set_rate_estimate`, `drain`, `cadence`), and `speak()`: one whole thought with generation and typing overlapping, regeneration on a banned opening (at most 2), cuts, the sync rule (returns after the last word is typed; the pause is a minimum before the next first word and overlaps prompt processing), the death flush (`on_died` fires at the real moment, then queued words are shown at pace). Cadence: interval = max(floor, 1/(0.88 r)), r smoothed over 60 s of generation only, bench estimate until 3 s are measured, per-letter jitter seeded per life (`life_seed`), 90/250/700 ms word gaps, hesitations 400-1200 ms before a word or, late in life, inside it. |
 | B10 prep | `config/lang/en.toml [metrics]` | Keyword lists per change (memory, reload, cpu, health, persona, demise, specific), clichés, helpdesk phrases. |
-| docs | `docs/QUESTIONS.md`, `docs/CONTRACT_CHANGES.md`, `docs/PROMPT_LOG.md` | Q1 answered; questions 2-9; proposals C-B1..C-B7; prompt log round 0 baseline. |
+| docs | `docs/process/QUESTIONS.md`, `docs/process/CONTRACT_CHANGES.md`, `docs/PROMPT_LOG.md` | Q1 answered; questions 2-9; proposals C-B1..C-B7; prompt log round 0 baseline. |
 
 For the P1 controller and `sim.py`: `Persona.from_config`, `Reader.from_config`,
 `Pacer.from_config`, `Memory(...)`, `speak(...)`. `tests/sim/test_mind_life.py::live` is a working
@@ -44,10 +44,10 @@ sketch of the 5.8 loop on these modules.
 - Token counting uses `approx_tokens` until A7 (`count_past_tokens`); `Memory` accepts real counts per message. Diary mode should pass a counter without the per-message overhead.
 - Metric word lists are a first draft; tuned in P0c on real transcripts.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 C-B1 `BannedHit`/`PushResult` into `types.py`; C-B2 language packs in `config/lang/`; C-B3 new optional keys (`readings_*_step`, `min_rate_sample_s`, `hesitation_inside_from`); C-B4 cost model: reload cut to `recall × trim_to`, marker counted; C-B5 `word.char_ms` is per character of `text`, hesitation delays the event, `upto_i` inclusive; C-B6 fake backend typed on a clock protocol; C-B7 the pacer rate is non-space letters per second (estimate ≈ tok/s × 3.4).
 
-## Questions (docs/QUESTIONS.md)
+## Questions (docs/process/QUESTIONS.md)
 
 1 answered. New with defaults in use: 2 CPU share eases from reload 2 rather than from erosion (kept); 3 `upto_i` inclusive; 4 the marker counts against recall; 5 reload cut to `recall × trim_to`; 6 order of `persona_original` groups (kept); 7 a banned opening after 2 regenerations cuts to an empty thought; 8 a truncated last word completing a banned phrase is cut; 9 birth typing is about 49 wpm against a 45 floor at the estimated rate.

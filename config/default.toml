@@ -154,7 +154,7 @@ letters_per_word = 4.7
 cache_reuse_works = true         # set from spike S2
 # Review 2, F2: generation must never speed up across a reload. "fail" makes it a rule like
 # (a)-(d); "warn" only prints it. "warn" until the pi4 profiles rebased for F2 (ws/v-voice)
-# are merged; the integrator sets "fail" in that merge (docs/QUESTIONS.md, E #12).
+# are merged; the integrator sets "fail" in that merge (docs/process/QUESTIONS.md, E #12).
 speed_monotonic = "warn"
 
 [paths]

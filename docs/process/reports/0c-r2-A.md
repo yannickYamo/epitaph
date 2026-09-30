@@ -101,7 +101,7 @@ detached unit. `get_throttled` was 0x0 on every run, 56.5 °C at most. No downlo
 - The slot file sits in /dev/shm and is charged to the creature's cgroup. C: the controller
   unit must not hide /dev/shm (QUESTIONS A #16).
 
-## Contract proposals (docs/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2")
+## Contract proposals (docs/process/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2")
 
 - A15 `[backend] reload_handover = "slot"`, `slot_save_path` in `default.toml`.
 - A16 the cost model's reload with a carried cache (load + handover_s + `reread_cost`).
@@ -109,7 +109,7 @@ detached unit. `get_throttled` was 0x0 on every run, 56.5 °C at most. No downlo
   `start()` on the live creature, never `stop()` then `start()`.
 - A18 generation speed by context (`tg_ctx_model`), not by time.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - A #13 load times are `dio`, cold; warm recorded alongside.
 - A #14 `reload_handover` stays `"reread"` until A15.

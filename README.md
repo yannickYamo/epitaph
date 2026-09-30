@@ -183,15 +183,20 @@ docs/            build plan, spike results, architecture, gates, decisions
 bench/           measured costs per model, precision step and thread count
 ```
 
-Key documents:
+Key documents (index: [docs/README.md](docs/README.md)):
 
-- [BUILD_PLAN.md](docs/BUILD_PLAN.md): the full design, schedule, contracts, test strategy and
-  review record
+- [DESIGN.md](docs/DESIGN.md): what the piece is, and how each artistic principle becomes an
+  engineering constraint
+- [DECISIONS.md](docs/DECISIONS.md): why it is built this way, as decision records with evidence
+  and trade-offs
+- [PERFORMANCE.md](docs/PERFORMANCE.md): what was measured on the Pi 4 and what each change bought
+- [BUILD_PLAN.md](docs/BUILD_PLAN.md): the full specification, schedule, contracts, test strategy
+  and review record
 - [SPIKE.md](docs/SPIKE.md): what was measured on the Pi, and the decisions it forced
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md), [WRITING_A_DISPLAY.md](docs/WRITING_A_DISPLAY.md)
 - [GATES.md](docs/GATES.md): every acceptance criterion and the command that proves it
-- [CHANGELOG.md](docs/CHANGELOG.md), [CONTRACT_CHANGES.md](docs/CONTRACT_CHANGES.md),
-  [QUESTIONS.md](docs/QUESTIONS.md): how decisions were made
+- [docs/process/](docs/process/): phase reports, open questions and contract proposals from the
+  agents that built it
 
 ## Roadmap
 

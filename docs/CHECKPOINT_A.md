@@ -101,7 +101,7 @@ whether a life is worth watching. Qwen3 1.7B's status-report life ranks first he
 | 12 | Gemma 3 1B | v6 | 1 | 192 | 57% | 1 of 2 | 18% | 3% | one-word thoughts |
 
 No model passed every check in every one of its lives, so the gate that asks for two such
-models (G0) is not met. The details are in the report `docs/REPORTS/0c-r2-V.md`.
+models (G0) is not met. The details are in the report `docs/process/reports/0c-r2-V.md`.
 
 The Qwen3 4B and Gemma 3 4B lives were timed with estimated speeds after their first reload
 (faster than the Pi really is), so they show the voice the model would have with enough time,

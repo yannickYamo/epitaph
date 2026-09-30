@@ -68,7 +68,7 @@ raw results in `bench/spike/`, Pi costs in `bench/measured/`, laptop costs in `b
 | Command | Result |
 |---|---|
 | `make check` (worktree) | ruff clean, pyright 0 errors, **108 passed** (3 deselected: model/pi), sim 2 lives, `estimate` PASS on all 5 Pi 4 profiles; total coverage 88% (backend: fake 99%, llama_server 91%, errors/base 100%, models.py 57%: the network/CLI paths) |
-| Test merge with current `main` in a scratch clone (`git merge main`, then `make check`) | fake.py auto-merges with main's `_split_tokens` change; **538 passed**, estimate PASS. Conflicts only in `docs/CONTRACT_CHANGES.md` and `docs/QUESTIONS.md` (append-only tables: union) |
+| Test merge with current `main` in a scratch clone (`git merge main`, then `make check`) | fake.py auto-merges with main's `_split_tokens` change; **538 passed**, estimate PASS. Conflicts only in `docs/process/CONTRACT_CHANGES.md` and `docs/process/QUESTIONS.md` (append-only tables: union) |
 | `tools/laptop_lock.sh run A 15 -- env PYTHONPATH=src .venv/bin/python -m pytest -m model tests/templates` | **3 passed** against the real llama-server b11277 + Llama 3.2 1B: stream + timings + count; cache reuse after a front trim and an erosion step (at most 25%); SIGKILL mid-stream gives `CreatureDied` and `on_death` |
 | `~/llama.cpp` laptop: `git describe --tags`, `llama-server --version`, `llama-bench` 3B Q6_K | b11277 / eae11d2; pp256 28.7, tg64 5.0 tokens/s (6 threads) |
 | Pi: `git describe`, `llama-server --version`, `llama-bench` 1B Q4_K_M | b11277 / eae11d2, GNU 14.2 aarch64; pp64 9.9, tg32 4.5 (3 threads); `throttled=0x0` |
@@ -100,7 +100,7 @@ raw results in `bench/spike/`, Pi costs in `bench/measured/`, laptop costs in `b
   from bartowski's f16 + imatrix on the laptop remains possible if they read badly.
 - Laptop mDNS: `epitaph.local` stopped resolving around 02:50; spike tools fall back to `pi-eth`.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 1. `ContextFull` and `BackendError` into `backend/base.py`.
 2. `mmap = false` means `--load-mode none` (`--no-mmap` removed upstream); C's S3 must use `-lm none`.
@@ -111,7 +111,7 @@ raw results in `bench/spike/`, Pi costs in `bench/measured/`, laptop costs in `b
 5. `prefill(messages)` on the Backend Protocol (implemented in both backends).
 6. `config/default.toml [backend]`: `cache_reuse = 32`, new `threads_batch = 3`.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - #2 Llama 3.2 Q2_K source (unsloth, pinned).
 - #3 pins live in `config/models.lock.toml`.

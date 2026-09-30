@@ -24,7 +24,7 @@ summary, a file, a commit, or a CI run.
   verdict. Exit 0 when at least `--require-models` models (default 2) meet every threshold,
   1 when fewer do, 2 when a life cannot be read.
 - `voice/` (rehearsal transcripts and reports) is untracked (BUILD_PLAN 6.1): paste the
-  compare table into the phase report, `docs/REPORTS/0c-*.md`, as the evidence.
+  compare table into the phase report, `docs/process/reports/0c-*.md`, as the evidence.
 
 ---
 
@@ -66,7 +66,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 | G0.9 | The rehearsal was charged at measured Pi costs | each summary line's `costs` (from the rehearsal header or `birth_loading`) says measured, or the report states the cost source per model | open | depends on A's header fields |
 | G0.10 | Metrics judge with the language pack's lists and the config's thresholds | `$PY -m epitaph.verify <life> --json --no-write \| python -c 'import json,sys; print(json.load(sys.stdin)["metrics"]["word_lists"])'` shows `lang:en` for every list; `grep -A20 '^\[verify\]' config/default.toml` holds every 5.11 threshold | open | 0c r1: every list is `lang:en` except `answering` (`default`: `en.toml` has no `answering` list yet, B) |
 | G0.12 | No reload speeds generation up (review 2, F2): on the cost model for every Pi 4 profile and chosen model, and in every full rehearsal life | Cost model: G0.4's `--strict` run fails a pair with `(speed_monotonic)` in its Rule column, even while `[estimate] speed_monotonic = "warn"`; `grep -A3 'speed_monotonic' config/default.toml` shows `"fail"` once the rebased profiles are merged, and `make estimate` then prints no `WARNING speed_monotonic` note. Rehearsal: the G0.8 compare table's "Speed after/before reload" column is at most 1.05 (`verify.speed_monotonic_tolerance`) and never bold for the chosen models | open | 0c r2 (E) on `bench/` (qwen3-1.7b, measured): `pi4/default` and `pi4/compressed-2700` rise from 1.65 to 2.62 tokens/s at reload 1 (+59%, context-aware); reload 2 falls. The rebased profiles come from ws/v-voice |
-| G0.11 | Checkpoint A reply recorded (models, persona, chat or diary) | `docs/QUESTIONS.md` / CHANGELOG entry; no reply by the end of the session means the two best-scoring models, the v6 persona, chat mode | open | |
+| G0.11 | Checkpoint A reply recorded (models, persona, chat or diary) | `docs/process/QUESTIONS.md` / CHANGELOG entry; no reply by the end of the session means the two best-scoring models, the v6 persona, chat mode | open | |
 
 ## G1: walking skeleton on the Pi (BUILD_PLAN 8.4)
 
@@ -74,7 +74,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 |---|---|---|---|---|
 | G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c run_life src/epitaph/sim.py` shows no reference loop; `make sim` drives `controller.py` | open | B6 |
 | G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `make pi-life PROFILE=pi4/skeleton-1200` twice; then `$PY -m epitaph.verify <n> --level skeleton` and `<n+1>` both exit 0; `next_birth` passes on the first | open | |
-| G1.2 | The remote view shows them live | `epitaph display --connect pi --driver terminal` during the life; screenshot or transcript in `docs/REPORTS/` | open | |
+| G1.2 | The remote view shows them live | `epitaph display --connect pi --driver terminal` during the life; screenshot or transcript in `docs/process/reports/` | open | |
 | G1.3 | Headless boot: no display crash loop | `ssh pi 'sudo reboot'`; after boot `systemctl show epitaph-display -p NRestarts,ActiveState,ConditionResult` (condition false, 0 restarts) and `systemctl is-active epitaph-controller` | open | |
 | G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `make pi-smoke` exit 0 | open | E4 (P1) |
 | G1.5 | `/code-review high` done on the gate diff | integrator's review note | open | |

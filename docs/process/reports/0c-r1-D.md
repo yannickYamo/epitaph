@@ -14,7 +14,7 @@ forgets), D7 (partial redraw under 5% of a core; `birth_card_seconds`, `death_ca
 | D7 draw only when due | `display/app.py`, `display/layout.py` | `drive` sleeps until `LifeView.next_change(now)` (the next letter, the end of typing, the next cursor blink), until an event arrives (it is woken), or for at most `max_idle_s = 0.25` (fades, the status clock, cards). It still never draws faster than `fps`. `next_frame(view, now, fps, max_idle_s)` is shared with the bench. The terminal driver gets the same savings |
 | D7 cheaper compose | `display/layout.py` | Each `Thought` caches its wrapping (`laid`, keyed by the ids of the words shown), and a frame stacks the cached pieces. Before this, every visible thought was wrapped twice per frame. `ViewWord.typing_s` is cached as well |
 | D7 bench | `display/bench.py` | `python -m epitaph.display.bench [--full] [--sizes ...] [--char-ms N] [--layout grid] [--budget X]` runs `typing` (a full screen, then a thought typed at `char_ms` per letter) and `fade` (every earlier thought forgotten at once, as at a reload) on a virtual clock, with frames scheduled as `drive` schedules them. It reports `core_share` and `present_share` (the CPU spent inside `display.update`/`flip`, which belongs to the video driver). `--full` also measures the old drawing: every frame composed at 30 fps, and every changed frame painted and flipped whole |
-| Docs | `docs/WRITING_A_DISPLAY.md`, `docs/QUESTIONS.md` (D 9-11), `docs/CONTRACT_CHANGES.md` (D8) | Cheap redraws, the probe, the bench |
+| Docs | `docs/WRITING_A_DISPLAY.md`, `docs/process/QUESTIONS.md` (D 9-11), `docs/process/CONTRACT_CHANGES.md` (D8) | Cheap redraws, the probe, the bench |
 | Tests | `tests/display/test_verify_probe.py` (new, 16), `test_screen.py` (+6), `test_layout.py` (+1) | See below |
 
 ## Tested (commands and results)
@@ -69,13 +69,13 @@ None. Three bench jobs held the Pi lock (8-10 min each, finished in under 2 min)
 - Still left from 0b: `cards.py` as its own module, the idle silence style, the segment16 renderer, `tty.py`, and screenshots on `screenshot_on` events (needs the controller).
 - The terminal driver draws only when something is due (through `drive`) but still repaints whole frames. Its cell diff already keeps SSH traffic small; it has not been benchmarked for CPU.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 1. **D8:** once the simulator emits the reload `forget` (D5), E's verify-life sim tests use `default_layout_probe(cfg)` and expect `bright_words_last_2min` and `no_split_words` to pass.
 
 No event or config changes. `birth_card_seconds` and `death_card_seconds` were already in `default.toml` (decision D7) and are now read.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 9. `no_split_words` is judged at `line_chars` (48) for flow, or the grid's columns; the real panel's width is unknown until S5.
 10. The window for `bright_words_last_2min` ends when typing stops after death. A word is bright from its first letter until a `forget` reaches it, and the check reports the peak.

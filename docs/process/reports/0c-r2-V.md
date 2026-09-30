@@ -89,7 +89,7 @@ F2 on the Qwen3 1.7B ladder (depth rates): reload 1 1.65 -> 1.61 tokens/s (0.97)
   estimated ladders); per-model shares after checkpoint A.
 - Diary mode is rehearsed but not recommended: an instruct model continues its persona text.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2")
+## Contract proposals (docs/process/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 2")
 
 - V1 `[prompt] bare_mode` and `speaks_raw` for the P1 controller.
 - V2 `[sampling] latin_only_from_step` and `mind.sampling.sampling_for`.
@@ -97,7 +97,7 @@ F2 on the Qwen3 1.7B ladder (depth rates): reload 1 1.65 -> 1.61 tokens/s (0.97)
 - V4 verify-life: a number ending a sentence and a spaced dash are not markup.
 - V5 merge V's rehearsal and backend changes with agent A's slot handover (same files).
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - V #1 which speeds F2 compares (default: depth rates on both sides).
 - V #2 raw continuation once the persona is gone (default: on).

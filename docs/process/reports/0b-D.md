@@ -14,7 +14,7 @@ Branch `ws/d-display`. Card: BUILD_PLAN 9 D1-D4, D5 started; 5.12, 6.3.
 | D3 replay | `display/replay.py` | `main(argv)` for `epitaph replay LIFE --speed --from mm:ss --driver terminal\|screen\|none --port`: a life number, folder or `events.jsonl`; original cadence from the life clock `t` (else `ts`), divided by the speed, word typing scaled too; `--from` folds earlier events into one snapshot; also serves a local EventBus |
 | D4 screen | `display/screen.py` | pygame: window (x11/wayland on the laptop), full screen on a console (KMSDRM), offscreen. Letter-by-letter typing, block cursor, fades, reload dimming, status strip, birth and death cards, grid with a gauge bar, portrait rotation. Unchanged frames are neither painted nor flipped |
 | D5 (started) | `display/screenshot.py` | `render_png`, `ocr_words` (tesseract), `word_accuracy`, `measure_contrast` (from the pixels), `readability`; `python -m epitaph.display.screenshot --out DIR` runs D13 at the four sizes |
-| Docs | `docs/WRITING_A_DISPLAY.md`, `docs/CONTRACT_CHANGES.md` (D1-D7), `docs/QUESTIONS.md` (2-8) | |
+| Docs | `docs/WRITING_A_DISPLAY.md`, `docs/process/CONTRACT_CHANGES.md` (D1-D7), `docs/process/QUESTIONS.md` (2-8) | |
 | Tests | `tests/display/` (5 test files and a conftest, 91 tests) | layout, terminal, remote, replay, screen and D13 |
 
 ## Tested (commands and results)
@@ -65,7 +65,7 @@ None. Two short jobs under the Pi lock copied files to `/tmp/epitaph-d` and remo
 - `tty.py` (the Linux console without pygame) is not started.
 - The cli.py wiring (proposal D1) is for L at merge. Until then, run `python -c 'from epitaph.display.replay import main; main([...])'`, or the same with `remote.main`.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 1. **D1:** wire `epitaph display` → `epitaph.display.remote.main(argv[1:])` and `epitaph replay` → `epitaph.display.replay.main(argv[1:])` (each parses its own flags).
 2. **D2:** `t` (life clock seconds) on every event.
@@ -75,6 +75,6 @@ None. Two short jobs under the Pi lock copied files to `/tmp/epitaph-d` and remo
 6. **D6:** `sim.py` stamps `birth_loading.t` with the time since the previous life's clock start.
 7. **D7:** `[display] birth_card_seconds = 4`, `death_card_seconds = 8`.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 2 death card timing (8 s after the last letter, then the silence style) · 3 what "bright words" means for verify-life (`LifeView.bright_words`: typed and still live, independent of screen size) · 4 an empty screen fills from the bottom · 5 status strip at the top, 45% size, dropped whole parts · 6 grid: forgotten words vanish, gauge row · 7 OCR preprocessing (inverted grey, `--psm 6`) · 8 orientation (only an explicit `portrait` on a landscape panel rotates).

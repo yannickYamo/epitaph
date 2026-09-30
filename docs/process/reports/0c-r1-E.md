@@ -119,7 +119,7 @@ estimated for every model except qwen3-1.7b.
 - CI has not run the new steps on GitHub yet (no push). They were dry-run locally.
 - Layout rows still wait on D's `verify_probe` (E8).
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 - E9: add `[metrics] answering` to the language pack (B); verify already reads it.
 - E10: the rehearsal output format (A): one folder per life plus a `rehearsal` header event
@@ -131,7 +131,7 @@ estimated for every model except qwen3-1.7b.
   and the `compare` form, `--require-models`, `screen` level), `verify.json` `meta` and
   `summary`, and `reload_noticing` as a rate.
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - Q8: a model meets the gate when every one of its full rehearsal lives passes; screen
   samples do not count.

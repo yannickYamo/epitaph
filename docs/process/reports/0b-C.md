@@ -94,7 +94,7 @@ was `0x0` before and after every load test in this round.
   mode that counts now has 5/5, but S3 used the 3B Q4_K_M only. S1a (A) should confirm the
   step-0 Q6_K with `dio` fits and still leaves 300 MB free.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 1. `[body]` keys `death_limit_mb`, `death_fraction`, `cpu_period_us`.
 2. `make_body(cfg) -> Body` as the controller's only factory. The controller unit's name
@@ -102,7 +102,7 @@ was `0x0` before and after every load test in this round.
 3. `[backend] load_mode` (`--load-mode`). b11277 rejects `--no-mmap`. `pi4-4gb` sets `dio`.
    For mmap, call `drop_page_cache(model)` before the spawn.
 
-## Questions (docs/QUESTIONS.md)
+## Questions (docs/process/QUESTIONS.md)
 
 - Q2: which user is the service user? Default: `pi`.
 - Q3, **please read**: a laptop incident. An early unit test ran `CgroupBody.delegated()` for

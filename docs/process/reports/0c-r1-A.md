@@ -148,7 +148,7 @@ and the report says so.
 - Early on, Qwen3 claims losses that have not happened ("my precision is lower than before" at
   full precision). This is a prompt question for B10.
 
-## Contract proposals (docs/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 1")
+## Contract proposals (docs/process/CONTRACT_CHANGES.md, "Proposals in phase 0c, round 1")
 
 - A7 wire `epitaph rehearse` in `cli.py` (exact code given).
 - A8 for the record: `prefill` in the protocol, errors in `base.py`, the fake's clock protocol (done in A's files).
@@ -159,7 +159,7 @@ and the report says so.
 - A13 the cost model charges prompt processing at `threads_batch`.
 - A14 memory trims whole turns only (word-level cuts re-read 84-87%).
 
-## Questions (docs/QUESTIONS.md, each with the default in use)
+## Questions (docs/process/QUESTIONS.md, each with the default in use)
 
 - A #8 `RehearsalClock` cannot overlap generation and typing; the rehearsal uses `VirtualClock`.
 - A #9 does `cpu.max` cap `threads_batch = 3` before erosion? The rehearsal assumes yes.

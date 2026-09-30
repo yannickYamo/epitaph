@@ -15,7 +15,7 @@ laptop llama-server job (under `tools/laptop_lock.sh`, about 5 minutes); no Pi t
 | Cost model | `src/epitaph/costmodel.py` | Prompt threads from `backend.threads_batch` (limited by the share); generation eases to the S1c late speed over 30 min; the system prompt sized from the persona text per erosion step; the first marker costs only its tokens (A3). New failures: `silence` (reload silence over `verify.max_reload_silence_s`) and `speed` (full-level profiles: last 5 min at or above 40% of the first 5) |
 | Profiles | `config/profiles/pi4/{default,compressed-2700}.toml`, `pi5/default.toml` | Recall 300 after reload 1 and 260 at the decline; the thread drop moved from reload 1 to reload 2 (reload 1 keeps 3 threads and share 3.0); end CPU share 1.3, 0.9, 0.6, 0.4. Reloads, erosion order and times, death at end-0:30 and decision 30's cadence unchanged. `pi5/default` gets the same end slope |
 | Simulator | `src/epitaph/sim.py` | Runs on `Memory`, `Persona` and `Reader`: real prompts to the fake backend, real readings, trims, reload cuts, marker and erosion. `t` on every event (0 before birth); `birth_loading` carries `profile`, `hardware`, `lifespan_s`; every cut emits `forget`, the reload's included; `gen_end` carries `prompt_n`, `tok_s`. The body's kills are timed (death squeeze and deadline land even in prompt processing); a server-side full context ends as `full`; the fake uses the configured reuse chunk. Public API unchanged |
-| Docs | `docs/PROFILES.md` (new), `docs/PROMPT_LOG.md`, `docs/QUESTIONS.md` B 10-13, `docs/CONTRACT_CHANGES.md` C-B8..C-B13 | Every profile change with the estimate before and after |
+| Docs | `docs/PROFILES.md` (new), `docs/PROMPT_LOG.md`, `docs/process/QUESTIONS.md` B 10-13, `docs/process/CONTRACT_CHANGES.md` C-B8..C-B13 | Every profile change with the estimate before and after |
 
 ## Tested
 
@@ -57,7 +57,7 @@ margin is rule (c) in the 60-minute life's 2-minute erosion windows.
   informational in CI).
 - The real-server A3 script lives in my scratch space; C-B13 proposes it as a template test (A).
 
-## Contract proposals (docs/CONTRACT_CHANGES.md)
+## Contract proposals (docs/process/CONTRACT_CHANGES.md)
 
 - **C-B8** validation: `cpu_share` up to `max(threads, threads_batch)` (optional; would let the
   thread drop return to reload 1).
@@ -69,7 +69,7 @@ margin is rule (c) in the 60-minute life's 2-minute erosion windows.
 - **C-B12** `[estimate]` system-token guesses become a fallback; `reading_tokens.full` 45 -> 55.
 - **C-B13** a real-server A3 regression test in `tests/templates`.
 
-## Questions (docs/QUESTIONS.md)
+## Questions (docs/process/QUESTIONS.md)
 
 - B 10: thread drop moved to reload 2 because validation caps the share at `threads` (default in
   use: moved).

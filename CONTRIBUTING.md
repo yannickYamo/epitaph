@@ -34,7 +34,7 @@ clock. Tests that need the Pi or a real model are marked `pi` and `model` and ar
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map and
 [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the design. Interfaces between modules (events,
 backend, body, config schema) are contracts: propose changes in
-[docs/CONTRACT_CHANGES.md](docs/CONTRACT_CHANGES.md) as part of your pull request.
+[docs/process/CONTRACT_CHANGES.md](docs/process/CONTRACT_CHANGES.md) as part of your pull request.
 
 Writing a new display (a hardware panel, a web view, a printer) needs no change to the core: see
 [docs/WRITING_A_DISPLAY.md](docs/WRITING_A_DISPLAY.md).
