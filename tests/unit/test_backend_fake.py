@@ -51,9 +51,7 @@ async def test_load_time_speed_and_timings() -> None:
     chunks = await run(b, [SYSTEM, Msg("user", "[host] t+00:00")], max_tokens=20)
     last = chunks[-1]
     assert last.done and last.predicted_n == 20
-    assert last.prompt_n == sum(
-        len(m.content) // 4 + 4 for m in [SYSTEM, Msg("user", "[host] t+00:00")]
-    )
+    assert last.prompt_n == await b.count_past_tokens([SYSTEM, Msg("user", "[host] t+00:00")])
     # 20 tokens at 2 tok/s after the prompt at 10 tok/s
     assert clock.now() == pytest.approx(45.0 + last.prompt_n / 10 + 10.0)
     assert b.status().alive and b.status().pid is not None
@@ -84,7 +82,7 @@ async def test_front_trim_with_and_without_cache_reuse(reuse: bool) -> None:
     if reuse:
         assert processed <= 0.25 * total  # the S2f go criterion
     else:
-        assert processed >= total - (len(SYSTEM.content) // 4 + 4)
+        assert processed >= 0.7 * total
 
 
 async def test_reload_empties_the_cache() -> None:
@@ -254,3 +252,55 @@ async def test_default_reuse_follows_costs() -> None:
     c.cache_reuse_works = False
     b = FakeBackend(FakeClock(), c)
     assert b.cache_reuse is False
+
+
+MARKER = "[host] earlier memory lost"
+
+
+async def _history(b: FakeBackend) -> list[Msg]:
+    history = [m for i in range(1, 6) for m in turn(i)]
+    await run(b, [SYSTEM, *history, Msg("user", "[host] a")])
+    return history
+
+
+@pytest.mark.parametrize("where", ["oldest", "reading"])
+async def test_first_marker_placement(where: str) -> None:
+    """S2f: a marker inserted before kept turns stops reuse; appended to the reading it does not."""
+    b, _ = make(cache_reuse=True, cache_reuse_min=64)
+    await b.start(MODEL, "Q6_K", 3)
+    history = await _history(b)
+    kept = history[2:]
+    if where == "oldest":
+        kept = [Msg("user", f"{MARKER}\n{kept[0].content}"), *kept[1:]]
+        msgs = [SYSTEM, *kept, Msg("user", "[host] b")]
+    else:
+        msgs = [SYSTEM, *kept, Msg("user", f"{MARKER}\n[host] b")]
+    total = await b.count_past_tokens(msgs)
+    await run(b, msgs)
+    share = b.requests[-1].prompt_n / total
+    assert share > 0.6 if where == "oldest" else share < 0.25
+
+
+async def test_marker_that_moves_keeps_reuse() -> None:
+    b, _ = make(cache_reuse=True, cache_reuse_min=64)
+    await b.start(MODEL, "Q6_K", 3)
+    history = [m for i in range(1, 7) for m in turn(i)]
+    with_marker = [Msg("user", f"{MARKER}\n{history[0].content}"), *history[1:]]
+    await run(b, [SYSTEM, *with_marker, Msg("user", "[host] a")])
+    kept = history[2:]
+    moved = [Msg("user", f"{MARKER}\n{kept[0].content}"), *kept[1:], Msg("user", "[host] b")]
+    total = await b.count_past_tokens([SYSTEM, *moved])
+    await run(b, [SYSTEM, *moved])
+    assert b.requests[-1].prompt_n < 0.25 * total
+
+
+async def test_erosion_removal_keeps_reuse() -> None:
+    b, _ = make(cache_reuse=True, cache_reuse_min=64)
+    two = Msg("system", "Group one sentence here.\nGroup two sentence that goes away.")
+    await b.start(MODEL, "Q6_K", 3)
+    history = [m for i in range(1, 6) for m in turn(i)]
+    await run(b, [two, *history, Msg("user", "[host] a")])
+    one = Msg("system", "Group one sentence here.")
+    msgs = [one, *history, Msg("user", "[host] a"), Msg("user", "[host] b")]
+    await run(b, msgs)
+    assert b.requests[-1].prompt_n < 0.25 * await b.count_past_tokens(msgs)

@@ -17,4 +17,7 @@ args="$(printf '%q ' "$@")"
   while ssh -o ConnectTimeout=15 pi 'systemctl is-active --quiet $unit'; do sleep 15; done
   ssh pi 'journalctl -u $unit -o cat --no-pager | grep -v -E \"^(Started|Finished|$unit)\" | tail -40; systemctl show $unit -p Result'
 "
+# Measured costs wait in bench/measured/ until the integrator rebases the profiles on them
+# (costmodel.load_costs reads bench/*.json directly; see docs/SPIKE.md).
+ssh pi 'mkdir -p ~/epitaph-spike/bench/measured; for f in ~/epitaph-spike/bench/pi4-*.json; do [ -e "$f" ] && mv "$f" ~/epitaph-spike/bench/measured/; done; true'
 rsync -a pi:epitaph-spike/bench/ "$root/bench/"
