@@ -364,6 +364,10 @@ class LlamaServerBackend:
         self._restored = False
         saved = await self._save_slot(model)
         await self.stop()
+        if self.s.reload_handover == "slot":
+            # llama-server refuses to start when --slot-save-path does not exist, and /dev/shm
+            # is emptied at every boot: create it before every spawn, not only at a reload.
+            Path(self.s.slot_save_path).expanduser().mkdir(mode=0o700, parents=True, exist_ok=True)
         self.argv = self.body.wrap_spawn(build_argv(self.s, model, quant, threads))
         log = self.s.log_path
         out: Any = open(os.path.expanduser(log), "ab") if log else asyncio.subprocess.DEVNULL  # noqa: SIM115

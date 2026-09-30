@@ -50,6 +50,9 @@ from epitaph.mind.memory import approx_tokens
 from epitaph.mind.prompt import Persona
 from epitaph.types import RuleReport, RuleViolation
 
+# Save plus restore of the cache slot at a reload, with margin (spike S4b measured 0.3 s).
+HANDOVER_S = 1.0
+
 
 @dataclass
 class Costs:
@@ -248,6 +251,8 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
     life.mechanics = k0.mechanics
     t = 0.0
 
+    handover = str(cfg.get("backend.reload_handover", "reread")) == "slot"
+
     def reread_cost(tokens: int) -> int:
         if costs.cache_reuse_works:
             return int(tokens * costs.reuse_residual)
@@ -265,9 +270,15 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
             t += costs.load(k.step)
             life.step, life.threads, life.last_reload = k.step, k.threads, reload_start
             k = sch.at(t)  # the silence took time: the reading is written after the load
-            # A fresh server reads everything, the system prompt included (prefilled
-            # during the silence, so it is part of the silence either way).
-            extra += sys_tokens_of(life.groups, life.mechanics) + life.memory
+            if handover:
+                # ADR-014 (contract A16): the old server's cache is restored into the new one,
+                # so only the cut is absorbed by cache reuse, not a full re-read.
+                t += HANDOVER_S
+                extra += reread_cost(sys_tokens_of(life.groups, life.mechanics) + life.memory)
+            else:
+                # A fresh server reads everything, the system prompt included (prefilled
+                # during the silence, so it is part of the silence either way).
+                extra += sys_tokens_of(life.groups, life.mechanics) + life.memory
             if t >= end:
                 break
 
