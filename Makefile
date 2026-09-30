@@ -18,7 +18,7 @@ test:
 	$(PY) -m pytest -q --cov --cov-report=term-missing:skip-covered
 
 sim:
-	$(PY) -m epitaph sim --profile pi4/default --quiet
+	$(PY) -m epitaph sim --profile pi4/default --hardware pi4-4gb --lives 2 --quiet
 
 estimate:
 	@for p in $(PROFILES_PI4); do $(PY) -m epitaph estimate --profile $$p --hardware pi4-4gb || exit 1; done

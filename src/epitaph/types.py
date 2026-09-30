@@ -6,7 +6,7 @@ Owned by the integrator. Change through docs/CONTRACT_CHANGES.md.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 PROTOCOL_VERSION = 1
@@ -16,7 +16,7 @@ WordState = Literal["live", "fading", "forgotten", "inherited"]
 ReadingsForm = Literal["full", "short", "minimal"]
 
 
-class Cause(str, Enum):
+class Cause(StrEnum):
     """Why a life ended."""
 
     OOM = "oom"
@@ -28,7 +28,7 @@ class Cause(str, Enum):
     INTERRUPTED = "interrupted"
 
 
-class Health(str, Enum):
+class Health(StrEnum):
     """The health label shown in the readings; steps, never interpolates."""
 
     NOMINAL = "nominal"

@@ -14,6 +14,9 @@ from typing import Any, Protocol
 from epitaph.config import INTERPOLATED, Profile
 from epitaph.types import Health, Knobs
 
+# Budgets that change only at a reload: easing them into the reload would blur the loss.
+HOLD_UNTIL_RELOAD = ("recall", "cpu_share")
+
 
 class LifeClock(Protocol):
     """Time since birth, and a way to wait on it."""
@@ -108,7 +111,7 @@ class Schedule:
 
         def lerp(name: str) -> float:
             a = float(cur[name])
-            if nxt is None or (name == "recall" and reload_next):
+            if nxt is None or (name in HOLD_UNTIL_RELOAD and reload_next):
                 return a
             return a + (float(nxt[name]) - a) * frac
 
@@ -117,13 +120,13 @@ class Schedule:
             t=t_s,
             phase=str(cur["phase"]),
             health=Health(str(cur["health"])),
-            recall=int(round(interp["recall"])),
+            recall=round(interp["recall"]),
             step=int(cur["step"]),
             threads=int(cur["threads"]),
             cpu_share=round(interp["cpu_share"], 3),
             temperature=round(interp["temperature"], 3),
             min_p=round(interp["min_p"], 4),
-            max_tokens=max(1, int(round(interp["max_tokens"]))),
+            max_tokens=max(1, round(interp["max_tokens"])),
             pause_s=round(interp["pause_s"], 3),
             persona_groups=int(cur["persona_groups"]),
             mechanics=bool(cur["mechanics"]),
