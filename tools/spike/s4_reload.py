@@ -23,7 +23,9 @@ from llama import Server, model_path, running, system_text, temp_c, throttled, w
 from s1_fit_speed import drop_caches, memory_messages
 
 
-def one(args: argparse.Namespace, quant: str, threads: int, recall: int, cold: bool) -> dict[str, Any]:
+def one(
+    args: argparse.Namespace, quant: str, threads: int, recall: int, cold: bool, tb: int = 0
+) -> dict[str, Any]:
     old = Server(model_path(args.model, args.from_quant), threads=3, port=args.port, taskset="1-3")
     system = system_text(5, True)
     with running(old):
@@ -35,13 +37,17 @@ def one(args: argparse.Namespace, quant: str, threads: int, recall: int, cold: b
         drop_caches()
     else:  # warm: the new file was read recently
         Path(model_path(args.model, quant)).read_bytes()
-    new = Server(model_path(args.model, quant), threads=threads, port=args.port, taskset="1-3")
+    extra = ["-tb", str(tb)] if tb else []
+    new = Server(
+        model_path(args.model, quant), threads=threads, port=args.port, taskset="1-3", extra=extra
+    )
     msgs = memory_messages(system, len(system) // 4 + recall)
     with running(new):
         r = new.chat(msgs, max_tokens=1)
     rec = {
         "quant": quant,
         "threads": threads,
+        "threads_batch": tb or threads,
         "recall": recall,
         "cold": cold,
         "stop_s": round(stop_s, 1),
@@ -62,17 +68,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--from-quant", required=True)
-    ap.add_argument("--case", action="append", required=True, help="QUANT:THREADS:RECALL")
+    ap.add_argument("--case", action="append", required=True, help="QUANT:THREADS:RECALL[:THREADS_BATCH]")
     ap.add_argument("--port", type=int, default=8094)
     ap.add_argument("--warm", action="store_true", help="also measure warm reloads")
     ap.add_argument("--out")
     args = ap.parse_args()
     results = []
     for c in args.case:
-        q, th, rc = c.split(":")
-        results.append(one(args, q, int(th), int(rc), cold=True))
+        q, th, rc, *tb = c.split(":")
+        t_b = int(tb[0]) if tb else 0
+        results.append(one(args, q, int(th), int(rc), cold=True, tb=t_b))
         if args.warm:
-            results.append(one(args, q, int(th), int(rc), cold=False))
+            results.append(one(args, q, int(th), int(rc), cold=False, tb=t_b))
     out = {"spike": "S4", "model": args.model, "from": args.from_quant, "cases": results}
     if args.out:
         write_json(Path(args.out), out)

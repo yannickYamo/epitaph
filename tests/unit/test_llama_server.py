@@ -97,6 +97,8 @@ def test_argv_defaults_and_options() -> None:
     assert argv2[argv2.index("--load-mode") + 1] == "none"
     assert argv2[argv2.index("-ctk") + 1] == "q8_0"
     assert "--swa-full" not in build_argv(ServerSettings(swa_full=False), GEMMA, "Q4_K_M", 2)
+    tb = build_argv(ServerSettings(threads_batch=3), MODEL, "Q4_K_M", 2)
+    assert tb[tb.index("-t") + 1] == "2" and tb[tb.index("-tb") + 1] == "3"
 
 
 def test_settings_from_config() -> None:
