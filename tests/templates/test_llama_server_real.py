@@ -124,3 +124,35 @@ async def test_kill_fires_on_death_and_breaks_the_stream(backend: LlamaServerBac
             break
         await asyncio.sleep(0.05)
     assert seen and seen[0].signal == signal.SIGKILL
+
+
+async def test_slot_handover_across_quants(tmp_path: Path) -> None:
+    """Spike S4b through the backend: a reload to the next quant keeps the KV cache, the
+    prefill is skipped, and the request with the cut memory reads only the new reading."""
+    cfg = load_config("pi4/default", "dev", validate=False)
+    model = cfg.models[NAME]
+    ladder = list(model.ladder)
+    if len(ladder) < 2 or not all((MODELS_DIR / NAME / f"{q}.gguf").exists() for q in ladder[:2]):
+        pytest.skip("needs the first two ladder quants")
+    s = ServerSettings(bin=str(BIN), models_dir=str(MODELS_DIR), port=8097, ctx=2048,
+                       cache_reuse=32, reload_handover="slot", slot_save_path=str(tmp_path),
+                       log_path=str(MODELS_DIR / "test-server.log"))  # fmt: skip
+    b = LlamaServerBackend(s)
+    try:
+        await b.start(model, ladder[0], 4)
+        msgs = [Msg("system", system())]
+        assert await b.prefill(msgs) > 0
+        for i in range(3):
+            msgs.append(Msg("user", reading(i)))
+            text, _, _ = await thought(b, msgs)
+            msgs.append(Msg("assistant", text))
+        await b.start(model, ladder[1], 4)
+        h = b.last_handover
+        assert h.mode == "slot" and h.error is None and h.tokens > 300 and h.file_bytes > 0
+        assert not list(tmp_path.iterdir())  # the slot file is gone after the restore
+        assert await b.prefill(msgs[:1]) == 0
+        cut = [msgs[0], *msgs[3:], Msg("user", reading(3) + " (was 8-bit)")]  # oldest turn cut
+        text, prompt_n, _ = await thought(b, cut)
+        assert text.strip() and prompt_n < 80, prompt_n  # the new reading, not the memory
+    finally:
+        await b.aclose()
