@@ -119,7 +119,7 @@ def test_rehearsal_metrics_pass_on_a_good_voice(compressed) -> None:
 
 def test_notice_rate_counts_per_change_type(compressed) -> None:
     res = verify(
-        retext(compressed, lambda t, s: "Plain words about nothing at all."),
+        retext(compressed, lambda t, s: "Plain words about a cat on a mat."),
         "pi4/compressed-2700",
         "rehearsal",
     )
@@ -137,11 +137,12 @@ def test_reload_noticing_needs_the_first_thought(compressed) -> None:
     reload_idx = [e["_idx"] for e in life.of("reload")]
     after = {next(th.turn for th in life.thoughts if th.gen_idx > i) for i in reload_idx}
     edited = retext(
-        compressed, lambda t, s: "Nothing changed at all." if t in after else GOOD_THOUGHT
+        compressed, lambda t, s: "The room is quiet and warm." if t in after else GOOD_THOUGHT
     )
     res = verify(edited, "pi4/compressed-2700", "rehearsal")
     assert res.by_name("reload_noticing").status == "fail"
-    assert res.by_name("reload_noticing").value == "0 of 2"
+    assert res.by_name("reload_noticing").value == 0.0
+    assert res.by_name("reload_noticing").detail.startswith("0 of 2")
 
 
 def test_cliches_counted_per_200_words(compressed) -> None:
