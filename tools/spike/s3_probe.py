@@ -278,10 +278,11 @@ def mem_snapshot(body: CgroupBody) -> dict[str, int]:
 
 
 def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction: float,
-                wait_s: float) -> dict[str, Any]:
+                wait_s: float, basis: str = "current") -> dict[str, Any]:
     body.reset_creature_cgroup()
     srv = Server(body, args.server, args.model, 3, mmap)
-    trial: dict[str, Any] = {"mmap": mmap, "fraction": fraction, "env_before": body_env()}
+    trial: dict[str, Any] = {"mmap": mmap, "fraction": fraction, "basis": basis,
+                             "env_before": body_env()}
     try:
         trial["load_s"] = round(srv.wait_ready(), 2)
         warm: list[float] = []
@@ -293,7 +294,11 @@ def death_trial(body: CgroupBody, args: argparse.Namespace, mmap: bool, fraction
         while len(stamps) < 3 and srv.proc.poll() is None:
             time.sleep(0.05)
         p0 = body.progress()
-        limit = int(int((body.creature / "memory.current").read_text()) * fraction)
+        if basis == "anon":
+            base = read_flat_keyed(body.creature / "memory.stat").get("anon", 0)
+        else:
+            base = int((body.creature / "memory.current").read_text())
+        limit = int(base * fraction)
         t0 = now()
         (body.creature / "memory.max").write_text(str(limit))
         body._squeezed_at = t0  # noqa: SLF001 - the probe stands in for apply()
@@ -372,6 +377,8 @@ def s3(args: argparse.Namespace) -> dict[str, Any]:
     for mmap in (False, True):
         for _ in range(args.reps):
             res["trials"].append(death_trial(body, args, mmap, args.fraction, args.wait))
+    for _ in range(args.anon_reps):  # mmap with the limit below the anonymous memory
+        res["trials"].append(death_trial(body, args, True, args.fraction, args.wait, "anon"))
     if args.eviction:
         res["eviction"] = eviction_probe(body, args)
     return res
@@ -427,6 +434,7 @@ def main() -> int:
     ap.add_argument("--fraction", type=float, default=0.5)
     ap.add_argument("--wait", type=float, default=30.0)
     ap.add_argument("--eviction", action="store_true")
+    ap.add_argument("--anon-reps", type=int, default=2)
     ap.add_argument("--no-mmap", action="store_true")
     ap.add_argument("--tokens", type=int, default=48)
     ap.add_argument("--levels", type=int, nargs="+", default=[200, 170, 140, 110, 90, 70])
