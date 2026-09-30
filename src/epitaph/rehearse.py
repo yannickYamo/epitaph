@@ -54,7 +54,7 @@ import threading
 import time
 import tomllib
 from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
@@ -111,6 +111,7 @@ __all__ = [
     "score_thought",
     "screen_moment",
     "thoughts_text",
+    "with_ladder",
     "write_life_outputs",
 ]
 
@@ -1224,7 +1225,23 @@ def _config(args: argparse.Namespace, persona: str, model: str, profile: str) ->
         {"prompt": {"persona_active": persona}, "life": {"models": [model]}},
     )
     lifespan = parse_duration(args.lifespan) if args.lifespan else None
-    return load_config(profile, args.hardware, lifespan, overrides)
+    cfg = load_config(profile, args.hardware, lifespan, overrides)
+    if getattr(args, "ladder", None):
+        cfg.models[model] = with_ladder(cfg.model(model), args.ladder)
+    return cfg
+
+
+def with_ladder(spec: ModelSpec, ladder: str) -> ModelSpec:
+    """`spec` with its precision ladder replaced by a comma list ("Q8_0,Q4_K_M,Q3_K_M").
+
+    For tuning runs that compare a last step (review 2, F3). The Pi costs stay keyed by
+    step, so a quant that was never benched is charged at the rates of the step it replaces;
+    the report says which ladder ran. Raises ValueError for an empty list.
+    """
+    quants = tuple(q.strip() for q in ladder.split(",") if q.strip())
+    if not quants:
+        raise ValueError(f"--ladder wants quant names, got {ladder!r}")
+    return replace(spec, ladder=quants)
 
 
 def _default_model(profile: str, hardware: str) -> str:
@@ -1344,7 +1361,9 @@ def screen_markdown(
         "",
         f"Profile `{profile}`, hardware `{args.hardware}`, backend `{args.backend}`, "
         f"{args.thoughts} thoughts per moment, seed {args.seed}, overrides "
-        f"{', '.join(args.set or []) or 'none'}. Scores (0-4 per thought): "
+        f"{', '.join(args.set or []) or 'none'}"
+        f"{f', ladder {args.ladder}' if getattr(args, 'ladder', None) else ''}. "
+        "Scores (0-4 per thought): "
         "notices the moment's change, names its state or its end, clean voice, complete "
         "sentences. Keywords catch failures; they do not prove quality.",
         "",
@@ -1455,7 +1474,8 @@ def write_life_outputs(
         "",
         f"- profile `{cfg.profile.name}` on `{cfg.hardware}`, persona "
         f"`{cfg.get('prompt.persona_active')}`, backend `{args.backend}`, seed {args.seed}",
-        f"- overrides: {', '.join(args.set or []) or 'none'}",
+        f"- overrides: {', '.join(args.set or []) or 'none'}; ladder "
+        f"{', '.join(cfg.model().ladder)}",
         f"- Pi costs: {costs.describe()}",
         f"- rates not measured (used anyway): {', '.join(summary['not_measured']) or 'none'}",
         f"- cause {life.cause}, {life.thoughts} thoughts, lived "
@@ -1508,6 +1528,10 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--models-dir", default=DEFAULT_MODELS_DIR)
     p.add_argument("--bench-dir", default=str(DEFAULT_BENCH), help="measured Pi costs")
     p.add_argument("--out", default=str(DEFAULT_OUT), help="where run folders go (untracked)")
+    p.add_argument(
+        "--ladder",
+        help="replace the model's precision ladder for this run, e.g. Q8_0,Q4_K_M,Q3_K_M",
+    )
     p.add_argument(
         "--set",
         action="append",
