@@ -808,6 +808,7 @@ def summarize(res: VerifyResult) -> dict[str, Any]:
         "persona": meta.get("persona"),
         "seed": meta.get("seed"),
         "stage": meta.get("stage"),
+        "costs": meta.get("costs"),
         "profile": res.profile,
         "hardware": res.hardware,
         "level": res.level,
