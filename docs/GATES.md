@@ -71,6 +71,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
+| G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c run_life src/epitaph/sim.py` shows no reference loop; `make sim` drives `controller.py` | open | B6 |
 | G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `make pi-life PROFILE=pi4/skeleton-1200` twice; then `$PY -m epitaph.verify <n> --level skeleton` and `<n+1>` both exit 0; `next_birth` passes on the first | open | |
 | G1.2 | The remote view shows them live | `epitaph display --connect pi --driver terminal` during the life; screenshot or transcript in `docs/REPORTS/` | open | |
 | G1.3 | Headless boot: no display crash loop | `ssh pi 'sudo reboot'`; after boot `systemctl show epitaph-display -p NRestarts,ActiveState,ConditionResult` (condition false, 0 restarts) and `systemctl is-active epitaph-controller` | open | |
