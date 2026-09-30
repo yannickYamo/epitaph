@@ -1707,18 +1707,22 @@ def compare(
                 )
                 row = summarize(res)
                 base = path.parent if path.name == "events.jsonl" else path
-                row["label"] = f"{_short(base)}#{n}" if len(ns) > 1 else _short(base)
+                name = _label(base, paths)
+                row["label"] = f"{name}#{n}" if len(ns) > 1 else name
                 rows.append(row)
         except (ValueError, ConfigError, OSError) as e:
             errors.append(f"{path}: {e}")
     return rows, errors
 
 
-def _short(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(Path.cwd()))
-    except ValueError:
-        return str(path)
+def _label(base: Path, roots: Sequence[Path]) -> str:
+    """A short name for a life: its path below the folder it was found in, else its name."""
+    here = base.resolve()
+    for root in roots:
+        top = root.resolve()
+        if here != top and here.is_relative_to(top):
+            return str(here.relative_to(top))
+    return here.name
 
 
 def _config_for(
