@@ -219,10 +219,48 @@ def test_recall_within_ten_percent_passes() -> None:
     assert status(run(b), "recall_budget") == "pass"
 
 
-def test_recall_skipped_without_vitals() -> None:
+def test_recall_without_vitals_fails_a_controller_life() -> None:
+    """Regression: a Pi life whose vitals lack recall_used skipped the recall check, so the
+    smoke and skeleton levels passed with the 10.3 budget never checked (6.3 carries it)."""
     b = good_skeleton()
     b.events = [e for e in b.events if e["type"] != "vitals"]
-    assert status(run(b), "recall_budget") == "skip"
+    for level in ("smoke", "skeleton", "full"):
+        res = run(b, level=level)
+        assert status(res, "recall_budget") == "fail", level
+        assert "no vitals with recall_used" in res.by_name("recall_budget").detail
+    assert status(run(b, level="rehearsal"), "recall_budget") == "skip"
+
+
+def test_a_life_that_shows_no_word_fails_smoke() -> None:
+    """Regression: a smoke life with no thoughts passed (nothing breaks the sync rule)."""
+    b = LifeBuilder().birth()
+    b.at(300.0).death("deadline")
+    res = run(b, load_config("pi4/smoke-300", "pi4-4gb"))
+    assert res.level == "smoke"
+    assert status(res, "words_shown") == "fail"
+    assert not res.ok
+    good = run(good_skeleton(), level="smoke")
+    assert status(good, "words_shown") == "pass"
+    assert good.by_name("words_shown").value > 0
+
+
+def test_hardware_follows_the_profile_class() -> None:
+    assert v.hardware_for_profile("pi4/skeleton-1200") == "pi4-4gb"
+    assert v.hardware_for_profile("pi5/default") is None  # two overlays: no guess
+    assert v.hardware_for_profile("sim") is None
+    assert v.hardware_for_profile(None) is None
+
+
+def test_a_pi_life_checked_on_the_laptop_uses_the_pi_thresholds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: without --hardware a copied Pi life was judged by the laptop's overlay
+    (`dev`: birth typing 40-60 wpm) instead of the Pi's (15-60), failing a good Pi life."""
+    monkeypatch.setattr("epitaph.config.detect_hardware", lambda: "dev")
+    b = good_skeleton(wpm=25.0)
+    path = b.write(tmp_path / "lives" / "000001" / "events.jsonl")
+    rc = v.main([str(path), "--profile", "pi4/skeleton-1200", "--no-write", "--json"])
+    assert rc == 0
 
 
 def test_slow_death_display_fails() -> None:
