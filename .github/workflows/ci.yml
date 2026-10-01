@@ -97,7 +97,7 @@ jobs:
         run: |
           rc=0
           for hw in pi5-8gb pi5-16gb; do
-            for p in pi5/default pi5/skeleton-600 pi5/compressed-600 pi5/unbounded; do
+            for p in pi5/default pi5/skeleton-600 pi5/unbounded; do
               $PY -m epitaph estimate --profile $p --hardware $hw || { rc=1; echo "::warning::estimate $p on $hw fails"; }
             done
           done
@@ -106,7 +106,7 @@ jobs:
       - name: Pi 5 and unbounded profiles pass simulation
         run: |
           for hw in pi5-8gb pi5-16gb; do
-            for p in pi5/default pi5/skeleton-600 pi5/compressed-600 pi5/unbounded; do
+            for p in pi5/default pi5/skeleton-600 pi5/unbounded; do
               $PY -m epitaph sim --profile $p --hardware $hw --quiet
             done
           done

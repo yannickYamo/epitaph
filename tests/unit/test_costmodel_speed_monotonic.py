@@ -118,7 +118,7 @@ def test_profiles_without_reloads_have_nothing_to_compare(profile: str) -> None:
     assert not [v for v in report.violations if v.rule == "speed_monotonic"]
 
 
-@pytest.mark.parametrize("profile", ["pi4/default", "pi4/compressed-2700"])
+@pytest.mark.parametrize("profile", ["pi4/default"])
 def test_pi4_profiles_never_speed_up_at_a_reload(profile: str) -> None:
     """The merge gate for F2 on the costs in bench/: every reload keeps or lowers the speed.
     (The kept Qwen3 1.7B schedule does not: it rises 7% at reload 1, see V6_REFERENCE.)"""

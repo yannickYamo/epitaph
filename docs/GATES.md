@@ -111,8 +111,9 @@ holder) and writes its evidence under `logs/pi/` (untracked), so the phase repor
 
 ## G2: full decline, checkpoint B (BUILD_PLAN 8.4)
 
-The installation is the 30-minute `pi4/default` life (ADR-024). `compressed-2700` (45 min) is
-now longer than it and is retired from the gates: G2.3 runs the installation's own profile.
+The installation is the 30-minute `pi4/default` life (ADR-024). The 45-minute test life
+`compressed-2700` was longer than it and is retired (removed in phase 3, with its Pi 5
+counterpart `compressed-600`): G2.3 runs the installation's own profile.
 
 **How the G2 rows run.** Two ways to get lives, both judged by `verify-life` at the profile's
 level (`full` for `pi4/default`), both writing `verify.json` next to each life's `events.jsonl`
@@ -157,7 +158,7 @@ summary lines and names the folders.
 | A5 | Power on to first shown word ≤ `first_word_after_boot_s` (240 s) | reboot test: boot time from `journalctl --list-boots`, first `word` event `ts` | open | |
 | A6 | `install.sh` idempotent on the Pi and in a clean arm64 Debian container | `deploy/install.sh` twice on the Pi (second run changes nothing); `podman run --arch arm64 debian:trixie ... install.sh` | open | |
 | A7 | `epitaph sim` and `epitaph run --backend fake --display terminal` work with no model | `$PY -m epitaph sim --profile pi4/default --hardware pi4-4gb`; `$PY -m epitaph run --backend fake --display terminal --lifespan 2:00` | open | `sim` passes today; `run` is B's P1 |
-| A8 | `pi4/unbounded` and the Pi 5 profiles pass simulation; `pi4/unbounded` passes one real life | CI step "Pi 5 and unbounded profiles pass simulation"; one Pi life + `verify-life --level full` | open | simulation passes today (see below) |
+| A8 | `pi4/unbounded` and the Pi 5 profiles pass simulation; `pi4/unbounded` passes one real life | `make sim-profiles` and `make estimate` (both in `make check`: every Pi 5 profile on both overlays); one Pi life + `verify-life --level full` | open | simulation and estimate pass (phase 3, B9): `pi4/unbounded` dies `full` at 61 min in the sim (context full at 59 min in the estimate, ctx 3072); `pi5/default` `oom`, `pi5/skeleton-600` `deadline`, `pi5/unbounded` `full` (about 62 min, ctx 6144) on `pi5-8gb` and `pi5-16gb`. The real life waits for the soak; verify-life's `bright_words_last_2min` fails a simulated unbounded life (it never forgets, so nothing fades) and needs the unbounded skip that `speed_decline` has (E) |
 | A9 | D13 passes at every tested resolution | `$PY -m pytest -m display tests/display` (CI step "Headless display tests") | open | D5 (P1) |
 | A10 | `sd_restore.sh` has restored an image at least once | C's log in PI_CHANGES / report | open | |
 | A11 | Checkpoint B read on the remote view | Yannick | open | |
@@ -206,7 +207,7 @@ laptop tests and the driver's rows agree.
 | Laptop off | Pi keeps internet and time; life continues | | `pi:laptop-off` (disconnect the laptop) | owner |
 | Password login over Wi-Fi | refused; accepted over the cable | | `pi:password-over-wifi` (S0.12) | owner |
 | Hostname persistence | still `epitaph` | | `pi:hostname-persistence` (two reboots) | owner |
-| Exhibition closing | `unseen`: dark, life continues; `pause`: no birth until opening | B9 tests on the fake clock (not built yet) | | open |
+| Exhibition closing | `unseen`: dark, life continues; `pause`: no birth until opening | `tests/unit/test_exhibit.py::test_unseen_lives_go_on_with_the_screen_dark`, `::test_pause_waits_for_the_opening_and_pings_meanwhile`, `::test_pause_finishes_the_life_then_waits_across_midnight`, `::test_unsynced_time_runs_lives_in_closed_hours` | | laptop pass |
 | Low disk | refuses with the space needed | A8 container test | | open |
 
 ---
@@ -217,7 +218,7 @@ laptop tests and the driver's rows agree.
 |---|---|---|---|---|
 | L | S0 and G0 pass | the S0 and G0 tables | open | |
 | L | Contracts exist as code with docstrings | `$PY -m pydoc epitaph.types epitaph.backend.base epitaph.body.base epitaph.events` has a docstring per class | open | |
-| L | Every profile's `estimate` runs in `make check` | `make estimate` (Pi 4); CI runs sim and Pi 5 profiles too | open | pi5/compressed-600 fails today (QUESTIONS) |
+| L | Every profile's `estimate` runs in `make check` | `make estimate` (Pi 4, and Pi 5 on both overlays); `make sim-profiles` | open | phase 3 (B9): every Pi 4 and Pi 5 profile passes; `pi5/compressed-600` retired with `pi4/compressed-2700` |
 | A | Fake and real backends pass the same contract tests | `$PY -m pytest tests -k backend_contract` (fake) and `-m model` (real, laptop lock) | open | |
 | A | Rehearsal reports delivered | G0.6-G0.8 | open | |
 | A | `bench/` has laptop and Pi numbers | `ls bench/dev-*.json bench/pi4-*.json` | open | |

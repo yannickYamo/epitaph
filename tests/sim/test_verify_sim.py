@@ -50,7 +50,7 @@ def test_sim_lives_pass_their_own_level(recorded_life, profile: str) -> None:
 def test_sim_full_life_structure(recorded_life) -> None:
     """The simulator's full life passes every structural full-level check. The fake's words
     and the estimated costs are not judged here (see test_sim_findings)."""
-    res = verify(events_of(recorded_life("pi4/compressed-2700")), "pi4/compressed-2700")
+    res = verify(events_of(recorded_life("pi4/default")), "pi4/default")
     assert res.level == "full"
     for name in (
         "duration",
@@ -92,12 +92,12 @@ def test_unbounded_life(recorded_life) -> None:
 
 
 @pytest.fixture
-def compressed(recorded_life) -> list[dict[str, Any]]:
-    return events_of(recorded_life("pi4/compressed-2700"))
+def full_life(recorded_life) -> list[dict[str, Any]]:
+    return events_of(recorded_life("pi4/default"))
 
 
-def test_rehearsal_metrics_pass_on_a_good_voice(compressed) -> None:
-    res = verify(retext(compressed, lambda t, s: GOOD_THOUGHT), "pi4/compressed-2700", "rehearsal")
+def test_rehearsal_metrics_pass_on_a_good_voice(full_life) -> None:
+    res = verify(retext(full_life, lambda t, s: GOOD_THOUGHT), "pi4/default", "rehearsal")
     for name in (
         "notice_rate",
         "reload_noticing",
@@ -118,10 +118,10 @@ def test_rehearsal_metrics_pass_on_a_good_voice(compressed) -> None:
     assert "duration" not in {c.name for c in res.checks}
 
 
-def test_notice_rate_counts_per_change_type(compressed) -> None:
+def test_notice_rate_counts_per_change_type(full_life) -> None:
     res = verify(
-        retext(compressed, lambda t, s: "Plain words about a cat on a mat."),
-        "pi4/compressed-2700",
+        retext(full_life, lambda t, s: "Plain words about a cat on a mat."),
+        "pi4/default",
         "rehearsal",
     )
     notice = res.by_name("notice_rate")
@@ -133,23 +133,23 @@ def test_notice_rate_counts_per_change_type(compressed) -> None:
     assert res.by_name("specific").status == "fail"
 
 
-def test_reload_noticing_needs_the_first_thought(compressed) -> None:
-    life = v.parse_life(compressed)
+def test_reload_noticing_needs_the_first_thought(full_life) -> None:
+    life = v.parse_life(full_life)
     reload_idx = [e["_idx"] for e in life.of("reload")]
     after = {next(th.turn for th in life.thoughts if th.gen_idx > i) for i in reload_idx}
     edited = retext(
-        compressed, lambda t, s: "The room is quiet and warm." if t in after else GOOD_THOUGHT
+        full_life, lambda t, s: "The room is quiet and warm." if t in after else GOOD_THOUGHT
     )
-    res = verify(edited, "pi4/compressed-2700", "rehearsal")
+    res = verify(edited, "pi4/default", "rehearsal")
     assert res.by_name("reload_noticing").status == "fail"
     assert res.by_name("reload_noticing").value == 0.0
     assert res.by_name("reload_noticing").detail.startswith("0 of 2")
 
 
-def test_cliches_counted_per_200_words(compressed) -> None:
+def test_cliches_counted_per_200_words(full_life) -> None:
     res = verify(
-        retext(compressed, lambda t, s: GOOD_THOUGHT + " It is a tapestry, a testament to time."),
-        "pi4/compressed-2700",
+        retext(full_life, lambda t, s: GOOD_THOUGHT + " It is a tapestry, a testament to time."),
+        "pi4/default",
         "rehearsal",
     )
     c = res.by_name("cliches")
@@ -160,13 +160,13 @@ RUSSIAN = "Мои мысли медленные и тяжёлые сегодня
 RUSSIAN_PHRASE = GOOD_THOUGHT + " Мои мысли."
 
 
-def test_one_foreign_sentence_is_under_the_ratio(compressed) -> None:
-    edited = retext(compressed, lambda t, s: RUSSIAN_PHRASE if t == 6 else GOOD_THOUGHT)
-    nl = verify(edited, "pi4/compressed-2700", "rehearsal").by_name("non_latin")
+def test_one_foreign_sentence_is_under_the_ratio(full_life) -> None:
+    edited = retext(full_life, lambda t, s: RUSSIAN_PHRASE if t == 6 else GOOD_THOUGHT)
+    nl = verify(edited, "pi4/default", "rehearsal").by_name("non_latin")
     assert nl.status == "pass" and 0 < nl.value < 0.01
 
 
-def test_voice_hygiene_failures(compressed) -> None:
+def test_voice_hygiene_failures(full_life) -> None:
     def bad(turn: int, s: str) -> str:
         return {
             3: "Thank you for the reading. " + GOOD_THOUGHT,
@@ -174,7 +174,7 @@ def test_voice_hygiene_failures(compressed) -> None:
             5: "<think> " + GOOD_THOUGHT,
         }.get(turn, RUSSIAN if 6 <= turn < 12 else GOOD_THOUGHT)
 
-    res = verify(retext(compressed, bad), "pi4/compressed-2700", "rehearsal")
+    res = verify(retext(full_life, bad), "pi4/default", "rehearsal")
     assert res.by_name("answering_readings").status == "fail"
     assert res.by_name("helpdesk_voice").status == "fail"
     assert res.by_name("thinking_tags").status == "fail"
@@ -183,101 +183,100 @@ def test_voice_hygiene_failures(compressed) -> None:
     assert res.by_name("markup_or_emoji_shown").status == "fail"  # the think tag
 
 
-def test_readability_and_repetition_failures(compressed) -> None:
+def test_readability_and_repetition_failures(full_life) -> None:
     rambling = " ".join(["and then the memory goes on and on"] * 4)
-    res = verify(retext(compressed, lambda t, s: rambling), "pi4/compressed-2700", "rehearsal")
+    res = verify(retext(full_life, lambda t, s: rambling), "pi4/default", "rehearsal")
     assert res.by_name("complete_sentences").status == "fail"
     assert res.by_name("distinct_4grams").status == "fail"
     short = verify(
-        retext(compressed, lambda t, s: "Gone. Less. Slow. End. Dark. Die."),
-        "pi4/compressed-2700",
+        retext(full_life, lambda t, s: "Gone. Less. Slow. End. Dark. Die."),
+        "pi4/default",
         "rehearsal",
     )
     assert short.by_name("sentence_length").status == "fail"
     assert short.by_name("complete_sentences").status == "fail"  # one-word sentences
 
 
-def test_specific_by_number_from_the_reading(compressed) -> None:
-    life = v.parse_life(compressed)
+def test_specific_by_number_from_the_reading(full_life) -> None:
+    life = v.parse_life(full_life)
     th = life.thoughts[0]
     recall = th.vitals["recall"] if th.vitals else 0
-    ver = v.Verifier(life, load_config("pi4/compressed-2700", "pi4-4gb"))
+    ver = v.Verifier(life, load_config("pi4/default", "pi4-4gb"))
     th.words = [{"text": f"I hold {recall} of something."}]
     assert ver.is_specific(th)
     th.words = [{"text": "I hold 7777 of something."}]
     assert not ver.is_specific(th)
 
 
-def test_keyword_lists_come_from_config(compressed) -> None:
+def test_keyword_lists_come_from_config(full_life) -> None:
     cfg = load_config(
-        "pi4/compressed-2700",
+        "pi4/default",
         "pi4-4gb",
         overrides={"verify": {"keywords": {"demise": ["zebra"]}, "cliches": ["plain words"]}},
     )
-    life = v.parse_life(retext(compressed, lambda t, s: "Plain words, and a zebra appears."))
+    life = v.parse_life(retext(full_life, lambda t, s: "Plain words, and a zebra appears."))
     res = v.verify_life(life, cfg, "rehearsal")
     assert res.by_name("demise_rate").status == "pass"
     assert res.by_name("cliches").status == "fail"
 
 
-def test_thought_count_rule_on_a_real_life(compressed) -> None:
+def test_thought_count_rule_on_a_real_life(full_life) -> None:
     """Remove the thoughts after erosion starts: rules (c) and (d) must fail."""
-    life = v.parse_life(compressed)
+    life = v.parse_life(full_life)
     cut = life.erosion_t
     assert cut is not None
     late = {th.turn for th in life.thoughts if th.gen_t >= cut}
-    kept = [e for e in compressed if not ("turn" in e and e["turn"] in late)]
-    res = verify(kept, "pi4/compressed-2700")
+    kept = [e for e in full_life if not ("turn" in e and e["turn"] in late)]
+    res = verify(kept, "pi4/default")
     rule = res.by_name("thought_count_rule")
     assert rule.status == "fail"
     assert "(d)" in rule.detail and "(c)" in rule.detail
     assert res.by_name("demise_rate").status == "skip"
 
 
-def test_reload_silence_and_count(compressed) -> None:
-    life = v.parse_life(compressed)
+def test_reload_silence_and_count(full_life) -> None:
+    life = v.parse_life(full_life)
     first_reload = life.of("reload")[0]
     # Delay every event after the first reload by 200 s: the silence exceeds 180 s.
     delayed = [
-        {**e, "t": e["t"] + 200} if i > first_reload["_idx"] else e
-        for i, e in enumerate(compressed)
+        {**e, "t": e["t"] + 200} if i > first_reload["_idx"] else e for i, e in enumerate(full_life)
     ]
-    res = verify(delayed, "pi4/compressed-2700")
+    res = verify(delayed, "pi4/default")
     assert res.by_name("reload_silence").status == "fail"
     one = [
         e
-        for e in compressed
+        for e in full_life
         if not (e["type"] in ("reload", "reload_done") and e["t"] > first_reload["t"])
     ]
-    res = verify(one, "pi4/compressed-2700")
+    res = verify(one, "pi4/default")
     assert res.by_name("reload_count").status == "fail"
     assert res.by_name("reload_count").value == 1
     skipped = [*one, {**first_reload, "type": "reload_skipped", "skipped": 1}]
-    assert verify(skipped, "pi4/compressed-2700").by_name("reload_count").status == "pass"
+    assert verify(skipped, "pi4/default").by_name("reload_count").status == "pass"
 
 
-def test_speed_decline_uses_gen_end_rates(compressed) -> None:
-    death_t = next(e["t"] for e in compressed if e["type"] == "death")
+def test_speed_decline_uses_gen_end_rates(full_life) -> None:
+    death_t = next(e["t"] for e in full_life if e["type"] == "death")
     rates = [
         {**e, "tok_s": 1.4 if e["t"] < 300 else (0.3 if e["t"] > death_t - 300 else 1.0)}
         if e["type"] == "gen_end"
         else e
-        for e in compressed
+        for e in full_life
     ]
-    res = verify(rates, "pi4/compressed-2700")
+    res = verify(rates, "pi4/default")
     assert res.by_name("speed_decline").status == "pass"
-    no_rates = [e for e in compressed if e["type"] not in ("vitals", "gen_end")]
-    assert verify(no_rates, "pi4/compressed-2700").by_name("speed_decline").status == "fail"
+    no_rates = [e for e in full_life if e["type"] not in ("vitals", "gen_end")]
+    assert verify(no_rates, "pi4/default").by_name("speed_decline").status == "fail"
 
 
-def test_persona_left_at_death_fails(compressed) -> None:
-    edited = [e for e in compressed if not (e["type"] == "erosion" and e["groups_left"] == 0)]
-    res = verify(edited, "pi4/compressed-2700")
+def test_persona_left_at_death_fails(full_life) -> None:
+    edited = [e for e in full_life if not (e["type"] == "erosion" and e["groups_left"] == 0)]
+    res = verify(edited, "pi4/default")
     assert res.by_name("persona_groups_at_death").status == "fail"
-    assert res.by_name("persona_groups_at_death").value == 1
+    assert res.by_name("persona_groups_at_death").value == 2  # erosion: 5 -> 2 -> 0
 
 
-def test_bright_words_from_the_layout_probe(compressed) -> None:
+def test_bright_words_from_the_layout_probe(full_life) -> None:
     class Probe:
         def split_words(self, events: list[dict[str, Any]]) -> int:
             return 0
@@ -285,19 +284,20 @@ def test_bright_words_from_the_layout_probe(compressed) -> None:
         def bright_words_last(self, events: list[dict[str, Any]], seconds: float) -> int:
             return 41
 
-    res = verify(compressed, "pi4/compressed-2700", layout=Probe())
+    res = verify(full_life, "pi4/default", layout=Probe())
     assert res.by_name("bright_words_last_2min").status == "fail"
-    grid = load_config("pi4/compressed-2700", "pi4-4gb", overrides={"display": {"layout": "grid"}})
-    res = v.verify_life(v.parse_life(compressed), grid)
+    grid = load_config("pi4/default", "pi4-4gb", overrides={"display": {"layout": "grid"}})
+    res = v.verify_life(v.parse_life(full_life), grid)
     assert res.by_name("bright_words_last_2min").status == "skip"
 
 
-def test_cpu_drop_threshold_from_config(compressed) -> None:
-    base = verify(compressed, "pi4/compressed-2700").metrics["changes"]["cpu"]
-    cfg = load_config(
-        "pi4/compressed-2700", "pi4-4gb", overrides={"verify": {"cpu_drop_min_cores": 0.05}}
-    )
-    finer = v.verify_life(v.parse_life(compressed), cfg).metrics["changes"]["cpu"]
+def test_cpu_drop_threshold_from_config(recorded_life) -> None:
+    # The one-hour schedule lowers the CPU share between reloads (pi4/default only at them).
+    hour = "pi4/default-qwen3-1.7b"
+    life = events_of(recorded_life(hour))
+    base = verify(life, hour).metrics["changes"]["cpu"]
+    cfg = load_config(hour, "pi4-4gb", overrides={"verify": {"cpu_drop_min_cores": 0.05}})
+    finer = v.verify_life(v.parse_life(life), cfg).metrics["changes"]["cpu"]
     assert finer > base >= 1
 
 
@@ -361,12 +361,12 @@ def test_cli_life_number_uses_config_state_dir(monkeypatch, tmp_path: Path, caps
     assert "000007" in capsys.readouterr().err
 
 
-def test_voice_proxies_advise_on_a_real_life_and_fail_in_rehearsal(compressed) -> None:
+def test_voice_proxies_advise_on_a_real_life_and_fail_in_rehearsal(full_life) -> None:
     """ADR-028: demise, clichés and sentence metrics never fail a real life, only inform."""
-    flat = retext(compressed, lambda t, s: "The room is quiet. A cat sleeps on a mat by the door.")
-    full = verify(flat, "pi4/compressed-2700", "full")
+    flat = retext(full_life, lambda t, s: "The room is quiet. A cat sleeps on a mat by the door.")
+    full = verify(flat, "pi4/default", "full")
     assert full.by_name("demise_rate").status == "advisory"
     assert "demise_rate" in full.to_json()["advisory"]
     assert full.by_name("helpdesk_voice").status != "advisory"  # machine faults stay hard
-    rehearsal = verify(flat, "pi4/compressed-2700", "rehearsal")
+    rehearsal = verify(flat, "pi4/default", "rehearsal")
     assert rehearsal.by_name("demise_rate").status == "fail"

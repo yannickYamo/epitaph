@@ -18,7 +18,7 @@ from tests.conftest import v6_config
 
 @pytest.mark.parametrize(
     "name",
-    ["pi4/default", "pi4/compressed-2700", "pi4/skeleton-1200", "pi4/smoke-300", "pi4/unbounded"],
+    ["pi4/default", "pi4/skeleton-1200", "pi4/smoke-300", "pi4/unbounded"],
 )
 def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
     """The merge gate: every Pi 4 profile passes on the costs in bench/ (measured, S1b-S4)."""
@@ -27,6 +27,20 @@ def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
     assert not costs.estimated, costs.source
     report = estimate(cfg, costs)
     assert report.ok, format_report(report)
+
+
+@pytest.mark.parametrize("hardware", ["pi5-8gb", "pi5-16gb"])
+@pytest.mark.parametrize("name", ["pi5/default", "pi5/skeleton-600", "pi5/unbounded"])
+def test_pi5_profiles_pass_on_the_overlay_estimates(name: str, hardware: str) -> None:
+    """BUILD_PLAN 11.8: the Pi 5 profiles pass the estimate on the Pi 5 overlays' estimated
+    costs (no Pi 5 has been measured); speed never rises across a reload; unbounded fills."""
+    cfg = load_config(name, hardware)
+    costs = load_costs(cfg)
+    assert costs.estimated
+    report = estimate(cfg, costs)
+    assert report.ok, format_report(report)
+    if cfg.profile.unbounded:
+        assert any("cause=full" in n for n in report.notes), report.notes
 
 
 def test_the_kept_qwen3_1_7b_profile_passes_with_its_model() -> None:
