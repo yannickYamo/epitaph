@@ -51,6 +51,7 @@ UNIT="${EPITAPH_UNIT:-epitaph-controller}"
 log() { printf '[soak_sample %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
 # The probe runs on the Pi with bash; arguments: state dir, unit. It prints one line.
+# shellcheck disable=SC2016  # the probe runs on the Pi: its $ expand there, not here
 PROBE='
 state="$1"; unit="$2"
 v() { [ -n "$1" ] && printf "%s" "$1" || printf -- "-"; }
