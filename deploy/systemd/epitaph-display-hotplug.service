@@ -1,0 +1,25 @@
+# The local display follows a screen plugged in or out after boot (deploy/sbin/epitaph-display-hotplug).
+# Installed by deploy/install.sh into /etc/systemd/system. Started by the udev rule
+# 90-epitaph-display.rules (a DRM change event) and by epitaph-display-hotplug.timer; it has no
+# [Install] section of its own.
+[Unit]
+Description=epitaph local display: follow a screen plugged in or out
+Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/INSTALLATION.md
+# Not before the boot has started the display itself (its ExecCondition decides at boot).
+After=epitaph-display.service
+
+[Service]
+Type=oneshot
+Environment=EPITAPH_CONFIG_DIR=/opt/epitaph/src/config
+Environment=EPITAPH_BIN=/opt/epitaph/venv/bin/epitaph
+ExecStart=/usr/local/sbin/epitaph-display-hotplug
+# The last connector states, kept between runs (and gone at boot: /run is a tmpfs).
+RuntimeDirectory=epitaph-display-hotplug
+RuntimeDirectoryPreserve=yes
+CPUAffinity=0
+Nice=10
+TimeoutStartSec=60
+# Quiet: the helper prints only when it acts, at notice; systemd's own "Starting" and
+# "Finished" lines about the minutely run are info, so they are dropped.
+SyslogLevel=notice
+LogLevelMax=notice

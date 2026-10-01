@@ -1,0 +1,8 @@
+# A screen plugged in or out after boot (deploy/sbin/epitaph-display-hotplug). Installed by
+# deploy/install.sh as /etc/udev/rules.d/90-epitaph-display.rules.
+#
+# With the KMS driver (vc4-kms-v3d, the Raspberry Pi OS default) the kernel sends a "change"
+# uevent on the DRM card whenever a connector's state changes (HDMI hot-plug detect). The rule
+# only queues a oneshot unit (--no-block): udev kills long RUN programs, and the unit decides
+# what to do. epitaph-display-hotplug.timer catches whatever this misses.
+SUBSYSTEM=="drm", ACTION=="change", KERNEL=="card[0-9]*", RUN+="/usr/bin/systemctl --no-block start epitaph-display-hotplug.service"
