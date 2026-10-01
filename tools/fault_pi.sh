@@ -11,7 +11,7 @@
 #   two-controllers  `epitaph run` beside the service refuses, points to `epitaph ctl new-life`,
 #                    and the service and its life go on untouched
 #   crash            kill -9 of the creature: cause=crash, then the next life is born
-#   hang             kill -STOP of the creature during a request: cause=hang after the
+#   hang             kill -STOP of the creature while it works (CPU busy): cause=hang after the
 #                    timeout, the stopped process is gone (cgroup.kill), the next life is born
 #   controller-kill  systemctl kill -s KILL epitaph-controller: systemd restarts it, the life is
 #                    closed as interrupted, the counter goes on (+1), one creature, full clock,
@@ -272,28 +272,24 @@ row_crash() {
   fi
 }
 
-in_flight() {  # a request is in flight: the last gen_start of this life has no gen_end yet
+# busy: the creature is working on a request (prompt or tokens): more than 1.5 s of CPU in 2 s.
+# The transcript cannot say so: events.jsonl is flushed once per thought, so a gen_start is on
+# disk only after its thought has ended.
+busy() {
   [ "$DRY" = 1 ] && return 0
-  r "tail -n 400 $(lifedir "$1")/events.jsonl" | python3 -c '
-import json, sys
-last = None
-for line in sys.stdin:
-    try:
-        t = json.loads(line).get("type")
-    except ValueError:
-        continue
-    if t in ("gen_start", "gen_end"):
-        last = t
-sys.exit(0 if last == "gen_start" else 1)'
+  local used
+  used="$(r "a=\$(sed -n 's/^usage_usec //p' $CG/cpu.stat); sleep 2;
+             b=\$(sed -n 's/^usage_usec //p' $CG/cpu.stat); echo \$((b - a))")"
+  [ -n "$used" ] && [ "$used" -gt 1500000 ]
 }
 
 row_hang() {
   local life pid cause t0 dt gone life2
   need_life 900 200 || { say "FAIL hang: no living creature"; return 1; }
   read -r life <<<"$(status life)"
-  wait_for 600 in_flight "$life" || { say "FAIL hang: no request in flight in life $life"; return 1; }
+  wait_for 600 busy || { say "FAIL hang: the creature of life $life never got busy"; return 1; }
   pid="$(creature_pid)"
-  ev "life $life, request in flight, creature pid $pid: kill -STOP"
+  ev "life $life, creature busy (a request in flight), pid $pid: kill -STOP"
   r "sudo -n kill -STOP $pid"; STOPPED_PID=$pid
   t0=$SECONDS; EXPECT_CAUSE=hang
   wait_for "$HANG_S" has_death "$life" || true

@@ -9,7 +9,7 @@ makes it a measured fact for each model and ladder step on this machine:
 
 1. Load the step in the creature cgroup, exactly as a life does (same flags, same cgroup).
 2. Generate a few tokens, so every buffer is touched, and read the working set from the
-   cgroup: `anon`, `file`, `memory.current` and `memory.peak`.
+   cgroup: `anon`, `file`, `memory.current` (and `memory.peak`, the cgroup's own maximum).
 3. Set `memory.max` to `death_fraction` x anon, and time the kill (`memory.events` must show
    the kernel's OOM kill). A kill within `kill_within_s` (10 s) is a good trial.
 4. Repeat from 1 until `trials` good trials in a row (5 for the step in force at the death,
@@ -56,6 +56,11 @@ TOUCH_PROMPT = "I am a small language model, and"
 TOUCH_TOKENS = 8
 
 
+def say_now(line: str) -> None:
+    """Print a progress line at once (stdout is a pipe under systemd-run)."""
+    print(line, flush=True)
+
+
 @dataclass
 class Trial:
     """One load and one death: the limit set and how the creature died."""
@@ -77,7 +82,9 @@ class StepResult:
     anon_mb: int
     file_mb: int
     current_mb: int
-    peak_mb: int | None
+    # memory.peak: the cgroup's peak since it was created. The creature cgroup is kept, so after
+    # the first step it is the maximum over the earlier steps too.
+    cgroup_peak_mb: int | None
     death_fraction: float
     death_limit_mb: int
     trials_wanted: int
@@ -168,7 +175,7 @@ async def calibrate_step(
     fraction: float,
     kill_within_s: float = KILL_WITHIN_S,
     give_up_s: float = GIVE_UP_S,
-    say: Callable[[str], object] = print,
+    say: Callable[[str], object] = say_now,
     clock: Callable[[], float] = time.monotonic,
 ) -> StepResult:
     """Load, measure and kill one ladder step until `trials` good kills in a row.
@@ -207,7 +214,7 @@ async def calibrate_step(
                 anon_mb=first.anon // MIB,
                 file_mb=first.file // MIB,
                 current_mb=first.current // MIB,
-                peak_mb=None if first.peak is None else first.peak // MIB,
+                cgroup_peak_mb=None if first.peak is None else first.peak // MIB,
                 death_fraction=fraction,
                 death_limit_mb=limit // MIB,
                 trials_wanted=trials,
@@ -323,7 +330,7 @@ async def calibrate(
     args: argparse.Namespace,
     body: CgroupBody,
     creature: Creature,
-    say: Callable[[str], object] = print,
+    say: Callable[[str], object] = say_now,
 ) -> tuple[dict[str, Any], bool]:
     """Every requested step of the configured model: the calibration record and whether every
     step met its trials."""
@@ -341,8 +348,11 @@ async def calibrate(
     return calibration_record(cfg, model, results, KILL_WITHIN_S), all(r.reliable for r in results)
 
 
-def run_inside(cfg: Config, args: argparse.Namespace, say: Callable[[str], object] = print) -> int:
+def run_inside(
+    cfg: Config, args: argparse.Namespace, say: Callable[[str], object] | None = None
+) -> int:
     """Calibrate in this process (a Delegate=yes unit); 0 if every step is reliable."""
+    say = say or say_now
     from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
     from epitaph.state import AlreadyRunning, InstanceLock, atomic_write_json
 
@@ -394,4 +404,5 @@ def run(args: argparse.Namespace, cfg: Config) -> int:
         extra += ["--trials", str(args.trials), "--threads", str(args.threads)]
         return selftest.relaunch(args, command="calibrate", extra=extra, unit_prefix=UNIT_PREFIX)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # not every /health poll
     return run_inside(cfg, args)

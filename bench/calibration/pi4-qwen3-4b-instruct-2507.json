@@ -1,0 +1,109 @@
+{
+ "ctx": 2048,
+ "death_mode": "oom",
+ "hw_class": "pi4",
+ "kill_within_s": 10.0,
+ "load_mode": "dio",
+ "model": "qwen3-4b-instruct-2507",
+ "source": "epitaph calibrate --user pi on the Pi 4 (2026-10-01, part C, phase 2); controller stopped",
+ "steps": [
+  {
+   "anon_mb": 2739,
+   "cgroup_peak_mb": 2745,
+   "current_mb": 2745,
+   "death_fraction": 0.5,
+   "death_limit_mb": 1369,
+   "file_mb": 0,
+   "good_in_a_row": 1,
+   "quant": "Q4_K_M",
+   "reliable": true,
+   "step": 0,
+   "threads": 2,
+   "trials": [
+    {
+     "kill_s": 0.378,
+     "killed": true,
+     "limit_mb": 1369,
+     "ok": true,
+     "oom_kill": true
+    }
+   ],
+   "trials_wanted": 1
+  },
+  {
+   "anon_mb": 2331,
+   "cgroup_peak_mb": 2745,
+   "current_mb": 2336,
+   "death_fraction": 0.5,
+   "death_limit_mb": 1165,
+   "file_mb": 0,
+   "good_in_a_row": 1,
+   "quant": "Q3_K_M",
+   "reliable": true,
+   "step": 1,
+   "threads": 2,
+   "trials": [
+    {
+     "kill_s": 0.337,
+     "killed": true,
+     "limit_mb": 1165,
+     "ok": true,
+     "oom_kill": true
+    }
+   ],
+   "trials_wanted": 1
+  },
+  {
+   "anon_mb": 1940,
+   "cgroup_peak_mb": 2745,
+   "current_mb": 1945,
+   "death_fraction": 0.5,
+   "death_limit_mb": 970,
+   "file_mb": 0,
+   "good_in_a_row": 5,
+   "quant": "Q2_K",
+   "reliable": true,
+   "step": 2,
+   "threads": 2,
+   "trials": [
+    {
+     "kill_s": 0.275,
+     "killed": true,
+     "limit_mb": 970,
+     "ok": true,
+     "oom_kill": true
+    },
+    {
+     "kill_s": 0.274,
+     "killed": true,
+     "limit_mb": 970,
+     "ok": true,
+     "oom_kill": true
+    },
+    {
+     "kill_s": 0.293,
+     "killed": true,
+     "limit_mb": 970,
+     "ok": true,
+     "oom_kill": true
+    },
+    {
+     "kill_s": 0.278,
+     "killed": true,
+     "limit_mb": 970,
+     "ok": true,
+     "oom_kill": true
+    },
+    {
+     "kill_s": 0.274,
+     "killed": true,
+     "limit_mb": 970,
+     "ok": true,
+     "oom_kill": true
+    }
+   ],
+   "trials_wanted": 5
+  }
+ ],
+ "when": "2026-10-01T02:10:32"
+}

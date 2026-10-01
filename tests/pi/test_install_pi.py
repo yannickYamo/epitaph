@@ -3,8 +3,9 @@
 tools/pi_lock.sh run C 30 -- .venv/bin/python -m pytest -m pi tests/pi/test_install_pi.py -q
 
 Deploys this tree (tools/pi_deploy.sh needs the lock, which the caller holds), then checks that a
-second install changes nothing, the clock helper round trip, the units and selftest. It leaves
-no unit enabled or running and the clock at 1800 MHz.
+second install changes nothing, the clock helper round trip, the network helper, the units and
+selftest (which includes the creature's network block). It leaves the units as it found them and
+the clock at 1800 MHz.
 """
 
 from __future__ import annotations
@@ -56,13 +57,19 @@ def test_clock_helper_round_trip(deployed: str) -> None:
     assert back.stdout.split()[-1] == "1800000"
 
 
-def test_units_verify_and_stay_off(deployed: str) -> None:
+def test_units_verify(deployed: str) -> None:
+    """The units parse; install never changes whether they are enabled (only --enable does)."""
     paths = " ".join(f"/etc/systemd/system/{u}" for u in UNITS)
     out = pi(f"systemd-analyze verify {paths}")
     assert out.returncode == 0 and not out.stderr.strip(), out.stderr
     for u in UNITS:
-        assert pi(f"systemctl is-enabled {u}").stdout.strip() == "disabled"
-        assert pi(f"systemctl is-active {u}").stdout.strip() == "inactive"
+        assert pi(f"systemctl is-enabled {u}").stdout.strip() in ("enabled", "disabled")
+
+
+def test_netblock_helper_refuses_other_paths(deployed: str) -> None:
+    for arg in ("add ../../etc", "add system.slice/ssh.service/creature", "flush"):
+        assert pi(f"sudo -n /usr/local/sbin/epitaph-netblock {arg}").returncode == 2
+    assert pi("sudo -n /usr/local/sbin/epitaph-netblock status").returncode == 0
 
 
 def test_selftest_under_a_delegated_unit(deployed: str) -> None:
