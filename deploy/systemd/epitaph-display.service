@@ -1,6 +1,14 @@
 # The local screen (BUILD_PLAN 4, 10.2). Installed by deploy/install.sh into /etc/systemd/system.
 # Headless (no connected HDMI connector) the ExecCondition exits 1: systemd skips the unit
 # cleanly, with no failure and no restart loop (gate G1.3). The remote view needs no unit.
+# A screen plugged in later starts it, and an unplugged one stops it: the udev rule
+# 90-epitaph-display.rules and epitaph-display-hotplug.timer run epitaph-display-hotplug. A
+# display that fails after an unplug is restarted once (Restart=on-failure), and that start is
+# skipped by the ExecCondition: no crash loop.
+#
+# No network: it reads the controller's bus on 127.0.0.1:7707 (loopback is up with networking
+# off) and draws on the console through KMS/DRM (console boot: no X, no Wayland), as the
+# service user with /dev/dri (video, render) and the keyboard (input).
 [Unit]
 Description=epitaph local display (only when a screen is connected)
 Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/WRITING_A_DISPLAY.md
