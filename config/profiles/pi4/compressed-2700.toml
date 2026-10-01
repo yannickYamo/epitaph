@@ -133,3 +133,11 @@ mechanics = false
 letter_ms = 720
 jitter = 0.40
 hesitation = 0.20
+
+# The installation is now a 30-minute life (pi4/default), shorter than this test life; until
+# this profile is retired it uses the same minimums.
+[rules]
+between_health = 2
+after_reload = 1
+per_erosion_step = 1
+after_erosion_start = 3

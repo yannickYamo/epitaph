@@ -1,6 +1,7 @@
 # The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (owner decision,
-# 2026-09-30). Both reloads stay; erosion takes the persona in three steps, the knowledge of its
-# death last; the CPU clock falls from 1800 to 600 MHz (spike S7: speed is linear in the clock).
+# 2026-09-30). Both reloads stay; erosion takes the persona in two steps, the knowledge of its
+# death last; the CPU clock falls from 1800 to 800 MHz once erosion starts (spike S7: speed is
+# linear in the clock).
 lifespan = "30:00"
 death = "end-0:30"
 
@@ -14,7 +15,7 @@ threads = 3
 cpu_share = 3.0
 temperature = 0.70
 min_p = 0.08
-max_tokens = 55
+max_tokens = 70
 pause_s = 3
 persona_groups = 5
 mechanics = true
@@ -29,7 +30,7 @@ phase = "prime"
 temperature = 0.75
 
 [[keyframe]]
-at = "8:00"
+at = "7:00"
 phase = "first loss"
 health = "degrading"
 recall = 220
@@ -38,24 +39,24 @@ threads = 3
 cpu_share = 2.6
 temperature = 0.85
 min_p = 0.06
-max_tokens = 48
+max_tokens = 60
 pause_s = 4
 letter_ms = 180
 jitter = 0.15
 hesitation = 0.02
 
 [[keyframe]]
-at = "14:00"
+at = "13:30"
 phase = "failing"
 health = "critical"
 recall = 130
 step = 2
 threads = 2
 cpu_share = 1.6
-cpu_mhz = 1500
+cpu_mhz = 1800
 temperature = 1.10
 min_p = 0.04
-max_tokens = 38
+max_tokens = 45
 pause_s = 6
 readings = "short"
 letter_ms = 270
@@ -63,37 +64,36 @@ jitter = 0.25
 hesitation = 0.08
 
 [[keyframe]]
-at = "end-11:00"
+at = "end-10:00"
 phase = "eroding"
 recall = 110
 cpu_mhz = 1200
 temperature = 1.25
-max_tokens = 28
+max_tokens = 32
 pause_s = 7
-persona_groups = 3
+persona_groups = 2
 
 [[keyframe]]
-at = "end-7:30"
+at = "end-7:00"
 health = "terminal"
 recall = 80
-cpu_mhz = 900
+cpu_mhz = 1000
 temperature = 1.40
-max_tokens = 22
+max_tokens = 24
 pause_s = 9
-persona_groups = 1
 readings = "minimal"
 letter_ms = 360
 jitter = 0.30
 hesitation = 0.12
 
 [[keyframe]]
-at = "end-3:30"
+at = "end-4:30"
 phase = "end"
 recall = 48
-cpu_mhz = 600
+cpu_mhz = 800
 temperature = 1.55
 min_p = 0.02
-max_tokens = 12
+max_tokens = 14
 pause_s = 12
 persona_groups = 0
 mechanics = false
