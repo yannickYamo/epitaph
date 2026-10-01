@@ -200,13 +200,10 @@ class NoWorld:
 
 
 def helper_world(settings: Mapping[str, Any]) -> World:
-    """The real world through the root-owned helper `[world] helper` (agent C).
+    """The real world through the root-owned helper `[world] helper` (PiWorld, agent C)."""
+    from epitaph.body.pi_world import PiWorld, names
 
-    Until that implementation lands, the world refuses every action (NoWorld): no reading ever
-    reports a loss that did not happen.
-    """
-    log.warning("world helper %s: no implementation here, nothing is taken", settings["helper"])
-    return NoWorld("the world helper is not implemented")
+    return PiWorld(names(settings.get("services")), helper=str(settings["helper"]))
 
 
 def make_world(settings: Mapping[str, Any]) -> World | None:
