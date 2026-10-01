@@ -108,7 +108,7 @@ def test_split_words_counts_only_words_longer_than_a_line() -> None:
 
 def test_split_words_uses_the_grid_charset() -> None:
     cfg = load_config(
-        "pi4/compressed-2700",
+        "pi4/default",
         "pi4-4gb",
         overrides={"display": {"layout": "grid", "grid": [6, 16], "charset": "ascii"}},
     )
@@ -182,7 +182,7 @@ def test_end_of_life_without_death_is_the_last_event() -> None:
 
 def test_verify_probe_reads_the_display_config() -> None:
     cfg = load_config(
-        "pi4/compressed-2700",
+        "pi4/default",
         "pi4-4gb",
         overrides={"display": {"fade_seconds": 3, "line_chars": 40, "birth_card_seconds": 2}},
     )
@@ -197,7 +197,7 @@ def test_verify_probe_reads_the_display_config() -> None:
 # -- on simulated lives -----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["pi4/compressed-2700", "pi4/default"])
+@pytest.mark.parametrize("profile", ["pi4/default"])
 def test_simulated_lives_split_no_words(profile: str) -> None:
     cfg = load_config(profile, "pi4-4gb")
     events = list(sim_life(profile))
@@ -207,7 +207,7 @@ def test_simulated_lives_split_no_words(profile: str) -> None:
     assert res.by_name("no_split_words").value == 0
 
 
-@pytest.mark.parametrize("profile", ["pi4/compressed-2700", "pi4/default"])
+@pytest.mark.parametrize("profile", ["pi4/default"])
 def test_simulated_lives_end_with_few_bright_words_once_reloads_forget(profile: str) -> None:
     """With a `forget` at each reload (D5) the end of a life is mostly grey.
 
@@ -230,10 +230,10 @@ def test_verify_life_command_runs_the_probe(
 ) -> None:
     import json
 
-    events = with_reload_forgets(list(sim_life("pi4/compressed-2700")))
+    events = with_reload_forgets(list(sim_life("pi4/default")))
     f = tmp_path / "events.jsonl"
     f.write_text("".join(json.dumps(e) + "\n" for e in events))
-    v.main([str(f), "--profile", "pi4/compressed-2700", "--hardware", "pi4-4gb", "--no-write"])
+    v.main([str(f), "--profile", "pi4/default", "--hardware", "pi4-4gb", "--no-write"])
     out = capsys.readouterr().out
     assert "PASS    no_split_words 0" in out
     assert "PASS    bright_words_last_2min" in out

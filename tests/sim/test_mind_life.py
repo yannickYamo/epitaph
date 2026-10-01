@@ -163,7 +163,7 @@ async def live(clock: VirtualClock, cfg: Config, seed: int = 1) -> dict[str, Any
     }
 
 
-@pytest.fixture(scope="module", params=["pi4/default", "pi4/compressed-2700", "pi4/skeleton-1200"])
+@pytest.fixture(scope="module", params=["pi4/default", "pi4/skeleton-1200"])
 def life(request: pytest.FixtureRequest) -> dict[str, Any]:
     cfg = load_config(request.param, "pi4-4gb")
 

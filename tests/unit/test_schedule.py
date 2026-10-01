@@ -57,7 +57,7 @@ def test_v6_timeline(v6_default: Config) -> None:
 
 def test_end_anchors_survive_rescale() -> None:
     # The v6 schedule (end-3:00 last erosion, end-0:30 death) rescaled to 45 min; before
-    # checkpoint A this used pi4/compressed-2700, which is now the 4B's own schedule.
+    # checkpoint A this used a 45-minute test profile, since retired.
     cfg = v6_config(lifespan_s=2700)
     s = Schedule(cfg.profile)
     assert s.erosion_times()[-1] == 2700 - 180

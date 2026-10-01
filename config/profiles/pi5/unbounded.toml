@@ -1,8 +1,11 @@
 # Pi 5 (simulated only): homage to Latent Reflection; never forgets; cause=full (BUILD_PLAN 5.3).
+# ctx: sized so the context fills at about an hour on the Pi 5 estimates (the overlay's), as
+# pi4/unbounded does on the Pi 4's measured costs. At 16384 it never filled in 90 minutes and
+# the life ended at the deadline instead of cause=full. Re-check on a measured Pi 5.
 lifespan = "90:00"
 death = "none"
 unbounded = true
-ctx = 16384
+ctx = 6144
 verify_level = "full"
 
 [[keyframe]]
