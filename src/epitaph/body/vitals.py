@@ -1,3 +1,4 @@
+# pyright: strict
 """Vitals and machine facts read from the running system (BUILD_PLAN 9 C4).
 
 Every reader takes its paths from a `SysPaths`, so the unit tests point them at a

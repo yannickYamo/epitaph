@@ -1,0 +1,40 @@
+# The controller: lives, deaths and rebirths, for as long as the machine runs (BUILD_PLAN 4).
+# Installed by deploy/install.sh into /etc/systemd/system. @USER@ is the service user (pi by
+# default: the Pi is dedicated to the piece, and the state and models already belong to it).
+[Unit]
+Description=epitaph controller (a small model lives and dies on this machine)
+Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/BUILD_PLAN.md
+After=network-online.target time-sync.target
+Wants=network-online.target
+# Restart=always must never give up.
+StartLimitIntervalSec=0
+
+[Service]
+# The controller sends READY=1 once its bus listens and WATCHDOG=1 at least every 15 s
+# (epitaph.body.watchdog); 30 s without a ping and systemd restarts it.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+User=@USER@
+Group=@USER@
+WorkingDirectory=/var/lib/epitaph
+Environment=EPITAPH_CONFIG_DIR=/opt/epitaph/src/config
+Environment=PYTHONUNBUFFERED=1
+# The full clock before every start and after every stop, even after a crash (ADR-025).
+# "+" runs the helper as root without sudo.
+ExecStartPre=+/usr/local/sbin/epitaph-clock reset
+ExecStart=/opt/epitaph/venv/bin/epitaph run
+ExecStopPost=+/usr/local/sbin/epitaph-clock reset
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+# The creature lives in a delegated cgroup subtree the controller manages (body/cgroup.py).
+Delegate=yes
+# The kernel OOM-kills the creature at every RAM death: that is a death, not a unit failure.
+OOMPolicy=continue
+# Core 0 for the controller; the creature re-pins itself to cores 1-3 (taskset in wrap_spawn).
+CPUAffinity=0
+# No NoNewPrivileges: the controller reaches the clock helper through sudo.
+
+[Install]
+WantedBy=multi-user.target
