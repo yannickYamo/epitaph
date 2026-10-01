@@ -259,3 +259,12 @@ def test_last_turn_can_lose_every_word() -> None:
     f = m.fit(50, 1.0)
     assert f.items == [{"turn": 1, "all": True}] and m.turns == []
     assert m.used() == m.marker_tokens
+
+
+def test_forgotten_quotes_are_the_opening_words_of_each_lost_thought() -> None:
+    m = mem_with(10)
+    f = m.cut_for_reload(50, 0.85)
+    quotes = m.take_forgotten_quotes()
+    assert len(quotes) == f.thoughts
+    assert quotes[0] == " ".join(words(m.quote_words, "t1w"))
+    assert m.take_forgotten_quotes() == ()

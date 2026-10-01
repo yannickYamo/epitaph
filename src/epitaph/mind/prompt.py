@@ -52,14 +52,9 @@ _DEFAULT_READINGS: dict[str, Any] = {
     "time": "t+{m:02d}:{s:02d}",
     "time_minimal": "{m}:{s:02d}",
     "minimal": "{time} · {health} · {recall}",
-    "unchanged": "nothing taken",
     "forgotten_quote": 'forgotten: "{quote}…"',
     "forgotten_more": "and {n} more",
     "echo": 'your words now: "{echo}"',
-    "telemetry": (
-        "ctx {ctx_used}/{ctx_budget} | w {bits}b | cpu {cores}/{total} | {tok_s} tok/s"
-        " | clk {mhz} MHz | noise {noise} | {temp}°C | ram {ram_used}/{ram_total} GB"
-    ),
     "full": {
         "health": "health: {health}",
         "memory": "memory {recall} tokens{was}",
@@ -288,12 +283,6 @@ class ReadingInput:
     # last reading, and one earlier sentence as the new weights reproduce it after a reload.
     forgotten_quotes: tuple[str, ...] = ()
     echo: str | None = None
-    # Raw telemetry (readings_telemetry): what the model may read of its own body, unexplained.
-    ctx_used: int | None = None
-    ram_used_gb: float | None = None
-    ram_total_gb: float | None = None
-    cpu_mhz: float | None = None
-    noise: float | None = None  # the sampling temperature: its own thinking getting noisier
 
 
 class Reader:
@@ -323,7 +312,6 @@ class Reader:
         quiet: bool = False,
         quiet_time: bool = True,
         material: bool = False,
-        telemetry: bool = False,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
 
@@ -340,7 +328,6 @@ class Reader:
         self.quiet = quiet
         self.quiet_time = quiet_time
         self.material = material
-        self.telemetry = telemetry
         self._health: str | None = None
         self.cores_step = cores_step
         self.speed_step = speed_step
@@ -363,7 +350,6 @@ class Reader:
             quiet=bool(p.get("readings_quiet", False)),
             quiet_time=bool(p.get("readings_quiet_time", True)),
             material=bool(p.get("readings_material", False)),
-            telemetry=bool(p.get("readings_telemetry", False)),
         )
 
     def reading(self, x: ReadingInput) -> str:
@@ -390,7 +376,7 @@ class Reader:
         if x.form == "minimal":
             time = lang.r("time_minimal").format(m=m, s=s)
             line = lang.r("minimal").format(time=time, health=health, recall=x.recall)
-            return f"{prefix} {line}" + self._telemetry(x, bits)
+            return f"{prefix} {line}"
 
         f = x.form
 
@@ -417,10 +403,7 @@ class Reader:
             )
             if not changes and not self.quiet_time:
                 return prefix  # nothing changed: a bare mark, nothing to report
-            if not changes and self.material and lang.r("unchanged") and not self.telemetry:
-                changes = [lang.r("unchanged")]  # the true fact, so it has no void to fill
-            line = f"{prefix} " + lang.r("sep").join(parts + changes)
-            return line + self._telemetry(x, bits)
+            return f"{prefix} " + lang.r("sep").join(parts + changes)
         if birth:
             parts.append(lang.r("boot"))
         parts.append(lang.form(f, "health").format(health=health))
@@ -450,30 +433,7 @@ class Reader:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if x.cpu_c is not None:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
-        return f"{prefix} " + lang.r("sep").join(parts) + self._telemetry(x, bits)
-
-    def _telemetry(self, x: ReadingInput, bits: str) -> str:
-        """The raw data line, when enabled and the inputs are known; empty otherwise."""
-        if not self.telemetry or x.ctx_used is None:
-            return ""
-        temp = "-" if x.cpu_c is None else f"{x.cpu_c:.1f}"
-        speed = "-" if x.tok_s is None else f"{x.tok_s:.2f}"
-        ram_used = "-" if x.ram_used_gb is None else f"{x.ram_used_gb:.2f}"
-        ram_total = "-" if x.ram_total_gb is None else f"{x.ram_total_gb:.2f}"
-        data = self.lang.r("telemetry").format(
-            ctx_used=x.ctx_used,
-            ctx_budget=x.recall,
-            bits=bits,
-            cores=_fmt_num(x.cores),
-            total=x.cores_total,
-            tok_s=speed,
-            temp=temp,
-            ram_used=ram_used,
-            ram_total=ram_total,
-            mhz="-" if x.cpu_mhz is None else f"{x.cpu_mhz:.0f}",
-            noise="-" if x.noise is None else f"{x.noise:.2f}",
-        )
-        return f"\n{data}"
+        return f"{prefix} " + lang.r("sep").join(parts)
 
     def _changes(
         self,

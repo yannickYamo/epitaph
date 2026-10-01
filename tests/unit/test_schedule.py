@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from epitaph.clock import FakeClock, Schedule
-from epitaph.config import Config
+from epitaph.config import Config, load_config
 from epitaph.types import Health
 from tests.conftest import v6_config
 
@@ -68,3 +70,12 @@ def test_fake_clock() -> None:
     c.start()
     c.advance(2)
     assert c.elapsed() == 2 and c.now() == 7
+
+
+def test_cpu_clock_defaults_to_full_and_interpolates() -> None:
+    """cpu_mhz is optional (1800 when unset) and scales the compute with the share (S7)."""
+    sch = Schedule(v6_config().profile)
+    assert {sch.at(t).cpu_mhz for t in (0.0, 1800.0, 3500.0)} == {1800.0}
+    k = Schedule(load_config("pi4/default", "pi4-4gb").profile).at(1790.0)
+    assert k.cpu_mhz < 1800.0
+    assert k.compute == pytest.approx(k.cpu_share * k.cpu_mhz / 1800.0)

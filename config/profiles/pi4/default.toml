@@ -64,7 +64,7 @@ jitter = 0.25
 hesitation = 0.08
 
 [[keyframe]]
-at = "end-10:00"
+at = "end-11:30"
 phase = "eroding"
 recall = 110
 cpu_mhz = 1400
@@ -74,7 +74,7 @@ pause_s = 7
 persona_groups = 2
 
 [[keyframe]]
-at = "end-6:00"
+at = "end-7:30"
 phase = "end"
 health = "terminal"
 recall = 60
