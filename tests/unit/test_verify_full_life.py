@@ -253,3 +253,75 @@ def test_a_bad_line_anywhere_else_is_an_error(tmp_path: Path) -> None:
         v.load_events(path)
     path.write_text(_lines(BIRTH, '{"torn'))  # last line torn: ignored, as before
     assert len(v.load_events(path)) == 1
+
+
+# -- deferred reloads and merged erosion steps (gate review findings 6 and 7) ----------------
+
+
+def _until_reload(events: list[Event], k: int) -> list[Event]:
+    """The life up to (not including) its k-th reload."""
+    at = [i for i, e in enumerate(events) if e["type"] == "reload"][k]
+    return copy.deepcopy(events[:at])
+
+
+def _end(events: list[Event], t: float, **vitals: Any) -> list[Event]:
+    """Append a reading at t with these fields, then the death."""
+    last = next(e for e in reversed(events) if e["type"] == "vitals")
+    out = [*events, {**copy.deepcopy(last), "t": t, **vitals}]
+    out.append({**copy.deepcopy(out[0]), "type": "death", "t": t + 5, "cause": "oom"})
+    return out
+
+
+def test_a_reload_deferred_by_the_gap_is_not_a_wrong_rung(default_life: list[Event]) -> None:
+    """Regression: reload 1 at 489 s; the 780 s keyframe is due only at 489 + gap. A reading at
+    805 s still at step 1 is then correct, not a decline that stopped short."""
+    life = _end(_until_reload(default_life, 1), 805.206, step=1, threads=3)
+    cfg = load_config(PROFILE, "pi4-4gb", overrides={"life": {"min_reload_gap_s": 400}})
+    c = judge(life, cfg).by_name("reload_targets")
+    assert c.status == "pass", c
+    assert "reload deferred" in c.detail and "min_reload_gap_s" in c.detail
+    # With the 120 s gap the reload was due at 780 s and the turn began at 805 s: a fault.
+    c = judge(life).by_name("reload_targets")
+    assert c.status == "fail" and "last reading" in c.detail
+
+
+def test_a_reload_pending_when_the_reading_was_written(default_life: list[Event]) -> None:
+    """The turn began before the keyframe; its reading came after it: the reload is next."""
+    life = _until_reload(default_life, 1)
+    next(e for e in reversed(life) if e["type"] == "thought_end")["t"] = 775.0
+    c = judge(_end(life, 790.0, step=1, threads=3)).by_name("reload_targets")
+    assert c.status == "pass" and "reload deferred" in c.detail
+    # A rung that was never loaded is still wrong.
+    c = judge(_end(life, 790.0, step=0, threads=3)).by_name("reload_targets")
+    assert c.status == "fail"
+
+
+def test_a_reload_skipped_after_the_reading_is_not_a_wrong_rung(
+    default_life: list[Event],
+) -> None:
+    life = _end(_until_reload(default_life, 1), 805.206, step=1, threads=3)
+    skipped = {**copy.deepcopy(life[0]), "type": "reload_skipped", "t": 900.0, "at": 780.0}
+    life.insert(len(life) - 1, skipped)
+    c = judge(life).by_name("reload_targets")
+    assert c.status == "pass" and "skipped by the next reload" in c.detail
+
+
+def test_two_erosion_keyframes_in_one_turn_merge_into_one_step(default_life: list[Event]) -> None:
+    """Regression: a turn spanning both keyframes takes both at once; no reading saw the first."""
+    out = drop(default_life, "erosion", 0)
+    merged = [e for e in out if not (e["type"] == "vitals" and 1170 <= e["t"] < 1350)]
+    c = judge(merged).by_name("erosion_steps")
+    assert c.status == "pass", c
+    assert "merged step" in c.detail and "19.5, 22.5" in c.detail
+
+
+def test_the_mechanics_leave_with_the_last_group_whatever_the_keyframe_says(
+    default_life: list[Event],
+) -> None:
+    """Persona.update forces the mechanics off at 0 groups: expect that, not the keyframe."""
+    cfg = load_config(PROFILE, "pi4-4gb")
+    for kf in cfg.profile.keyframes:
+        if int(kf.values["persona_groups"]) == 0:
+            kf.values["mechanics"] = True
+    c = judge(default_life, cfg).by_name("erosion_steps")
+    assert c.status == "pass", c

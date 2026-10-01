@@ -1325,7 +1325,8 @@ class Verifier:
 
         The first vitals after a reload must report the schedule's step and threads at the
         reload's time and the quant the reload event named; the last vitals of the life must
-        report the step and threads in force then, so the decline reached its last rung. A
+        report the step and threads in force then, so the decline reached its last rung, unless
+        that reload was legitimately deferred (_reload_deferred; noted in the detail). A
         reload cut short by the death has no vitals after it and is not judged. Skipped
         without reloads in the profile.
         """
@@ -1355,14 +1356,63 @@ class Verifier:
             last = vitals[-1]
             want = self.schedule.at(_t(last))
             if (last.get("step"), last.get("threads")) != (want.step, want.threads):
-                bad.append(
+                where = (
                     f"last reading at {_t(last) / 60:.1f} min: step {last.get('step')} threads "
                     f"{last.get('threads')}, planned {want.step} and {want.threads}"
                 )
+                why = self._reload_deferred(last)
+                if why is None:
+                    bad.append(where)
+                else:
+                    notes.append(f"{where}; reload deferred ({why})")
         else:
             bad.append("no vitals")
         detail = "; ".join(bad[:5] + notes)
         return [Check("reload_targets", _pf(not bad), len(bad), 0, detail)]
+
+    def _reload_deferred(self, reading: Event) -> str | None:
+        """Why a reading may legitimately show the rung before its keyframe's, or None.
+
+        The controller checks for a reload only at the start of a turn, and only once
+        `life.min_reload_gap_s` has passed since the previous reload (5.2). A reading may
+        therefore still show the previous target (the rung of the last reload, or of the
+        birth) when:
+
+        - its turn began before the reload was due: due = max(the keyframe that changed the
+          rung, the previous reload + min_reload_gap_s). A turn begins at the previous
+          `thought_end` (or the birth), plus any thermal pause before it; or
+        - the next reload jumped over that keyframe (`reload_skipped` at its time).
+
+        Any other rung, or a turn that began after the reload was due, is a genuine fault.
+        """
+        idx, t = int(reading["_idx"]), _t(reading)
+        changes = [r for r in self.schedule.reload_times() if r <= t + 1e-6]
+        if not changes:
+            return None
+        r = changes[-1]
+        events = self.life.events
+        prev = next((e for e in reversed(events[:idx]) if e["type"] == "reload"), None)
+        loaded = self.schedule.at(_t(prev) if prev is not None else 0.0)
+        if (reading.get("step"), reading.get("threads")) != (loaded.step, loaded.threads):
+            return None
+        for e in events[idx + 1 :]:
+            if e["type"] == "reload_skipped" and abs(float(e.get("at", -1e9)) - r) < 1.0:
+                return f"the keyframe at {r / 60:.1f} min was skipped by the next reload"
+        min_gap = float(self.cfg.get("life.min_reload_gap_s", 120))
+        due = max(r, _t(prev) + min_gap if prev is not None else r)
+        began = 0.0
+        for e in reversed(events[:idx]):
+            if e["type"] == "thermal":  # the pause is waited before the turn reads its time
+                began = max(began, _t(e) + float(e.get("pause_s", 0.0)))
+            elif e["type"] in ("thought_end", "birth"):
+                began = max(began, _t(e))
+                break
+        if began + 1.0 < due:
+            gap = " (min_reload_gap_s)" if due > r else ""
+            return (
+                f"its turn began at {began / 60:.1f} min, the reload was due at {due / 60:.1f}{gap}"
+            )
+        return None
 
     def _next_thoughts(self, idx: int, k: int) -> list[Thought]:
         return [th for th in self.life.thoughts if th.gen_idx > idx][:k]
@@ -1510,11 +1560,13 @@ class Verifier:
     def check_erosion_steps(self) -> list[Check]:
         """Every scheduled erosion step was taken as its own step, in order (5.6; ADR-024).
 
-        The persona changes only before a reading, so two steps with no reading between them
-        would merge into one and the model would never live with the middle persona. Expected:
-        one `erosion` event per erosion keyframe up to the life's last reading, with that
-        keyframe's groups left and mechanics. The detail gives each step's lag behind its
-        keyframe. Skipped when the profile never erodes.
+        The persona changes only before a reading. Expected: one `erosion` event per erosion
+        keyframe up to the life's last reading, with that keyframe's groups left, and the
+        mechanics while any group is left (Persona.update drops them with the last group). A
+        turn that spans two keyframes takes both at once: one event with the later keyframe's
+        result is accepted when no reading fell between the two keyframes, and the detail says
+        so. A reading between them means the middle persona was skipped: a failure. The detail
+        gives each step's lag behind its keyframe. Skipped when the profile never erodes.
         """
         times = self.schedule.erosion_times()
         if not times:
@@ -1522,18 +1574,36 @@ class Verifier:
         vitals = self.life.of("vitals")
         last_reading = _t(vitals[-1]) if vitals else -1.0
         planned = [t for t in times if t <= last_reading + 1e-6]
-        want = [
-            (int(self.schedule.at(t).persona_groups), bool(self.schedule.at(t).mechanics))
-            for t in planned
-        ]
+        want: list[tuple[int, bool]] = []
+        for t in planned:
+            k = self.schedule.at(t)
+            groups = int(k.persona_groups)
+            # Persona.update drops the mechanics with the last group, whatever the keyframe says.
+            want.append((groups, bool(k.mechanics) and groups > 0))
         ero = self.life.of("erosion")
         got = [(int(e["groups_left"]), bool(e.get("mechanics_present", True))) for e in ero]
-        lags = [
-            f"{w[0]} groups at {_t(e) / 60:.1f} min ({_t(e) - t:+.0f}s)"
-            for e, t, w in zip(ero, planned, want, strict=False)
-        ]
-        detail = f"planned {want}, taken {got}" if got != want else "; ".join(lags)
-        return [Check("erosion_steps", _pf(got == want), len(got), len(want), detail)]
+        readings = [_t(e) for e in self.life.of("vitals")]
+        # Match each erosion event to the next planned step. A turn that spans two keyframes
+        # (no reading between them) takes both at once: one event with the later step's result.
+        ok = True
+        notes: list[str] = []
+        i = 0
+        for e, g in zip(ero, got, strict=True):
+            j = next((j for j in range(i, len(want)) if want[j] == g), None)
+            # A reading after step i's keyframe (1 s of slack for the reading's own clock) and
+            # before step j's was a turn that should have taken step i alone.
+            if j is None or any(planned[i] + 1.0 <= r < planned[j] - 1e-6 for r in readings):
+                ok = False
+                break
+            lag = f"{g[0]} groups at {_t(e) / 60:.1f} min ({_t(e) - planned[j]:+.0f}s)"
+            if j > i:
+                kfs = ", ".join(f"{planned[m] / 60:.1f}" for m in range(i, j + 1))
+                lag += f", merged step: keyframes at {kfs} min fell in one turn"
+            notes.append(lag)
+            i = j + 1
+        ok = ok and i == len(want)
+        detail = f"planned {want}, taken {got}" if not ok else "; ".join(notes)
+        return [Check("erosion_steps", _pf(ok), len(got), len(want), detail)]
 
     def check_persona_at_death(self) -> list[Check]:
         """Every persona group and the mechanics text were gone by the last erosion step.
