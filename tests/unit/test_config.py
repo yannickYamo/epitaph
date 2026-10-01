@@ -99,3 +99,12 @@ def test_bad_rules_fail_at_load() -> None:
     cfg.profile.settings["rules"] = {"after_reload": 0}
     with pytest.raises(ConfigError, match="after_reload"):
         validate_config(cfg)
+
+
+@pytest.mark.parametrize("value", ["Blocked", "off", "", "block", 0])
+def test_creature_network_must_be_blocked_or_allowed(value: object) -> None:
+    """Regression: anything but "blocked" used to leave the creature's network open."""
+    with pytest.raises(ConfigError, match="creature_network"):
+        load_config("pi4/default", "pi4-4gb", overrides={"body": {"creature_network": value}})
+    for ok in ("blocked", "allowed"):
+        load_config("pi4/default", "pi4-4gb", overrides={"body": {"creature_network": ok}})
