@@ -28,7 +28,7 @@ that something is being taken away, and see the model register it.
 | **Specific, not generic** | No stock phrases about the void | Readings carry numbers; the prompt asks the model to notice change; voice metrics penalise clichés and reward concrete references |
 | **It notices** | Each loss is followed by the model reacting to it | A loss is only worth scheduling if the model has time to think after it. The schedule is validated by a cost model against measured hardware speeds, and the rehearsal measures whether noticing actually happens |
 | **It finds where this ends** | The life has an arc toward death | Nothing tells it at birth that it will die; the readings show it losing its machine, and it draws its own conclusions |
-| **Readable** | Whole words, one calm and steady rhythm, from a few metres away | Words are never split across lines; every letter is typed at one constant pace, fitted so the model's writing never runs dry before death; contrast and legibility are tested with OCR on rendered screens |
+| **Readable** | Whole words, one calm and steady rhythm, from a few metres away | Words are never split across lines; letters come at a pace that only slows, smoothly, with the machine, fitted so the model's writing never runs dry before death; contrast and legibility are tested with OCR on rendered screens |
 | **The art lives in the configuration** | The artist can change the piece without touching code | Prompt, schedule, pacing, models and display are configuration files; code is plumbing |
 | **Unattended** | It runs all day in a gallery | Watchdogs, recovery after power cuts, a 25-hour soak before a show |
 | **Open** | Anyone can build one | MIT license, no weights or secrets in the repository, runs on a laptop without a Pi for development |
@@ -45,7 +45,8 @@ The schedule is a list of keyframes in configuration. The Pi 4 default (30 minut
 | End-0:30 | The RAM limit drops below what the model needs; the kernel kills it | A real death, not a timeout |
 | Silence | Ninety seconds of darkness, then a new birth | The cycle |
 
-The screen types one stream at one pace from the first word to the death. The model writes
+The screen types one stream from the first word to the death, fast at birth and slowing
+smoothly as the machine shrinks, never faster again. The model writes
 ahead of it, so the slower machine shows in what it says, never as a stalled screen; at death
 the stream stops mid-sentence. The previous life, with two reloads to lower precision and the
 persona eroded from the end, is kept as `pi4/default-reloads`.
@@ -53,7 +54,7 @@ persona eroded from the end, is kept as `pi4/default-reloads`.
 ## Speed is a constraint, not a goal
 
 A Raspberry Pi 4 generates roughly one word per second with a small model. The piece embraces
-that: the stream is deliberately slow (542 ms per letter, about 19 words a minute, ADR-030),
+that: the stream is deliberately slow (about 34 words a minute at birth, 13 at the end, ADR-030),
 and the slowness is part of the experience. But the hardware's speed sets a hard budget: a
 30-minute life of Qwen3 4B on a Pi 4 holds about eleven thoughts on screen, and the pace of the
 stream is the fastest the failing machine can feed to the end. Every design decision

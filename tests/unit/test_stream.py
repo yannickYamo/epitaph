@@ -228,7 +228,8 @@ def test_the_screen_from_config() -> None:
     s = StreamScreen.from_config(cfg, VirtualClock.__new__(VirtualClock))
     rev = cfg.section("reveal")
     assert s.letter_ms == rev["stream_letter_ms"] and s.jitter == rev["stream_jitter"]
-    assert s.max_thoughts == 3 and s.max_letters == 900 and s.birth_thoughts == 1
+    assert s.curve.at(0) == rev["stream_letter_ms"] and s.curve.at(1800) > s.curve.at(0)
+    assert s.max_thoughts == 2 and s.max_letters == 900 and s.birth_thoughts == 1
     assert (s.word_gap_ms, s.comma_pause_ms, s.sentence_pause_ms) == (270, 750, 2100)
 
 
@@ -421,7 +422,8 @@ def test_the_estimate_of_pi4_default_never_starves_and_reports_the_stream() -> N
     st = rep.stream
     assert st is not None and st.stalls == [] and st.first_starvation is None
     assert st.margin == pytest.approx(0.15)
-    assert 12 <= st.wpm <= 30
+    assert 1.5 * 19.2 <= st.wpm <= 45  # at least 50% faster at birth than the constant stream
+    assert st.wpm > st.wpm_middle > st.wpm_end and st.letter_ms_end > st.letter_ms
     assert st.max_buffer_letters > 0 and len(st.buffer) == 30
     assert any("stream" in n and "never starves" in n for n in rep.notes)
 
@@ -566,3 +568,105 @@ def test_verify_fails_a_stall_an_off_pace_letter_and_a_word_after_death(
         next(e for e in ev if e["type"] == "death_shown")["t"] += 60
 
     assert _edited(stream_life, slow_stop).check_stream_stop()[0].status == "fail"
+
+
+# ---------------------------------------------------------------------------------------
+# the dynamic pace (ADR-030, amended): fast at birth, slowing smoothly with the machine
+
+
+def test_the_curve_is_constant_without_gamma_and_never_falls_with_it() -> None:
+    from epitaph.pacing import StreamCurve
+
+    sch = Schedule(load_config("pi4/default", "pi4-4gb").profile)
+    flat = StreamCurve.build(sch, 300, gamma=0.0)
+    assert {flat.at(t) for t in range(0, 1800, 7)} == {300}
+    c = StreamCurve.build(sch, 250, gamma=1.0, lead_s=0, max_slowdown_per_min=0.15)
+    values = [c.at(t) for t in range(0, 1801)]
+    assert values[0] == 250 and values == sorted(values)
+    for t in range(0, 1740, 1):  # never more than 15% slower within a minute
+        assert values[t + 60] <= values[t] * 1.15 + 1e-6
+    # it follows the hardware: compute at the end is 1.5 x 1000/1800 of 3.0 at birth
+    end = 250 * (3.0 / (1.5 * 1000 / 1800)) ** 1.0
+    assert values[-1] == pytest.approx(end, rel=1e-6)
+    assert values[599] == 250  # nothing slows before the first hardware step at 10:00
+
+
+def test_a_lead_starts_the_slope_before_the_step() -> None:
+    from epitaph.pacing import StreamCurve
+
+    sch = Schedule(load_config("pi4/default", "pi4-4gb").profile)
+    now = StreamCurve.build(sch, 250, gamma=0.75)
+    early = StreamCurve.build(sch, 250, gamma=0.75, lead_s=300)
+    assert now.at(400) == 250 and early.at(400) > 250
+    assert early.at(1700) == pytest.approx(now.at(1700))
+    assert early.scale(1700) == pytest.approx(early.at(1700) / 250)
+
+
+def test_the_screen_types_at_the_curve_with_its_pauses_scaled() -> None:
+    from epitaph.pacing import StreamCurve
+
+    curve = StreamCurve(100, [100.0 + t for t in range(0, 1000)])  # 1 ms slower a second
+
+    async def main(clock: VirtualClock) -> Screen:
+        sc = Screen(clock, curve=curve, jitter=0.0)
+        sc.start()
+        for turn in range(1, 30):
+            sc.put_thought(turn)
+        await clock.sleep(700)
+        await sc.stop()
+        return sc
+
+    sc = run_virtual(main)
+    for t, tw in sc.words:
+        assert all(c == round(curve.at(t)) for c in tw.char_ms)
+        k = curve.scale(t)
+        assert tw.pause_after_ms in {round(200 * k), round(500 * k), round(1000 * k)}
+    intervals = [tw.char_ms[0] for _, tw in sc.words]
+    assert intervals == sorted(intervals) and intervals[-1] > intervals[0] * 3
+    assert sc.s.stats.stalls == []
+    # between thoughts, the thought pause scaled at the end of the last word
+    for (ta, a), (tb, b) in itertools.pairwise(sc.words):
+        if a.word.turn != b.word.turn:
+            end = typed_end(ta, a)
+            assert tb == pytest.approx(end + round(2000 * curve.scale(end)) / 1000)
+
+
+def test_the_fit_finds_the_profile_curve_at_least_half_again_as_fast_at_birth() -> None:
+    from epitaph.costmodel import fit_stream_curve
+
+    cfg = load_config("pi4/default", "pi4-4gb")
+    fit = fit_stream_curve(cfg, load_costs(cfg), gammas=(0.0, 0.75), leads_s=(0.0, 480.0))
+    assert fit is not None
+    rev = cfg.section("reveal")
+    assert (fit.letter_ms, fit.gamma, fit.lead_s) == (
+        rev["stream_letter_ms"],
+        rev["stream_gamma"],
+        rev["stream_lead_s"],
+    )
+    assert 165 <= fit.letter_ms <= 542 / 1.5 and fit.backlog_words <= 8
+
+
+def test_the_fit_keeps_the_birth_readable() -> None:
+    from epitaph.costmodel import fit_stream_curve
+
+    cfg = load_config(
+        "pi4/default",
+        "pi4-4gb",
+        overrides={"reveal": {"stream_min_letter_ms": 400, "stream_letter_ms": 400}},
+    )
+    fit = fit_stream_curve(cfg, load_costs(cfg), gammas=(0.75,), leads_s=(480.0,))
+    assert fit is None or fit.letter_ms >= 400
+    ms = fit_stream_pace(cfg, load_costs(cfg), lo_ms=400, gamma=0.75, lead_s=480)
+    assert ms == 400  # fed even at the floor: the floor wins over the fastest
+    with pytest.raises(ConfigError, match="readability"):
+        load_config("pi4/default", "pi4-4gb", overrides={"reveal": {"stream_letter_ms": 100}})
+
+
+def test_verify_fails_a_pace_that_speeds_up(stream_life: list[dict[str, Any]]) -> None:
+    def faster(ev: list[dict[str, Any]]) -> None:
+        words = [e for e in ev if e["type"] == "word"]
+        for e in words[-60:]:  # the end typed at the birth pace
+            e["char_ms"] = [255] * len(e["char_ms"])
+
+    c = _edited(stream_life, faster).check_stream_pace()[0]
+    assert c.status == "fail" and c.value >= 60

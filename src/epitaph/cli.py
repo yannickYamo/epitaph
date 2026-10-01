@@ -217,7 +217,7 @@ def cmd_estimate(args: argparse.Namespace) -> int:
     from epitaph.costmodel import (
         estimate,
         estimate_stream,
-        fit_stream_pace,
+        fit_stream_curve,
         format_report,
         load_costs,
     )
@@ -230,12 +230,18 @@ def cmd_estimate(args: argparse.Namespace) -> int:
         if str(cfg.get("reveal.mode", "letter")) != "stream":
             print('--fit-pace needs a stream profile ([reveal] mode = "stream")', file=sys.stderr)
             return 2
-        ms = fit_stream_pace(cfg, costs)
-        if ms is None:
-            print("no constant pace up to 2000 ms per letter keeps the stream fed")
+        fit = fit_stream_curve(cfg, costs)
+        if fit is None:
+            print("no stream curve keeps the stream fed with a small backlog at death")
             return 1
-        print(f"fastest pace that never starves: stream_letter_ms = {ms:.0f}")
-        report = estimate_stream(cfg, costs, letter_ms=ms)
+        print(
+            f"fastest curve that never starves: stream_letter_ms = {fit.letter_ms:.0f}, "
+            f"stream_gamma = {fit.gamma:g}, stream_lead_s = {fit.lead_s:.0f} "
+            f"({fit.backlog_words} words unshown at death at the measured costs)"
+        )
+        report = estimate_stream(
+            cfg, costs, letter_ms=fit.letter_ms, gamma=fit.gamma, lead_s=fit.lead_s
+        )
         print(format_report(report))
         return 0 if report.ok else 1
     report = estimate(cfg, costs)
@@ -362,7 +368,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fit-pace",
         action="store_true",
-        help="stream profiles: print the fastest constant letter interval that never starves",
+        help="stream profiles: fit the fastest stream curve that never starves",
     )
     p.set_defaults(fn=cmd_estimate)
 

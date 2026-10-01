@@ -301,7 +301,7 @@ class Life:
         # The stream mode (ADR-030): one constant stream for the whole life, written ahead.
         self.screen: StreamScreen | None = None
         if str(cfg.get("reveal.mode", "letter")) == "stream":
-            self.screen = StreamScreen.from_config(cfg, clock, self.seed)
+            self.screen = StreamScreen.from_config(cfg, clock, self.seed, self.sch)
             self.pacer.screen = self.screen
         self._screen_task: asyncio.Task[None] | None = None
         self.trim_to = float(cfg.get("output.trim_to", 0.85))

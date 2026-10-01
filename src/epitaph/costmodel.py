@@ -49,6 +49,7 @@ from epitaph.clock import Schedule
 from epitaph.config import REPO_ROOT, Config, profile_rules, reading_tokens, system_tokens
 from epitaph.mind.memory import approx_tokens
 from epitaph.mind.prompt import Persona
+from epitaph.pacing import StreamCurve
 from epitaph.types import RuleReport, RuleViolation, StreamEstimate
 
 # Save plus restore of the cache slot at a reload, with margin (spike S4b measured 0.3 s).
@@ -555,28 +556,54 @@ class _Shown:
 
 @dataclass
 class _StreamPace:
-    letter_s: float  # one letter
+    curve: StreamCurve  # the letter interval over life time
     letters_per_word: float
-    word_pause_s: float  # the average pause after a word (word gap, clause, sentence)
-    thought_pause_s: float
+    word_pause_s: float  # the average pause after a word at birth (word gap, clause, sentence)
+    thought_pause_s: float  # at birth; pauses scale with the curve
 
-    @property
-    def word_s(self) -> float:
-        """A word's letters."""
-        return self.letters_per_word * self.letter_s
+    def word_s(self, t: float) -> float:
+        """A word's letters, typed from life time `t`."""
+        return self.letters_per_word * self.curve.at(t) / 1000
 
-    def wpm(self, words_per_thought: float) -> float:
-        """Words per minute of the stream, thought pauses included."""
+    def pause_s(self, t: float) -> float:
+        """The average pause after a word typed at `t`."""
+        return self.word_pause_s * self.curve.scale(t)
+
+    def thought_s(self, t: float) -> float:
+        """The pause between thoughts at `t`."""
+        return self.thought_pause_s * self.curve.scale(t)
+
+    def wpm(self, words_per_thought: float, t: float = 0.0) -> float:
+        """Words per minute of the stream at `t`, thought pauses included."""
         w = max(1.0, words_per_thought)
-        span = w * (self.word_s + self.word_pause_s) - self.word_pause_s + self.thought_pause_s
+        word, pause = self.word_s(t), self.pause_s(t)
+        span = w * (word + pause) - pause + self.thought_s(t)
         return 60 * w / span
 
 
-def stream_pace(cfg: Config, letter_ms: float | None = None) -> _StreamPace:
-    """The stream's constant pace from `[reveal]` and the `[estimate]` text shape."""
+def stream_curve(
+    cfg: Config,
+    sch: Schedule,
+    letter_ms: float | None = None,
+    gamma: float | None = None,
+    lead_s: float | None = None,
+) -> StreamCurve:
+    """The stream's curve from `[reveal]`, with any of its three shape values replaced."""
+    rev = cfg.section("reveal")
+    return StreamCurve.build(
+        sch,
+        float(letter_ms if letter_ms is not None else rev.get("stream_letter_ms", 165)),
+        gamma=float(gamma if gamma is not None else rev.get("stream_gamma", 0.0)),
+        lead_s=float(lead_s if lead_s is not None else rev.get("stream_lead_s", 0.0)),
+        max_slowdown_per_min=float(rev.get("stream_max_slowdown_per_min", 0.15)),
+        max_ms=float(rev.get("stream_max_letter_ms", 2000)),
+    )
+
+
+def stream_pace(cfg: Config, curve: StreamCurve) -> _StreamPace:
+    """The stream's pace from its curve, `[reveal]` and the `[estimate]` text shape."""
     rev = cfg.section("reveal")
     est = cfg.section("estimate")
-    lms = float(letter_ms if letter_ms is not None else rev.get("stream_letter_ms", 165))
     word_gap = float(rev.get("word_gap_ms", 270)) / 1000
     comma = float(rev.get("comma_pause_ms", 750)) / 1000
     sentence = float(rev.get("sentence_pause_ms", 2100)) / 1000
@@ -585,7 +612,7 @@ def stream_pace(cfg: Config, letter_ms: float | None = None) -> _StreamPace:
     pause = word_gap * (1 - per_sentence - per_clause) + sentence * per_sentence
     pause += comma * per_clause
     return _StreamPace(
-        letter_s=lms / 1000,
+        curve=curve,
         letters_per_word=float(est.get("letters_per_word", 4.7)),
         word_pause_s=pause,
         thought_pause_s=float(rev.get("stream_thought_pause_ms", 3000)) / 1000,
@@ -598,23 +625,27 @@ def estimate_stream(
     schedule: Schedule | None = None,
     *,
     letter_ms: float | None = None,
+    gamma: float | None = None,
+    lead_s: float | None = None,
     margin: float | None = None,
 ) -> RuleReport:
-    """Replay a stream life (ADR-030): generation written ahead of one constant screen.
+    """Replay a stream life (ADR-030): generation written ahead of the stream's screen.
 
     The model starts each thought as soon as the previous one is generated, while the
     buffer holds fewer than `stream_max_thoughts` thoughts and `stream_max_letters` letters;
     its words come at the machine's rate under the schedule's recall, CPU share and clock
     (every cost `margin` slower, `estimate.stream_margin` by default). The screen types
-    them at the constant pace. Any wait of the screen for a word after the first, before
-    the death, is starvation: a violation. The report keeps the buffer over time and the
-    backlog at death, and checks rule (a), the speed decline and the reload silences.
+    them at the stream's curve (`letter_ms` at birth, slowing with `gamma` and `lead_s`;
+    `[reveal]` by default), at the moment each word is typed. Any wait of the screen for a
+    word after the first, before the death, is starvation: a violation. The report keeps
+    the buffer over time and the backlog at death, and checks rule (a), the speed decline
+    and the reload silences.
     """
     sch = schedule or Schedule(cfg.profile)
     est = cfg.section("estimate")
     rev = cfg.section("reveal")
     slow = 1 + float(margin if margin is not None else est.get("stream_margin", 0.15))
-    pace = stream_pace(cfg, letter_ms)
+    pace = stream_pace(cfg, stream_curve(cfg, sch, letter_ms, gamma, lead_s))
     fill = float(est.get("fill", 0.85))
     letters_per_token = float(est.get("letters_per_token", 3.5))
     trim_to = float(cfg.get("output.trim_to", 0.85))
@@ -656,12 +687,12 @@ def estimate_stream(
         first = len(words)
         for j, at in enumerate(avail):
             if j == 0 and typed_end is not None:
-                cursor = typed_end + pace.thought_pause_s
+                cursor = typed_end + pace.thought_s(typed_end)
             start = at if cursor is None else max(cursor, at)
             if cursor is not None and at > cursor + 1e-6 and cursor < end:
                 stalls.append((cursor, min(at, end) - cursor))
-            typed_end = start + pace.word_s
-            cursor = typed_end + pace.word_pause_s
+            typed_end = start + pace.word_s(start)
+            cursor = typed_end + pace.pause_s(start)
             words.append(_Shown(at, start, typed_end))
         if len(words) > first:
             thoughts.append((first, len(words) - 1))
@@ -756,15 +787,21 @@ def estimate_stream(
         for m in range(0, int(end) + 1, 60)
     ]
     wpt = statistics.fmean(words_per_thought) if words_per_thought else 1.0
+    curve = pace.curve
     report.stream = StreamEstimate(
-        letter_ms=pace.letter_s * 1000,
+        letter_ms=curve.at(0),
         wpm=pace.wpm(wpt),
+        letter_ms_end=curve.at(end),
+        wpm_middle=pace.wpm(wpt, end / 2),
+        wpm_end=pace.wpm(wpt, end),
+        gamma=float(gamma if gamma is not None else rev.get("stream_gamma", 0.0)),
+        lead_s=float(lead_s if lead_s is not None else rev.get("stream_lead_s", 0.0)),
         margin=slow - 1,
         buffer=letters_waiting,
         stalls=[(a, s) for a, s in stalls if s > 1e-6],
         backlog_letters=round(len(backlog) * pace.letters_per_word),
         backlog_words=len(backlog),
-        backlog_s=len(backlog) * (pace.word_s + pace.word_pause_s),
+        backlog_s=len(backlog) * (pace.word_s(end) + pace.pause_s(end)),
         max_buffer_letters=max((n for _, n in letters_waiting), default=0),
     )
     check_rules(report, sch, end)
@@ -797,8 +834,15 @@ def stream_summary(stream: StreamEstimate) -> str:
         if not stream.stalls
         else f"starves from {stream.stalls[0][0] / 60:.1f} min ({stream.starved_s:.0f} s)"
     )
+    shape = (
+        f"stream {stream.letter_ms:.0f} ms/letter ({stream.wpm:.1f} words/min) at birth"
+        if stream.letter_ms_end <= stream.letter_ms + 1e-9
+        else f"stream {stream.letter_ms:.0f} -> {stream.letter_ms_end:.0f} ms/letter, "
+        f"{stream.wpm:.1f} / {stream.wpm_middle:.1f} / {stream.wpm_end:.1f} words/min at "
+        f"birth / middle / end (gamma {stream.gamma:g}, lead {stream.lead_s:.0f} s)"
+    )
     return (
-        f"stream {stream.letter_ms:.0f} ms/letter, {stream.wpm:.1f} words/min; costs "
+        f"{shape}; costs "
         f"{stream.margin:.0%} slower: {starve}; letters waiting every 5 min: {every5} "
         f"(max {stream.max_buffer_letters}); backlog at death {stream.backlog_words} words "
         f"({stream.backlog_s:.0f} s of typing)"
@@ -806,13 +850,19 @@ def stream_summary(stream: StreamEstimate) -> str:
 
 
 def fit_stream_pace(
-    cfg: Config, costs: Costs, lo_ms: float = 60.0, hi_ms: float = 2000.0
+    cfg: Config,
+    costs: Costs,
+    lo_ms: float = 60.0,
+    hi_ms: float = 2000.0,
+    gamma: float | None = None,
+    lead_s: float | None = None,
 ) -> float | None:
-    """The fastest constant letter interval (ms, whole) at which the stream never starves
-    with the margin; None if even `hi_ms` starves."""
+    """The fastest birth letter interval (ms, whole) at which the stream, with this curve
+    shape (`[reveal]` by default), never starves with the margin; None if even `hi_ms`
+    starves."""
 
     def starves(ms: float) -> bool:
-        rep = estimate_stream(cfg, costs, letter_ms=ms)
+        rep = estimate_stream(cfg, costs, letter_ms=ms, gamma=gamma, lead_s=lead_s)
         return rep.stream is None or bool(rep.stream.stalls)
 
     if starves(hi_ms):
@@ -825,3 +875,52 @@ def fit_stream_pace(
         else:
             hi = mid
     return float(hi)
+
+
+@dataclass(frozen=True)
+class StreamFit:
+    """The fitted stream curve: its birth interval and shape, and how it does."""
+
+    letter_ms: float
+    gamma: float
+    lead_s: float
+    backlog_words: int  # at the measured costs (no margin): what dies unshown
+
+
+GAMMAS = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25)
+LEADS_S = (0.0, 120.0, 240.0, 360.0, 480.0, 600.0)  # at most the text's lag, about 10 min
+
+
+def fit_stream_curve(
+    cfg: Config,
+    costs: Costs,
+    gammas: tuple[float, ...] = GAMMAS,
+    leads_s: tuple[float, ...] = LEADS_S,
+) -> StreamFit | None:
+    """The fastest birth pace whose curve never starves with the margin and leaves at most
+    `estimate.stream_max_backlog_words` words unshown at the death at the measured costs.
+
+    For each shape (`gamma`, `lead_s`) the fastest birth interval not under
+    `[reveal] stream_min_letter_ms` is found (`fit_stream_pace`); the fastest birth wins,
+    then the gentler slowing (the smaller `gamma`), then the shorter lead. None when no shape
+    qualifies.
+    """
+    floor = float(cfg.get("reveal.stream_min_letter_ms", 165))
+    limit = int(cfg.get("estimate.stream_max_backlog_words", 8))
+    best: StreamFit | None = None
+    for gamma in gammas:
+        for lead in leads_s if gamma else (0.0,):
+            ms = fit_stream_pace(cfg, costs, lo_ms=floor, gamma=gamma, lead_s=lead)
+            if ms is None:
+                continue
+            nominal = estimate_stream(cfg, costs, letter_ms=ms, gamma=gamma, lead_s=lead, margin=0)
+            if nominal.stream is None or nominal.stream.backlog_words > limit:
+                continue
+            fit = StreamFit(ms, gamma, lead, nominal.stream.backlog_words)
+            if best is None or (fit.letter_ms, fit.gamma, fit.lead_s) < (
+                best.letter_ms,
+                best.gamma,
+                best.lead_s,
+            ):
+                best = fit
+    return best

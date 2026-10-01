@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from epitaph.backend.base import CreatureDied
-from epitaph.clock import LifeClock
+from epitaph.clock import LifeClock, Schedule
 from epitaph.config import Config
 from epitaph.mind.sanitize import Sanitizer
 from epitaph.mind.words import WordSegmenter, normalize, split_words
@@ -42,6 +42,7 @@ __all__ = [
     "PushResult",
     "ScreenEvent",
     "Spoken",
+    "StreamCurve",
     "StreamScreen",
     "StreamStats",
     "ThoughtMark",
@@ -562,13 +563,92 @@ StreamItem = Word | ThoughtMark | ScreenEvent
 STALL_EPS_S = 1e-6
 
 
-class StreamScreen:
-    """One constant stream of words for a whole life (ADR-030).
+class StreamCurve:
+    """The stream's letter interval over life time (ADR-030, amended 2026-10-01).
 
-    Words are put in as they are generated; `run` types them one after another at
-    `letter_ms` per letter (with a small fixed `jitter`), the fixed pauses after words,
-    clauses and sentences, and `thought_pause_ms` between thoughts. No hesitation, no
-    slowdown: the pace is the same from the first word to the death. When the next word is
+    At birth the stream types at `birth_ms` a letter. As the machine shrinks it slows,
+    smoothly and never back: the target interval follows the hardware,
+    `birth_ms x (compute at birth / compute(t + lead_s)) ^ gamma` (compute = CPU share x
+    clock), and the curve moves toward it by at most `max_slowdown_per_min` a minute, so a
+    step of the hardware is a gentle slope on screen. `lead_s` lets the slope start before
+    the step: the screen shows text written minutes earlier. The curve never falls, and never
+    goes over `max_ms`. With `gamma` 0 the pace is constant.
+    """
+
+    def __init__(self, birth_ms: float, values: Sequence[float], step_s: float = 1.0) -> None:
+        """A curve sampled every `step_s` seconds of life from birth (`values[0]`)."""
+        if birth_ms <= 0:
+            raise ValueError("the stream's letter interval must be above 0")
+        self.birth_ms = birth_ms
+        self.values = list(values) or [birth_ms]
+        self.step_s = step_s
+
+    @classmethod
+    def constant(cls, letter_ms: float) -> StreamCurve:
+        """One pace for the whole life."""
+        return cls(letter_ms, [letter_ms])
+
+    @classmethod
+    def build(
+        cls,
+        sch: Schedule,
+        birth_ms: float,
+        *,
+        gamma: float = 0.0,
+        lead_s: float = 0.0,
+        max_slowdown_per_min: float = 0.15,
+        max_ms: float = 2000.0,
+        step_s: float = 1.0,
+    ) -> StreamCurve:
+        """The curve of `sch` (see the class)."""
+        c0 = sch.at(0).compute
+        n = int(sch.lifespan_s / step_s) + 2
+        grow = (1 + max(0.0, max_slowdown_per_min)) ** (step_s / 60)
+        out: list[float] = [birth_ms]
+        for i in range(1, n):
+            ahead = min(i * step_s + lead_s, sch.lifespan_s)
+            c = max(sch.at(ahead).compute, 1e-6)
+            target = min(max_ms, birth_ms * (c0 / c) ** gamma) if gamma else birth_ms
+            prev = out[-1]
+            out.append(max(prev, min(target, prev * grow)))
+        return cls(birth_ms, out, step_s)
+
+    @classmethod
+    def from_config(cls, cfg: Config, sch: Schedule | None = None) -> StreamCurve:
+        """The curve from `[reveal]`: `stream_letter_ms` at birth, `stream_gamma`,
+        `stream_lead_s`, `stream_max_slowdown_per_min` and `stream_max_letter_ms`."""
+        rev = cfg.section("reveal")
+        return cls.build(
+            sch or Schedule(cfg.profile),
+            float(rev.get("stream_letter_ms", 165)),
+            gamma=float(rev.get("stream_gamma", 0.0)),
+            lead_s=float(rev.get("stream_lead_s", 0.0)),
+            max_slowdown_per_min=float(rev.get("stream_max_slowdown_per_min", 0.15)),
+            max_ms=float(rev.get("stream_max_letter_ms", 2000)),
+        )
+
+    def at(self, t: float) -> float:
+        """The letter interval (ms) at life time `t`."""
+        x = max(0.0, t) / self.step_s
+        i = int(x)
+        if i + 1 >= len(self.values):
+            return self.values[-1]
+        a, b = self.values[i], self.values[i + 1]
+        return a + (b - a) * (x - i)
+
+    def scale(self, t: float) -> float:
+        """How much slower than at birth the stream is at `t` (pauses scale with it)."""
+        return self.at(t) / self.birth_ms
+
+
+class StreamScreen:
+    """One stream of words for a whole life (ADR-030).
+
+    Words are put in as they are generated; `run` types them one after another at the
+    curve's letter interval at that moment (`curve`, with a small fixed `jitter`; constant
+    `letter_ms` without one), the pauses after words, clauses and sentences, and
+    `thought_pause_ms` between thoughts, all scaled with the curve. No hesitation; the pace
+    only ever slows, smoothly, as the machine shrinks. When the next word is
     not there when the screen is ready for it, the screen waits: a stall (starvation),
     recorded with its length. The writer keeps the buffer bounded with `wait_for_room`: at
     most `max_thoughts` generated thoughts and fewer than `max_letters` letters waiting.
@@ -592,12 +672,14 @@ class StreamScreen:
         birth_thoughts: int = 1,
         stall_report_s: float = 0.5,
         seed: int = 0,
+        curve: StreamCurve | None = None,
     ) -> None:
         """A screen on `clock` typing at this pace; see the class for the bounds."""
         if letter_ms <= 0:
             raise ValueError("the stream's letter_ms must be above 0")
         self.clock = clock
         self.letter_ms = letter_ms
+        self.curve = curve or StreamCurve.constant(letter_ms)
         self.jitter = jitter
         self.word_gap_ms = word_gap_ms
         self.comma_pause_ms = comma_pause_ms
@@ -620,9 +702,12 @@ class StreamScreen:
         self.open_words: list[str] = []
 
     @classmethod
-    def from_config(cls, cfg: Config, clock: LifeClock, seed: int = 0) -> StreamScreen:
-        """A screen set up from `[reveal]`: `stream_letter_ms`, `stream_jitter`, the word,
-        comma and sentence pauses, `stream_thought_pause_ms` and the buffer bounds."""
+    def from_config(
+        cls, cfg: Config, clock: LifeClock, seed: int = 0, schedule: Schedule | None = None
+    ) -> StreamScreen:
+        """A screen set up from `[reveal]`: the curve (`StreamCurve.from_config`),
+        `stream_jitter`, the word, comma and sentence pauses, `stream_thought_pause_ms` and
+        the buffer bounds."""
         rev = cfg.section("reveal")
         return cls(
             clock,
@@ -637,6 +722,7 @@ class StreamScreen:
             birth_thoughts=int(rev.get("stream_birth_thoughts", 1)),
             stall_report_s=float(rev.get("stream_stall_report_s", 0.5)),
             seed=seed,
+            curve=StreamCurve.from_config(cfg, schedule),
         )
 
     # -- the writer's side ---------------------------------------------------------------
@@ -689,14 +775,21 @@ class StreamScreen:
 
     # -- the screen's side -----------------------------------------------------------------
 
-    def cadence(self, word: Word) -> TimedWord:
-        """The constant pace: `letter_ms` per letter within the jitter, fixed pauses."""
+    def cadence(self, word: Word, t: float | None = None) -> TimedWord:
+        """The pace at life time `t` (now by default): the curve's interval per letter
+        within the jitter, and the pauses scaled with it."""
+        at = self.clock.elapsed() if t is None else t
+        interval = self.curve.at(at)
+        k = self.curve.scale(at)
         char_ms = tuple(
-            max(1, round(self.letter_ms * (1 + self.jitter * (2 * self.rng.random() - 1))))
+            max(1, round(interval * (1 + self.jitter * (2 * self.rng.random() - 1))))
             for _ in word.text
         )
         pause = pause_after_ms(
-            word.text, self.word_gap_ms, self.comma_pause_ms, self.sentence_pause_ms
+            word.text,
+            round(self.word_gap_ms * k),
+            round(self.comma_pause_ms * k),
+            round(self.sentence_pause_ms * k),
         )
         return TimedWord(word, char_ms, pause, 0)
 
@@ -739,7 +832,8 @@ class StreamScreen:
                 self.open_turn, self.open_words = None, []
                 on_end(item)
                 if typed_end is not None and not after_mark:
-                    cursor = typed_end + self.thought_pause_ms / 1000
+                    k = self.curve.scale(typed_end)
+                    cursor = typed_end + round(self.thought_pause_ms * k) / 1000
                 after_mark = True
                 continue
             self._letters -= len(item.text)
@@ -748,7 +842,7 @@ class StreamScreen:
                 self.stats.stalls.append((cursor, waited))
                 if on_stall is not None and waited >= self.stall_report_s:
                     on_stall(cursor, waited)
-            tw = self.cadence(item)
+            tw = self.cadence(item, now)
             if self.stats.first_word_t is None:
                 self.stats.first_word_t = now
             self.stats.words += 1
