@@ -35,7 +35,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from epitaph.body.world import TakeResult, WorldState
+from epitaph.body.world import OnOff, TakeResult, WorldState
 
 if TYPE_CHECKING:
     from epitaph.config import Config
@@ -114,7 +114,7 @@ def count_processes(proc: Path = PROC) -> int:
     return n
 
 
-def led_state(leds: Path = LEDS, names: Sequence[str] = LED_NAMES) -> str | None:
+def led_state(leds: Path = LEDS, names: Sequence[str] = LED_NAMES) -> OnOff | None:
     """ "off" when every board LED is dark with no trigger, "on" otherwise, None without LEDs."""
     found = False
     for name in names:
@@ -197,13 +197,14 @@ class PiWorld:
             s for s, st in zip(self.services, states, strict=False) if st in ("active", "reloading")
         )
 
-    def radio(self) -> str | None:
+    def radio(self) -> OnOff | None:
         """The Wi-Fi radio: "on", "off", or None when NetworkManager cannot say."""
         rc, out = self.query(["nmcli", "radio", "wifi"])
         word = out.strip().lower()
         if rc != 0:
             return None
-        return {"enabled": "on", "disabled": "off"}.get(word)
+        states: dict[str, OnOff] = {"enabled": "on", "disabled": "off"}
+        return states.get(word)
 
     def inventory(self) -> WorldState:
         """What is there now; the screen is the display's to know (None)."""
@@ -303,6 +304,8 @@ def allowed_services(config_dir: Path, hardware: str | None = None) -> list[str]
         data = deep_merge(data, tomllib.load(f))
     world: dict[str, Any] = data.get("world", {})
     out: list[str] = []
+    if not world.get("helper"):
+        return out  # a simulated world (no helper): nothing the installer may let it stop
     for name in names(world.get("services")):
         if valid_service(name) and name not in out:
             out.append(name)

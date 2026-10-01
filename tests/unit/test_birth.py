@@ -156,7 +156,8 @@ def test_the_old_birth_reads_after_the_load_and_waits_for_the_thought() -> None:
     assert "after the silence" in b.describe(0, 0) and "read in" in b.describe(0, 0)
     st = estimate_stream(cfg, costs).stream
     assert st is not None
-    assert st.first_words_s == pytest.approx(b.wait_s * 1.15 + st.first_word_t)
+    margin = float(cfg.get("estimate.stream_margin", 0.15))
+    assert st.first_words_s == pytest.approx(b.wait_s * (1 + margin) + st.first_word_t)
     assert st.first_words_s > 150
 
 
