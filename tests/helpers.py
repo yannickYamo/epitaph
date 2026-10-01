@@ -210,9 +210,12 @@ def retext(
 ) -> list[Event]:
     """Rewrite what each thought says, keeping its timing: fn(turn, old_text) -> new_text.
 
-    The new words take the old words' release times (extra words reuse the last one's).
-    `pause_after_ms` replaces every word's pause, so a longer text still finishes typing
-    before the next thought is requested (the sync rule)."""
+    The new words take the old words' release times. When there are more new words than
+    old ones, they are typed back to back from the old first release, with letters fast
+    enough (at most 55 ms) to fit in the old words' typing time, so a longer text still
+    finishes before the next thought is requested (the sync rule: the controller asks for
+    the next thought as soon as the last word and its pause are shown, the pause between
+    thoughts overlapping the request). `pause_after_ms` replaces every word's pause."""
     out: list[Event] = []
     by_turn: dict[int, list[Event]] = {}
     for e in events:
@@ -227,9 +230,23 @@ def retext(
             emitted.add(turn)
             old = by_turn[turn]
             new_words = fn(turn, " ".join(str(w["text"]) for w in old)).split()
+            spread = len(new_words) > len(old)
+            # The old words' typing time: a longer new text is typed back to back within it.
+            budget_ms = sum(
+                sum(w.get("char_ms", [])) + int(w.get("pause_after_ms", 0)) for w in old
+            )
+            letters = max(1, sum(len(w) for w in new_words))
+            typing_ms = budget_ms - len(new_words) * (pause_after_ms or 0)
+            char = max(1, min(55, typing_ms // letters)) if spread else 55
+            at_ms = 0
             for i, w in enumerate(new_words):
                 src = old[min(i, len(old) - 1)]
-                new = {**src, "i": i, "text": w, "char_ms": [55] * len(w)}
+                new = {**src, "i": i, "text": w, "char_ms": [char] * len(w)}
+                if spread:
+                    for key in ("t", "ts"):
+                        if isinstance(old[0].get(key), int | float):
+                            new[key] = round(float(old[0][key]) + at_ms / 1000, 3)
+                    at_ms += char * len(w) + (pause_after_ms or 0)
                 if pause_after_ms is not None:
                     new["pause_after_ms"] = pause_after_ms
                 out.append(new)
