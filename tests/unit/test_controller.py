@@ -203,17 +203,32 @@ def test_manual_new_life_ends_this_one_and_starts_the_next_now() -> None:
     assert death(ev, 2)["lived_s"] == pytest.approx(240.0)
 
 
-def test_new_life_rejects_an_unknown_model() -> None:
+def test_new_life_rejects_a_bad_request_without_ending_the_life() -> None:
+    """Regression: a bad profile was only read after the current life had been killed."""
+    replies: list[dict[str, Any]] = []
+
     async def setup(ctl: Controller, clock: VirtualClock) -> None:
         from epitaph.config import ConfigError
 
-        with pytest.raises(ConfigError):
-            await ctl.ctl_new_life({"model": "nope"})
-        ctl.reconfigure = None
-        with pytest.raises(ValueError):
-            await ctl.ctl_new_life({"profile": "pi4/default"})
+        def reconfigure(profile: str | None, lifespan: float | None) -> Config:
+            raise ConfigError(f"no profile {profile}")
 
-    run(cfg_of(SMOKE), setup=setup)
+        async def later() -> None:
+            await asyncio.sleep(100)
+            replies.append(await ctl.ctl_new_life({"model": "nope"}))
+            ctl.reconfigure = reconfigure
+            replies.append(await ctl.ctl_new_life({"profile": "pi4/nope"}))
+            replies.append(await ctl.ctl_new_life({"lifespan": "soon"}))
+            ctl.reconfigure = None
+            replies.append(await ctl.ctl_new_life({"profile": "pi4/default"}))
+
+        BACKGROUND.append(asyncio.ensure_future(later()))
+
+    ctl, _ = run(cfg_of(SMOKE), setup=setup)
+    assert [r["ok"] for r in replies] == [False] * 4
+    assert "nope" in replies[0]["error"] and "pi4/nope" in replies[1]["error"]
+    assert "cannot change" in replies[3]["error"]
+    assert [r.cause for r in ctl.records] == ["deadline"]  # the life was never touched
 
 
 # -- deaths during a reload -----------------------------------------------------------------
