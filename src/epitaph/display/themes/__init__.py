@@ -11,6 +11,8 @@ LED cells; `themes.segment16`), which only exists in the grid layout and its cha
 
 from __future__ import annotations
 
+import functools
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,6 +72,7 @@ class Theme:
     advance: float = 0.6  # the font's advance width per em
     look: str = "font"  # font | segment16
     ghost: Rgb = (0, 0, 0)
+    machine: Rgb = (158, 158, 158)  # the machine's readings: small, dim grey (7.5:1)
 
     def word(self, kind: str, fade: float = 0.0, dim: bool = False) -> Rgb:
         """Colour of a word of `kind` ("live", "fading", "forgotten", "inherited", "gauge").
@@ -83,6 +86,8 @@ class Theme:
             c = self.gauge
         elif kind == "idle":
             c = self.status
+        elif kind == "machine":  # a reading fades into the ground with its thought
+            c = mix(self.machine, self.bg, fade)
         elif kind in ("fading", "forgotten"):
             c = mix(self.live, self.forgotten, fade if kind == "fading" else 1.0)
         else:
@@ -92,6 +97,37 @@ class Theme:
     def dimmed(self, c: Rgb) -> Rgb:
         """Colour `c` pulled toward the background by `dim`, as drawn during a reload."""
         return mix(self.bg, c, self.dim)
+
+    def lit(self, c: Rgb, brightness: float) -> Rgb:
+        """Colour `c` on a screen dimmed to `brightness` (1 full, 0 the ground)."""
+        return c if brightness >= 1.0 else mix(self.bg, c, brightness)
+
+    def brightness(self, level: float, floor: float = 1.0) -> float:
+        """The screen brightness drawn for a requested `level` (0..1), never so dark that
+        the model's dimmest text (the `forgotten` grey a fade ends on) falls under
+        `floor`:1 against the ground. Rounded up to 1/64, so a slow dimming repaints in
+        visible steps only and the floor always holds."""
+        level = min(1.0, max(0.0, level))
+        b = max(level, _min_brightness(self.bg, self.forgotten, round(floor, 3)))
+        return min(1.0, math.ceil(b * BRIGHTNESS_STEPS - 1e-9) / BRIGHTNESS_STEPS)
+
+
+BRIGHTNESS_STEPS = 64
+
+
+@functools.lru_cache(maxsize=64)
+def _min_brightness(bg: Rgb, fg: Rgb, floor: float) -> float:
+    """The least brightness at which `fg`, dimmed toward `bg`, keeps `floor`:1 on `bg`."""
+    if floor <= 1.0 or contrast_ratio(fg, bg) <= floor:
+        return 0.0 if floor <= 1.0 else 1.0
+    lo, hi = 0.0, 1.0
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        if contrast_ratio(mix(bg, fg, mid), bg) >= floor:
+            hi = mid
+        else:
+            lo = mid
+    return hi
 
 
 PLAIN = Theme(
@@ -117,6 +153,7 @@ SEGMENT16 = Theme(
     gauge=(255, 192, 96),
     look="segment16",
     ghost=(30, 20, 10),
+    machine=(176, 120, 52),
 )
 
 THEMES = {t.name: t for t in (PLAIN, SEGMENT16)}

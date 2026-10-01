@@ -62,7 +62,8 @@ Then `asyncio.run(drive(MyDriver(), remote.reconnecting(connect)))`.
   fade until the word is gone (the fade ends on a grey that is itself 12.5:1), and for every
   card line. The idle mark and the status strip are not text to read.
 - **Cursor:** `Frame.cursor.mode` is `on`, `off` (blink phase) or `dim` (reload). No cursor
-  at death, in the silence, or while loading.
+  in the silence, while loading or while a reading types; at a frozen death it stays `on`
+  where the stream stopped until the vigil.
 - **Reload:** the cursor dims and the status strip says `reloading A → B`; the text stays
   readable. `Frame.dim` (dim the whole text) is set only with `reload_dim_text = true`.
 - **Fades** last `fade_seconds`, including the words a reload forgets (they fade during the
@@ -76,14 +77,74 @@ Then `asyncio.run(drive(MyDriver(), remote.reconnecting(connect)))`.
   words are typed, then fade for `fade_seconds` (`death_fade`), then the death card ("lived
   29:30", "its memory was taken") is typed at the life's last cadence and stays
   `death_card_seconds` after its last letter. A grid wraps card lines to its columns.
-- **Silence styles** (`silence_style`): `dark` (default), `death_card` (the card stays),
-  `last_words` (no death fade; the words come back after the card) and `idle` (dark, with
-  one dim mark, `Frame.idle`, resting `idle_step_seconds` in each place).
+- **Silence styles** (`silence_style`): `dark`, `death_card` (the card stays),
+  `last_words` (no death fade; the words come back after the card), `idle` (dark, with
+  one dim mark, `Frame.idle`, resting `idle_step_seconds` in each place) and `vigil`
+  (the installation's default; see the dread plan below).
 - **Snapshots:** a `snapshot` event resets the view to exactly what it describes; after a
   reconnect or an overflow, redraw everything. Besides the words it carries `mode`, each
   fading word's `fade`, the current `reload`, `groups_left`, `quant`, and after death the
   `death` record and `death_shown_ago`, so a display that connects mid-reload, mid-fade or
   on the death card draws the same screen as one that saw every event.
+
+## The dread plan (owner, 2026-10-01)
+
+The screen of an installation life speaks in two voices and goes dark with its machine.
+`LifeView` does all of it from the events of the shared interface; a driver only draws
+the new parts of the `Frame`.
+
+- **Two voices.** A `reading` event {turn, text} is the machine's line. The controller
+  emits it in stream order just before the first word of the thought it precedes; the
+  view types it at `machine_char_ms` (30 ms) without its `[host]` tag, as one or more
+  "machine" thoughts placed right above the thought of its `turn` (no blank line), and
+  the words that follow wait for it. The pauses after them give that time back (at most
+  half of each), so the screen does not drift behind the machine. The life's first
+  reading (turn 1, the inventory) is typed one fact a line (`machine_line_pause_ms`
+  between lines). Its spans are `kind = "machine"`, `col` counted in the machine's own
+  cells (`Frame.machine_cols`): the screen draws them `machine_scale` (0.55) of the text's
+  size in `Theme.machine` (a dim grey, 7.5:1), a terminal in the same cells. While a
+  reading types, the model's cursor is hidden; then it waits on the line below. A
+  reading leaves the screen with its thought. `Frame.text_rows()` is the model's text
+  only (OCR ground truth); `Frame.machine_rows()` the readings.
+- **Forgetting is visible.** In a stream life the `forget` copy marked `shown` holds the
+  words `forget_grace_seconds` for the reading that reports the loss. When that reading
+  quotes a forgotten sentence still on screen (`forgotten: "I am here, inside the…"`),
+  the sentence dissolves letter by letter in step with the quote: letter k starts fading
+  when the quote's letter k is typed and is gone `dissolve_letter_seconds` later (spans
+  of one letter, `kind = "fading"`, through the same grey as any fade, so >= 12:1 until
+  gone). The rest of the forgotten words fade once the quote is typed.
+- **Darkness is literal.** A `world` event whose `action` is `screen:<N>` (and was
+  `performed`) dims the whole screen to N% over `screen_fade_seconds`.
+  `Frame.brightness` is the level asked for and `Frame.contrast_floor` the contrast the
+  model's text keeps whatever it asks (`contrast_floors`: 7:1 until 27:00 of the life,
+  4.5:1 until 29:00, nothing in the last 30 s). Draw every colour with
+  `theme.lit(colour, theme.brightness(frame.brightness, frame.contrast_floor))`; the
+  floor is taken on the dimmest colour of the model's text (the `forgotten` grey), and
+  the brightness moves in 1/64 steps (each a full repaint). Other world losses (services,
+  radio, light) are only reported by the readings.
+- **The pulse.** At rest between thoughts the cursor blinks twice `cursor_blink_ms` a
+  beat (1060 ms). From `pulse_from` (22:00) it quickens smoothly to `pulse_fastest_ms`
+  (500 ms) at the expected death (the lifespan from `birth_loading` minus 30 s); in the
+  last `pulse_skip_seconds` it skips about one beat in four (`LifeView.skips_beat`).
+- **Death.** In a stream life (`birth_loading` `reveal = "stream"`, or `death_style =
+  "freeze"`) the `death` event stops the screen where it is, mid-word: letters not typed
+  yet die with it. The cursor stays lit and still for `death_still_seconds` (2 s).
+- **The vigil** (`silence_style = "vigil"`). Then `Frame.card = ("vigil", [last line,
+  "life N · 29:30"])`: the end of the last thought shown, cut to the line at a word start,
+  centred and dim (`Theme.machine` at `Frame.card_level`), the small death card typed
+  under it `vigil_card_delay_seconds` later. It fades over `vigil_fade_seconds` (75 s) to
+  `vigil_floor` and holds there while the next model loads and is born (no birth card),
+  until the next life's first reading or word: the genesis, the inventory typed by the
+  machine. From the vigil to the next death the screen is never blank for more than 5 s.
+- **Snapshots** carry all of it: `machine` (the readings with their turns and fades),
+  each dissolving word's `dissolve` and each held word's `forget_in`, `screen` (the
+  transition: from, to, since, over), `reveal`, `lifespan_s`, `readings`, `frozen_ago`
+  and `vigil` (text, card, ago; it outlives the reset of the next birth).
+
+`tests/display/data/dread-2x1800.jsonl` is two simulated `pi4/default` lives with
+readings, world losses and the vigil (`python -m tests.display.dread OUT`), the stand-in
+`tests/display/test_dread.py` draws at the D13 sizes, in a terminal, on the grid and
+through `epitaph replay`.
 
 ## The 16-segment theme
 

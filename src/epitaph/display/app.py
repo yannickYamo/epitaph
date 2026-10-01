@@ -209,6 +209,7 @@ def make_driver(name: str, cfg: dict[str, Any], **opts: Any) -> Driver:
             **common,
             min_font_px=int(cfg.get("min_font_px", 36)),
             orientation=str(cfg.get("orientation", "landscape")),
+            machine_scale=float(cfg.get("machine_scale", 0.55)),
             **opts,
         )
     raise ValueError(f"unknown display driver {name!r} (terminal or screen)")

@@ -209,7 +209,7 @@ carried across a reload. `reload_handover` is set by the overlays (below).
 | `line_chars` | `48` | Characters per line in the flow layout |
 | `min_font_px` | `36` | The screen never draws text smaller than this |
 | `cursor` | `"block"` | *Reserved.* The cursor is a block |
-| `cursor_blink_ms` | `530` | Cursor blink period |
+| `cursor_blink_ms` | `530` | Cursor blink half-period (on, then off): a beat of 1060 ms at rest |
 | `fade_seconds` | `8` | Forgotten words fade through grey, then are gone |
 | `status_strip` | `true` | The top line: life, time, health, precision, cores, speed |
 | `reload_dim_text` | `false` | During a reload only the cursor dims; true dims the text too |
@@ -219,8 +219,25 @@ carried across a reload. `reload_handover` is set by the overlays (below).
 | `card_char_ms` | `165` | Cards are typed at this letter interval (the death card at the life's last one, if slower) |
 | `death_fade` | `true` | At death the last words fade before the death card |
 | `death_card_seconds` | `8` | How long the death card stays |
-| `silence_style` | `"dark"` | The silence: `dark`, `last_words`, `death_card` or `idle` (a mark that moves) |
+| `silence_style` | `"vigil"` | The silence: `dark`, `last_words`, `death_card`, `idle` (a mark that moves) or `vigil` (the last words stay, dim and centred, with a small death card, fading while the next model loads, until the next life's first reading) |
 | `idle_step_seconds` | `4` | In the `idle` silence, the mark moves this often |
+| `machine_voice` | `true` | Readings are typed on screen in the machine's voice (small, dim grey), each just before the thought it precedes |
+| `machine_char_ms` | `30` | The machine's letter interval |
+| `machine_line_pause_ms` | `300` | Pause between the lines of the birth reading (the inventory, one fact a line) |
+| `machine_scale` | `0.55` | The readings' letter size, as a share of the text's (the screen driver) |
+| `forget_grace_seconds` | `5` | In a stream life, forgotten words wait this long for the reading that reports them |
+| `dissolve_letter_seconds` | `0.8` | A forgotten sentence quoted by a reading dissolves letter by letter as the quote is typed, each letter fading this long |
+| `screen_fade_seconds` | `20` | A world `screen:<N>` loss dims the whole screen to N% over this long |
+| `contrast_floors` | `[["27:00", 7.0], ["29:00", 4.5]]` | Whatever the dimming asks, the model's text keeps 7:1 until 27:00 of the life and 4.5:1 until 29:00 |
+| `pulse_from` | `"22:00"` | The cursor's blink at rest (twice `cursor_blink_ms` a beat) quickens from here |
+| `pulse_fastest_ms` | `500` | ... to this beat at the expected death |
+| `pulse_skip_seconds` | `60` | In this last stretch before the expected death the pulse skips beats |
+| `pulse_end_before_seconds` | `30` | The expected death: the lifespan minus this |
+| `death_style` | `"auto"` | `freeze`: at death the text stops mid-letter and the cursor freezes; `fade`: the words still due are typed, then fade; `auto`: freeze in a stream life |
+| `death_still_seconds` | `2` | A frozen death stands still this long before the vigil or the death card |
+| `vigil_fade_seconds` | `75` | The vigil fades this long ... |
+| `vigil_floor` | `0.3` | ... to this share of its brightness, held until the next life's genesis |
+| `vigil_card_delay_seconds` | `1.5` | The small death card ("life N · 29:30") is typed under the last words after this |
 | `screenshot_on` | `["birth", "reload_done", "death_shown"]` | *Reserved.* Screenshots are taken on request (`epitaph ctl screenshot`) |
 
 Optional: `card_word_gap_ms` and `card_line_pause_ms` (default: `[reveal]` `word_gap_ms` and
