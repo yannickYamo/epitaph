@@ -170,3 +170,24 @@ def test_divergence_is_counted_not_retracted() -> None:
     s2 = Sanitizer()
     s2._emitted = "ab"  # pyright: ignore[reportPrivateUsage]
     assert s2.feed("abc def ") == "c def "
+
+
+def test_cut_at_any_reading_tag_but_not_at_a_link() -> None:
+    """Readings may be framed as [sense] or [reg] by a language pack; a model that starts
+    writing one itself is cut there, like [host]. A Markdown link is not a reading."""
+    from epitaph.mind.sanitize import sanitize_text as clean
+
+    for tag in ("[host]", "[sense]", "[reg]", "[ sense ]"):
+        text, cut = clean(f"I feel thin. {tag} ctx 400")
+        assert cut and text.strip() == "I feel thin.", (tag, text)
+    text, cut = clean("I read [the manual](http://x) once.")
+    assert not cut
+
+
+def test_streaming_cut_at_a_split_sense_tag() -> None:
+    """The tag arrives in pieces; nothing of it may reach the screen before the cut."""
+    from epitaph.mind.sanitize import Sanitizer
+
+    s = Sanitizer()
+    shown = "".join(s.feed(c) for c in ["I am thin. [se", "nse] ctx", " 400"]) + s.finish()
+    assert shown.strip() == "I am thin." and "[" not in shown

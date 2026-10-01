@@ -17,7 +17,9 @@ import re
 __all__ = ["Sanitizer", "sanitize_text"]
 
 _CUT_RE = re.compile(
-    r"\[\s*host\s*\]|<\|[^|>]*\|?>?|<end_of_turn>|<start_of_turn>|</s>|<eos>|<bos>",
+    # A reading tag the model starts writing itself: [host], or any short lower-case tag a
+    # language pack may use for readings ([sense], [reg]); never a Markdown link "[text](url)".
+    r"\[\s*[a-z][a-z_]{1,9}\s*\](?!\()|<\|[^|>]*\|?>?|<end_of_turn>|<start_of_turn>|</s>|<eos>|<bos>",
     re.IGNORECASE,
 )
 _THINK_OPEN = r"<\s*(think|thinking|thought|reasoning)\s*>"
