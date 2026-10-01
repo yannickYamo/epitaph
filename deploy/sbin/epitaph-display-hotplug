@@ -1,0 +1,88 @@
+#!/bin/sh
+# epitaph-display-hotplug: the local display follows a screen plugged in or out after boot
+# (BUILD_PLAN 4, 10.2). Installed root-owned, mode 0755, as /usr/local/sbin/epitaph-display-hotplug
+# by deploy/install.sh, and run only by epitaph-display-hotplug.service, which two things start:
+#   - the udev rule 90-epitaph-display.rules, on every DRM change event (the kernel sends one
+#     when a connector is plugged or unplugged): the screen appears within a second or two;
+#   - epitaph-display-hotplug.timer, every minute: an event that was missed (one that arrived
+#     while this was already running, a screen whose plug sends none) is caught within a minute.
+#
+# epitaph-display.service decides at its own start (ExecCondition `epitaph display
+# --screen-present`); this decides afterwards, and acts only when the connectors change:
+#   screen appears   display inactive: start it (the controller must be running: the display
+#                    Wants= it, and a controller stopped on purpose stays stopped)
+#                    display active and the last answer was "no": restart it (a fresh mode)
+#   screen goes      display active: stop it (nothing to draw on, and the next plug starts it
+#                    with a fresh mode); a display that already exited is left alone
+#   no change        nothing, and nothing is logged: a timer run reads a few sysfs files
+# Nothing happens unless epitaph-display.service is enabled: a disabled display stays off.
+#
+# The answer comes from `epitaph display --screen-present`, so `[display] screen` in the config
+# is honoured (an EPITAPH_SCREEN drop-in on the display unit is not seen here). It runs only
+# when the connector states in sysfs changed since the last run, so the timer costs no Python.
+#
+# Environment (tests): EPITAPH_BIN, EPITAPH_DRM (default /sys/class/drm), EPITAPH_HOTPLUG_STATE
+# (default $RUNTIME_DIRECTORY, else /run/epitaph-display-hotplug), EPITAPH_HOTPLUG_PATH (the
+# PATH, default the system directories only).
+set -eu
+PATH="${EPITAPH_HOTPLUG_PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
+LC_ALL=C
+export PATH LC_ALL
+EPITAPH="${EPITAPH_BIN:-/opt/epitaph/venv/bin/epitaph}"
+DRM="${EPITAPH_DRM:-/sys/class/drm}"
+STATE="${EPITAPH_HOTPLUG_STATE:-${RUNTIME_DIRECTORY:-/run/epitaph-display-hotplug}}"
+DISPLAY_UNIT=epitaph-display.service
+CONTROLLER_UNIT=epitaph-controller.service
+
+say() { printf 'epitaph-display-hotplug: %s\n' "$*"; }
+
+# The connectors' states as one line, e.g. "card1-HDMI-A-1=connected card1-HDMI-A-2=disconnected"
+# (writeback connectors left out, as in epitaph.display.presence).
+signature() {
+  for f in "$DRM"/card*-*/status; do
+    [ -r "$f" ] || continue
+    name="${f%/status}"; name="${name##*/}"
+    case "$name" in *-Writeback-*) continue ;; esac
+    printf '%s=%s ' "$name" "$(cat "$f" 2>/dev/null || echo unreadable)"
+  done
+}
+
+systemctl is-enabled --quiet "$DISPLAY_UNIT" 2>/dev/null || exit 0
+
+mkdir -p "$STATE"
+sig="$(signature)"
+last_sig="$(cat "$STATE/signature" 2>/dev/null || echo none)"
+[ "$sig" != "$last_sig" ] || exit 0
+last="$(cat "$STATE/present" 2>/dev/null || echo unknown)"
+
+if answer="$("$EPITAPH" display --screen-present 2>&1)"; then present=yes; else present=no; fi
+display="$(systemctl is-active "$DISPLAY_UNIT" 2>/dev/null || true)"
+remember() { printf '%s\n' "$sig" > "$STATE/signature"; printf '%s\n' "$present" > "$STATE/present"; }
+
+if [ "$present" = yes ]; then
+  case "$display" in
+    active|activating|reloading)
+      if [ "$last" = no ]; then
+        say "$answer; restarting $DISPLAY_UNIT for a fresh mode"
+        systemctl restart --no-block "$DISPLAY_UNIT"
+      fi
+      remember ;;
+    *)
+      if systemctl is-active --quiet "$CONTROLLER_UNIT"; then
+        say "$answer; starting $DISPLAY_UNIT"
+        systemctl start --no-block "$DISPLAY_UNIT"
+        remember
+      else
+        # Not remembered: the next run (the timer's) asks again, until the controller runs.
+        say "$answer; $CONTROLLER_UNIT is not running, so $DISPLAY_UNIT is not started"
+      fi ;;
+  esac
+else
+  case "$display" in
+    active|activating|reloading)
+      say "$answer; stopping $DISPLAY_UNIT"
+      systemctl stop --no-block "$DISPLAY_UNIT" ;;
+  esac
+  remember
+fi
+exit 0

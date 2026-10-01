@@ -28,9 +28,18 @@
 #                                           the body at every controller start
 #   /etc/sudoers.d/021_epitaph-netblock     the service user may run exactly that helper
 #   /etc/systemd/system/epitaph-{controller,display}.service
+#   /usr/local/sbin/epitaph-display-hotplug the display follows a screen plugged in or out
+#   /etc/systemd/system/epitaph-display-hotplug.{service,timer}
+#   /etc/udev/rules.d/90-epitaph-display.rules
+#                                           (root, 0755/0644; started by the udev rule on a
+#                                           DRM change event and by the timer every minute)
 #   /var/lib/epitaph                        state dir (models in models/), owned by the user
+# --enable enables the controller, the display and the hotplug timer.
 # and checks, without changing them: cgroup v2 with memory, cpu and io; the hardware watchdog
-# (RuntimeWatchdogUSec, the OS default); the llama-server binary; systemd-analyze verify.
+# (RuntimeWatchdogUSec, the OS default); the llama-server binary; systemd-analyze verify; that
+# nothing would hold the controller's start without a network (systemd-time-wait-sync); and,
+# as a note, how the clock survives a reboot with no network (fake-hwclock, systemd-timesyncd).
+# The install may need the network (apt, pip); what it installs runs without one.
 # It never touches secrets, the network configuration or the boot configuration (that is
 # pi_bootstrap.sh).
 set -euo pipefail
@@ -61,7 +70,11 @@ STATE=/var/lib/epitaph
 # helper name -> sudoers drop-in number (deploy/sbin/<name>, deploy/sudoers/<name>)
 HELPERS=(epitaph-clock:020 epitaph-netblock:021)
 UNIT_DIR=/etc/systemd/system
-UNITS=(epitaph-controller.service epitaph-display.service)
+UNITS=(epitaph-controller.service epitaph-display.service
+       epitaph-display-hotplug.service epitaph-display-hotplug.timer)
+# the units --enable enables (the hotplug service is started by its timer and the udev rule)
+ENABLE_UNITS=(epitaph-controller.service epitaph-display.service epitaph-display-hotplug.timer)
+UDEV_RULE=/etc/udev/rules.d/90-epitaph-display.rules
 EXTRAS="${EPITAPH_EXTRAS:-display}"
 # Debian packages the install needs; Raspberry Pi OS ships python3 and systemd.
 PACKAGES=(python3-venv nftables sudo)
@@ -80,6 +93,7 @@ ok()     { printf '  ok       %s\n' "$1"; }
 change() { printf '  changed  %s\n' "$1"; CHANGED=$((CHANGED + 1)); }
 would()  { printf '  drift    %s\n' "$1"; CHANGED=$((CHANGED + 1)); }
 fail()   { printf '  FAIL     %s\n' "$1"; FAILED=$((FAILED + 1)); }
+note()   { printf '  note     %s\n' "$1"; }
 skip()   { printf '  skip     %s (--container)\n' "$1"; }
 as_user() { runuser -u "$USER_NAME" -- "$@"; }
 
@@ -151,6 +165,8 @@ for entry in "${HELPERS[@]}"; do
     install_file "$TMP/sudoers-$name" "/etc/sudoers.d/${num}_$name" 0440 root:root || true
   fi
 done
+install_file "$SRC/deploy/sbin/epitaph-display-hotplug" /usr/local/sbin/epitaph-display-hotplug \
+  0755 root:root || true
 # (nft --version opens a netlink socket, which qemu-user lacks; dpkg knows the version too)
 if command -v nft >/dev/null 2>&1; then
   ok "nft ($(nft --version 2>/dev/null || dpkg-query -W -f 'nftables ${Version}' nftables 2>/dev/null))"
@@ -165,8 +181,16 @@ if [ "$RELOAD" = 1 ]; then
   if [ "$CONTAINER" = 1 ]; then skip "systemctl daemon-reload"
   else systemctl daemon-reload; echo "  (systemctl daemon-reload)"; fi
 fi
+# The screen hot-plug rule. udevd also notices a changed rules directory by itself; the reload
+# makes it certain.
+if install_file "$SRC/deploy/udev/90-epitaph-display.rules" "$UDEV_RULE" 0644 root:root; then
+  if [ "$CONTAINER" = 1 ]; then skip "udevadm control --reload"
+  elif command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload; echo "  (udevadm control --reload)"
+  else fail "udevadm missing: a screen plugged in after boot will not start the display"; fi
+fi
 if [ "$ENABLE" = 1 ]; then
-  for u in "${UNITS[@]}"; do
+  for u in "${ENABLE_UNITS[@]}"; do
     if systemctl is-enabled --quiet "$u"; then ok "$u enabled"
     elif [ "$MODE" = check ]; then would "$u enable"
     else systemctl enable --quiet "$u"; change "$u enabled"; fi
@@ -187,6 +211,24 @@ else
   if [ -n "$wd" ] && [ "$wd" != 0 ]; then ok "hardware watchdog RuntimeWatchdogUSec=$wd"
   else fail "hardware watchdog off (RuntimeWatchdogUSec=$wd)"; fi
 fi
+# Offline (docs/INSTALLATION.md "Offline"): nothing may hold the controller's start until the
+# network or NTP answers. systemd-time-wait-sync holds time-sync.target, which the controller is
+# ordered after, until NTP syncs: with no network, forever.
+if systemctl is-enabled --quiet systemd-time-wait-sync.service 2>/dev/null; then
+  fail "systemd-time-wait-sync.service is enabled: with no network the controller would never start (systemctl disable systemd-time-wait-sync)"
+else ok "no wait for NTP at boot (systemd-time-wait-sync not enabled)"; fi
+# The Pi has no RTC: without a network, the clock starts from the time saved at the last
+# shutdown (or the last periodic save). Only timestamps depend on it; lives use the monotonic
+# clock and hours stay off while the time is not synced. Reported, never changed.
+keepers=""
+unit_state() { local st; st="$(systemctl is-enabled "$1" 2>/dev/null || true)"; printf '%s' "${st:-?}"; }
+if dpkg-query -W -f '${Status}' fake-hwclock 2>/dev/null | grep -q 'ok installed'; then
+  keepers="fake-hwclock ($(unit_state fake-hwclock.service))"
+fi
+if dpkg-query -W -f '${Status}' systemd-timesyncd 2>/dev/null | grep -q 'ok installed'; then
+  keepers="${keepers:+$keepers, }systemd-timesyncd ($(unit_state systemd-timesyncd.service))"
+fi
+note "clock across offline reboots: ${keepers:-neither fake-hwclock nor systemd-timesyncd; the clock restarts from the OS build date}"
 LLAMA="$USER_HOME/llama.cpp/build/bin/llama-server"
 if [ -x "$LLAMA" ]; then ok "$LLAMA"; else fail "$LLAMA missing (tools/build_llamacpp.sh --pi)"; fi
 if [ "$MODE" = apply ]; then

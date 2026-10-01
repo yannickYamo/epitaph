@@ -29,6 +29,7 @@ def test_container_mode_skips_only_what_needs_a_booted_pi() -> None:
     assert sorted(skipped) == sorted(
         [
             "systemctl daemon-reload",
+            "udevadm control --reload",
             "cgroup v2 controllers memory cpu io",
             "hardware watchdog",
             "selftest",

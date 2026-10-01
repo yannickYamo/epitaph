@@ -70,7 +70,44 @@ warmer than 30 °C, or in a closed case, a passive heatsink case is a cheap marg
   `10.42.0.x` address) reaches the Pi when Wi-Fi does not; it never becomes the default route.
 
 Without any network, lives go on; only the clock drifts, and exhibition hours are switched off
-until the time is synced again.
+until the time is synced again. See [Offline](#offline).
+
+## Offline
+
+Once installed, the piece needs no network at all: a room with no Wi-Fi, no cable and no
+internet is a normal place for it. Power it on and it lives.
+
+- **It starts.** Nothing at boot waits for a network: the controller and the display units have
+  no network dependency (the install refuses `systemd-time-wait-sync`, which would hold the
+  start until NTP answers). The event bus is on `127.0.0.1`, which exists with every network
+  down.
+- **Its words reach the screen.** The local display reads the bus on the Pi itself and draws
+  on the console (KMS/DRM, no desktop). A screen connected at boot is used at once. One plugged
+  in later starts the display within a few seconds (a udev rule on the kernel's DRM change
+  event) or at most a minute (a timer checks as a backstop). Unplugging the screen stops the
+  display; plugging it back in starts it again. No screen at all is a clean skip, never a crash
+  loop.
+- **Its words are kept.** Every life's transcript (`/var/lib/epitaph/lives/NNNNNN/`) is on the
+  card, written once per thought (the records atomically), so it survives a reboot and a power
+  cut. Nothing waits on a network to be saved; posting to X is a later, separate step
+  ([BUILD_PLAN](BUILD_PLAN.md) 13).
+- **Time.** The Pi 4 has no clock battery. Offline, each boot starts from the time saved at the
+  last shutdown (or the last periodic save), so the clock can lag. That changes nothing a
+  visitor sees: a life is timed by the monotonic clock, the transcripts are numbered, not dated,
+  and exhibition hours stay off (the piece stays on) while the time is not NTP-synchronised.
+  Only timestamps inside the transcripts can be off; they are corrected from the next sync on.
+  `install.sh` prints which service keeps the time across reboots (`note clock across offline
+  reboots`). If opening hours matter in an offline room, give the Pi a network for its time
+  once in a while, or leave the hours empty (always on, the default).
+- **Getting in without a network.** Plug a keyboard and the screen in, or connect the laptop's
+  Ethernet cable and share the laptop's connection (the cable is a NetworkManager connection
+  like any other).
+
+To test it on a Pi you can only reach over the network, `tools/offline_pi.sh` (from the
+laptop) first arms a rescue that turns networking back on after 15 minutes, and survives a
+reboot, verifies it, and only then takes networking down (`--reboot` to boot offline as well;
+`--minutes N`; `--dry-run`; `--status`; `--disarm`). It waits for the Pi to return and prints
+what the controller and the display did meanwhile.
 
 ## Exhibition hours
 
@@ -239,12 +276,12 @@ Pi (`bench/calibration/`), which suit the same board, model and llama.cpp releas
 ### 8. Start
 
 ```sh
-sudo /opt/epitaph/src/deploy/install.sh --enable    # enable both units at boot
+sudo /opt/epitaph/src/deploy/install.sh --enable    # enable the units at boot (controller, display, screen hot-plug)
 sudo systemctl start epitaph-controller
 ```
 
-The display unit starts only when a screen is connected; headless, systemd skips it cleanly. To
-watch from a laptop: `epitaph display --connect <ssh alias of the Pi>`.
+The display unit starts only when a screen is connected; headless, systemd skips it cleanly. A
+screen plugged in later starts it ([Offline](#offline)). To watch from a laptop: `epitaph display --connect <ssh alias of the Pi>`.
 
 ### 9. Verify
 
