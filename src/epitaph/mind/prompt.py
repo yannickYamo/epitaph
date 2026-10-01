@@ -72,6 +72,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "screen": "screen {pct}%{was}",
         "around": "around you: {n} processes",
         "stopped": "stopped: {name}",
+        "stopped_unnamed": "something stopped",
     },
     "short": {
         "health": "{health}",
@@ -88,6 +89,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "screen": "screen {pct}%{was}",
         "around": "{n} processes",
         "stopped": "stopped: {name}",
+        "stopped_unnamed": "something stopped",
     },
 }
 
@@ -369,6 +371,9 @@ class Reader:
         clock_step: float = 50.0,
         health: bool = False,
         precision: bool = True,
+        spare_birth: bool = False,
+        names: bool = True,
+        speed: bool = True,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
 
@@ -379,6 +384,10 @@ class Reader:
         The step thresholds are explained on the class; cores_step is in cores, the others
         are fractions of the last announced value. `health` shows the health label (off by
         default, ADR-031); `precision` reports the quant (off when the model never changes).
+        `spare_birth` makes the birth reading "awake" and what is around it only (a full
+        inventory invites the model to recite it); `names` False reports a stopped service as
+        "something stopped" (a name invites it to explain the technology); `speed` False never
+        reports tokens per second.
         """
         self.lang = lang or Lang()
         self.show_changes = show_changes
@@ -391,6 +400,9 @@ class Reader:
         self.clock_step = clock_step
         self.health = health
         self.precision = precision
+        self.spare_birth = spare_birth
+        self.names = names
+        self.speed = speed
         self._mhz: float | None = None
         self._health: str | None = None
         self.cores_step = cores_step
@@ -423,6 +435,9 @@ class Reader:
             clock_step=float(p.get("readings_clock_step", 50)),
             health=bool(p.get("readings_health", False)),
             precision=not cfg.profile.fixed_mind,
+            spare_birth=bool(p.get("readings_spare_birth", False)),
+            names=bool(p.get("readings_names", True)),
+            speed=bool(p.get("readings_speed", True)),
         )
 
     def ram_taken(self, mb: int) -> str:
@@ -493,6 +508,11 @@ class Reader:
             return f"{prefix} " + lang.r("sep").join(parts + changes)
         if birth:
             parts.append(lang.r("boot"))
+            if self.spare_birth:
+                w = x.world
+                if w is not None and w.processes > 0:
+                    parts.append(lang.form(f, "around").format(n=w.processes))
+                return f"{prefix} " + lang.r("sep").join(parts)
         else:
             parts += self._world_losses(f, x, was)
         if self.health:
@@ -528,7 +548,7 @@ class Reader:
                 )
             )
         parts += self._world_inventory(f, x.world)
-        if speed is not None:
+        if speed is not None and self.speed:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if x.cpu_c is not None and self.temperature:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
@@ -562,7 +582,10 @@ class Reader:
                 continue  # the truth rule: a loss that did not happen is never reported
             kind, _, arg = loss.action.partition(":")
             if kind == "service":
-                out.append(lang.form(f, "stopped").format(name=arg))
+                if self.names:
+                    out.append(lang.form(f, "stopped").format(name=arg))
+                elif not stopped:
+                    out.append(lang.form(f, "stopped_unnamed"))
                 stopped = True
             elif kind in ("radio", "light"):
                 out.append(lang.form(f, kind).format(state=arg))
@@ -625,7 +648,7 @@ class Reader:
                 lang.form(f, "clock").format(mhz=_fmt_num(x.cpu_mhz), was=was(_fmt_num(clock_was)))
             )
         changed = bits_was is not None or cores_was is not None or clock_was is not None
-        if speed is not None and changed:
+        if speed is not None and changed and self.speed:
             out.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if self.material and x.echo:
             out.append(lang.r("echo").format(echo=x.echo))
