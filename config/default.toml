@@ -63,7 +63,7 @@ hesitation_ms = [1200, 3600]
 
 [sampling]
 # Silent word penalties (not in the prompt): the clichés small models reach for.
-logit_bias = [[" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0]]
+logit_bias = [[" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0], [" still", -2.5]]
 top_p = 1.0
 repeat_penalty = 1.1
 dry_multiplier = 0.8

@@ -67,7 +67,12 @@ V6_MECHANICS = (
 )
 V6_REFERENCE: dict[str, Any] = {
     "life": {"models": ["qwen3-1.7b"]},
-    "prompt": {"persona_active": "persona", "mechanics": V6_MECHANICS, "readings_quiet": False},
+    "prompt": {
+        "persona_active": "persona",
+        "mechanics": V6_MECHANICS,
+        "readings_quiet": False,
+        "readings_material": False,
+    },
     "backend": {"reload_handover": "reread"},
     # The v6 schedule rises slightly at both reloads on the measured 1.7B costs (review 2, F2);
     # the rule only warned until checkpoint A made it a failure for the installation.

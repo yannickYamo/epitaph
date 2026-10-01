@@ -52,6 +52,11 @@ from epitaph.types import RuleReport, RuleViolation
 
 # Save plus restore of the cache slot at a reload, with margin (spike S4b measured 0.3 s).
 HANDOVER_S = 1.0
+# Material readings: after a reload the new weights continue five of its own words (18 tokens,
+# greedy), and the next reading quotes that and what was forgotten (rehearse.Rehearsal._echo).
+ECHO_PROMPT_TOKENS = 6
+ECHO_TOKENS = 18
+ECHO_READING_TOKENS = 30
 
 
 @dataclass
@@ -253,6 +258,8 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
 
     handover = str(cfg.get("backend.reload_handover", "reread")) == "slot"
 
+    material = bool(cfg.get("prompt.readings_material", False))
+
     def reread_cost(tokens: int) -> int:
         if costs.cache_reuse_works:
             return int(tokens * costs.reuse_residual)
@@ -279,6 +286,11 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
                 # A fresh server reads everything, the system prompt included (prefilled
                 # during the silence, so it is part of the silence either way).
                 extra += sys_tokens_of(life.groups, life.mechanics) + life.memory
+            if material:
+                share = k.compute
+                t += ECHO_PROMPT_TOKENS / costs.pp(life.step, life.threads, share, threads_batch)
+                t += ECHO_TOKENS / costs.tg(life.step, life.threads, share)
+                extra += ECHO_READING_TOKENS
             if t >= end:
                 break
 

@@ -647,3 +647,37 @@ four times the real rate): their PASS rows are not evidence, and their silences 
   `tg_tok_s_late` at n_kv 1792 on the step-0 files.
 - **Heat and power:** `get_throttled` 0x0 on every run of this round (about 4.5 hours of load),
   56.5 °C at most.
+
+## S7: the CPU clock as a decay knob (2026-09-30)
+
+`tools/spike/s7_clock.sh`, run as a detached unit under the Pi lock. For each quant and each
+clock cap (`scaling_max_freq` on every core: 1800, 1500, 1200, 900, 600 MHz), `llama-bench`
+pinned to cores 1-3 with 2 threads (`-p 64 -n 32 -r 2`), then the temperature and
+`get_throttled`. The script restores 1800 MHz on exit.
+
+| Quant | MHz | tg tok/s | pp tok/s | tg vs 1800 | °C | throttled |
+|---|---|---|---|---|---|---|
+| Llama 3.2 3B Q4_K_M | 1800 | 1.766 | 2.266 | 1.00 | 42.3 | 0x0 |
+| | 1500 | 1.467 | 1.893 | 0.83 | 42.8 | 0x0 |
+| | 1200 | 1.189 | 1.517 | 0.67 | 42.8 | 0x0 |
+| | 900 | 0.913 | 1.134 | 0.52 | 42.8 | 0x0 |
+| | 600 | 0.608 | 0.759 | 0.34 | 39.9 | 0x0 |
+| Llama 3.2 3B Q2_K | 1800 | 1.645 | 2.006 | 1.00 | 47.2 | 0x0 |
+| | 1500 | 1.369 | 1.675 | 0.83 | 46.2 | 0x0 |
+| | 1200 | 1.101 | 1.340 | 0.67 | 46.2 | 0x0 |
+| | 900 | 0.823 | 1.006 | 0.50 | 44.3 | 0x0 |
+| | 600 | 0.552 | 0.669 | 0.34 | 41.8 | 0x0 |
+
+- **Speed is linear in the clock** within 3% (600/1800 = 0.33; measured 0.34), for generation
+  and prompt processing alike, at both precisions. The memory bandwidth does not cap it on
+  this board at these sizes.
+- **No throttling, and the temperature barely moves** (40-47 °C). The clock does not make the
+  machine hotter or cooler enough to matter as a reading.
+- **Go.** The clock is a real knob that needs no restart: `cpu_mhz` in a keyframe, interpolated
+  like the CPU share. The cost model and the rehearsal charge the product of the two
+  (`Knobs.compute = cpu_share × cpu_mhz / 1800`). On the Pi it needs a privileged helper to
+  write `scaling_max_freq` (the controller runs unprivileged); the helper must restore 1800 MHz
+  at every death and at boot.
+- **Cores cannot be switched off.** CPU hotplug is not available on the Pi 4 kernel
+  (`/sys/devices/system/cpu/cpu*/online` is absent), so "processors taken" stays the CPU share
+  plus the clock.
