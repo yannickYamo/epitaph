@@ -42,3 +42,15 @@ def test_dry_run_prints_every_row() -> None:
     for cmd in ("kill -9 4242", "kill -STOP 4242", "systemctl kill -s KILL epitaph-controller"):
         assert cmd.replace(" ", "\\ ") in out.stderr
     assert out.stdout.rstrip().endswith("dry run: 5 row(s) printed, nothing run")
+
+
+def test_hang_waits_for_a_busy_creature_not_the_transcript() -> None:
+    """Regression (phase 2, first Pi run): the hang row waited for a gen_start in events.jsonl,
+    which the transcript flushes only at the end of each thought, so it never saw one in flight
+    and gave up after 600 s. It now waits for the creature's CPU time to move (cpu.stat)."""
+    text = FAULT.read_text()
+    hang = text[text.index("row_hang() {") :]
+    hang = hang[: hang.index("\n}\n")]
+    assert "wait_for 600 busy" in hang and "events.jsonl" not in hang
+    busy = text[text.index("busy() {") :]
+    assert "usage_usec" in busy[: busy.index("\n}\n")]

@@ -99,7 +99,7 @@ def test_five_good_kills_in_a_row(body: CgroupBody, monkeypatch: pytest.MonkeyPa
     r = run(calibrate_step(body, creature, MODEL, 2, 2, 5, 0.5, say=lines.append))
     assert r.reliable and r.good_in_a_row == 5 and len(r.trials) == 5
     assert creature.loads == ["Q2_K"] * 5 and creature.stops == 5
-    assert r.anon_mb == 2000 and r.file_mb == 5 and r.peak_mb == 2050
+    assert r.anon_mb == 2000 and r.file_mb == 5 and r.cgroup_peak_mb == 2050
     assert r.death_limit_mb == 1000 and r.death_fraction == 0.5
     assert all(t.ok and t.oom_kill for t in r.trials)
     assert "memory.max 1000 MiB, killed in" in lines[0] and lines[0].endswith(": ok")
@@ -287,3 +287,16 @@ def test_relaunch_runs_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
     assert any(a.startswith("--unit=epitaph-cal-") for a in ran[0])
     tail = ran[0][-7:]
     assert tail == ["epitaph", "calibrate", "--inside", "--steps", "2", "--hardware", "pi4-4gb"]
+
+
+def test_the_measured_calibration_is_reliable() -> None:
+    """bench/calibration: the Pi 4 measurement the body falls back to (phase 2, C7)."""
+    from epitaph.config import REPO_ROOT
+
+    levels = load_calibration([REPO_ROOT / "bench" / "calibration"], "pi4")
+    for quant in MODEL.ladder:
+        assert 0 < levels[(MODEL.name, quant)] < 2000
+    data = json.loads((REPO_ROOT / "bench" / "calibration" / f"pi4-{MODEL.name}.json").read_text())
+    final = data["steps"][-1]
+    assert final["step"] == 2 and final["good_in_a_row"] >= 5
+    assert all(t["kill_s"] <= 10 for t in final["trials"])
