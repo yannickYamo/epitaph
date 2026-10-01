@@ -1018,15 +1018,22 @@ async def screen_moment(
 
 
 def thoughts_text(events: Sequence[Event]) -> str:
-    """Every thought with the reading it answered, one block per turn."""
+    """Every thought with the reading it answered, one block per turn.
+
+    The reading is matched by turn: in a stream life (ADR-030) a thought ends on screen
+    after later readings were already written."""
     lines: list[str] = []
     tail: list[str] = []
     reading, at = "", 0.0
+    by_turn: dict[int, tuple[str, float]] = {}
     for e in events:
         if e["type"] == "vitals":
             reading, at = str(e.get("reading", "")), float(e["t"])
+        elif e["type"] == "thought_start":
+            by_turn[int(e.get("turn", 0))] = (reading, at)
         elif e["type"] == "thought_end":
-            lines.append(f"t+{_fmt_t(at)}  {reading}")
+            said, when = by_turn.get(int(e.get("turn", 0)), (reading, at))
+            lines.append(f"t+{_fmt_t(when)}  {said}")
             lines.append(f"    {e.get('text', '')}".rstrip())
             lines.append("")
         elif e["type"] in ("reload", "erosion", "death"):

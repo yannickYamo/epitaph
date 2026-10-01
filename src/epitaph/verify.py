@@ -7,7 +7,8 @@ metrics of 5.11. The result goes to `verify.json` next to the events.
 
 Levels:
   smoke      plumbing: duration, cause, words shown, recall budget, nothing banned shown, sync
-             rule, death display, next birth, non-fatal errors (advisory)
+             rule (a stream life instead: one pace, no starvation, the stop at death;
+             ADR-030), death display, next birth, non-fatal errors (advisory)
   skeleton   smoke + empty thoughts, typing speed, whole words (layout)
   full       skeleton + the death on time, the thought-count rule, reloads (silence, count,
              the rung each one loads), the rehearsal metrics, speed decline, speed never
