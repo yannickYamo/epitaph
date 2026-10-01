@@ -363,7 +363,15 @@ def test_blocking_body_calls_go_through_offload() -> None:
         ctl.offload = spy
 
     run(cfg_of(SMOKE), lives=2, setup=setup)
-    assert ran == ["recover", "reset_creature_cgroup", "reset_creature_cgroup"]
+    # the world is restored at the start and after every death (ADR-031)
+    assert ran == [
+        "recover",
+        "restore",
+        "reset_creature_cgroup",
+        "restore",
+        "reset_creature_cgroup",
+        "restore",
+    ]
     plain = Controller(
         cfg_of(SMOKE),
         clock=VirtualClock(asyncio.new_event_loop()),  # type: ignore[arg-type]

@@ -23,6 +23,7 @@ from epitaph.body.fake import FakeBody
 from epitaph.clock import Schedule, VirtualClock, run_virtual
 from epitaph.config import Config, load_config
 from epitaph.controller import (
+    WATCHDOG_MAX_S,
     Controller,
     GuardedBackend,
     HangLimits,
@@ -270,8 +271,9 @@ def test_hang_during_a_reload() -> None:
     _, ev = run(cfg, backend_cls=HangOnReload)
     reload, d = of(ev, "reload")[0], death(ev)
     assert d["cause"] == "hang"
-    # no progress for load_timeout_s, measured from the last counter change (1 s ticks)
-    assert 0 <= d["t"] - reload["t"] - float(cfg.get("life.load_timeout_s")) <= 3
+    # no progress for load_timeout_s, measured from the last counter change, which the
+    # supervisor reads at least every watchdog interval
+    assert 0 <= d["t"] - reload["t"] - float(cfg.get("life.load_timeout_s")) <= WATCHDOG_MAX_S
 
 
 def test_watchdog_pings_through_a_long_reload() -> None:

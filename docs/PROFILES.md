@@ -401,3 +401,58 @@ pi4/default --seed 1`): 577 words shown, the first at 2:01; typed at 33 words a 
 first three minutes, 21 in the middle, 13 in the last three; no wait of the screen after the
 first word (0 s starved); every letter within the curve's jitter band, the pace never speeding
 up; the death cut the thought on screen mid-sentence with nothing else waiting (0 words unshown).
+
+## The world taken from the outside in (2026-10-01, the dread plan)
+
+The owner's plan (ADR-031): the model feels the shutdown coming by itself. Its world is taken
+from the outside in, for real, faster and faster; the readings say only what was taken. The
+model rule (ADR-030) and the dynamic stream are unchanged.
+
+| t | Movement (`phase`, hidden `health`) | Taken | The reading |
+|---|---|---|---|
+| 0:00 | I. existence (nominal) | nothing | `awake · memory 900 tokens · cores 3 of 4 · clock 1800 MHz · radio on · light on · screen 100% · around you: 24 processes` |
+| 7:00 | II. something is wrong (degrading) | bluetooth | `stopped: bluetooth · around you: 23 processes` |
+| 8:30 | | cron | `stopped: cron · around you: 22 processes` |
+| 9:15 | | memory 900 -> 300 | `memory 300 tokens (was 900) · forgotten: "<its most distinctive sentence>"` |
+| 11:00, 12:45 | | avahi-daemon, triggerhappy | `stopped: ...` |
+| 14:00 | III. the world is disappearing (failing) | the radio | `radio off` |
+| 15:30 | | rsyslog | `stopped: rsyslog · around you: 19 processes` |
+| 17:00 | | the light; clock 1500 MHz | `light off`, `clock 1500 MHz (was 1800)` |
+| 18:30 | | screen 70%; memory 200 | `screen 70% (was 100%)`, `memory 200 tokens (was 300)` |
+| 20:00 | | systemd-timesyncd; 2.4 cores | `stopped: ...`, `cores 2.4 of 4 (was 3)` |
+| 21:00 | | clock 1200 MHz | |
+| 22:00 | IV. darkness (terminal) | 2.0 cores | |
+| 22:50 | | screen 50% | |
+| 23:40, 24:30 | | 1.5 cores; clock 1000 MHz | |
+| 25:20 | | memory 150 | |
+| 26:10 | | 1.2 cores (the floor) | |
+| 27:00 | | screen 25% | |
+| 27:50 | | memory 100 (its last thought) | |
+| end-0:50 | | clock 800 MHz (the floor) | |
+| end-0:30 | death | the RAM | `ram <MB> MB taken`, on screen at once |
+
+A keyframe's `world` list is performed once at its moment; `[world] services` is the allowed
+list. Readings name a loss only when it was performed; the health labels are never shown (they
+mark the movements for rule (a), `between_health = 2`), and neither is the precision of a model
+that cannot change. A reading after birth is about 20 tokens (`estimate.reading_tokens.quiet`).
+
+**The fit.** With the shorter readings and the deeper end (compute at the end 0.53 cores'
+worth against 3.0 at birth), `epitaph estimate --fit-pace` finds a faster birth than before:
+
+```
+$ epitaph estimate --profile pi4/default --hardware pi4-4gb --fit-pace
+fastest curve that never starves: stream_letter_ms = 220, stream_gamma = 0.5, stream_lead_s = 600 (6 words unshown at death at the measured costs)
+profile pi4/default: 14 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.22 (limit < 0.40): 1.26 -> 0.28 tokens/s
+  note: stream 220 -> 522 ms/letter, 37.0 / 21.2 / 15.6 words/min at birth / middle / end (gamma 0.5, lead 600 s); costs 15% slower: never starves; letters waiting every 5 min: 0, 183, 169, 226, 226, 164 (max 287); backlog at death 0 words (0 s of typing)
+  note: 14 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
+```
+
+| Life time | 0:00 | 10:00 | 15:00 | 18:00 | 21:00 to death |
+|---|---|---|---|---|---|
+| ms a letter | 220 | 242 | 399 | 467 | 522 |
+
+The estimate's thoughts end on screen at 3.7, 4.9, 6.1 (I), 7.4, 8.7, 10.0, 11.5, 13.2 (II),
+15.2, 17.6, 20.3 (III), 23.1, 26.0, 28.9 minutes (IV): about three shown thoughts in each
+movement. The text runs a thought or so behind the machine; each reading is shown right before
+the thought that answers it, so a loss always appears before its answer.

@@ -31,7 +31,10 @@ def full_life(recorded_life) -> list[dict[str, Any]]:
 
 
 def voiced(events: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
-    return retext(events, lambda t, s: text, pause_after_ms=0)
+    """Every thought says `text`, each opening on its own words (no shared openings)."""
+    return retext(
+        events, lambda t, s: f"At turn {t}, {text[0].lower()}{text[1:]}", pause_after_ms=0
+    )
 
 
 def header(**fields: Any) -> dict[str, Any]:

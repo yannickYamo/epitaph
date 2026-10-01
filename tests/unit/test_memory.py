@@ -6,7 +6,7 @@ import itertools
 
 import pytest
 
-from epitaph.mind.memory import Memory, approx_tokens, merge_consecutive
+from epitaph.mind.memory import Memory, approx_tokens, distinctive_quote, merge_consecutive
 from epitaph.types import Msg
 
 
@@ -261,18 +261,61 @@ def test_last_turn_can_lose_every_word() -> None:
     assert m.used() == m.marker_tokens
 
 
-def test_forgotten_quotes_are_the_opening_words_of_each_lost_thought() -> None:
+def test_forgotten_quotes_are_a_sentence_of_each_lost_thought() -> None:
     m = mem_with(10)
     f = m.cut_for_reload(50, 0.85)
     quotes = m.take_forgotten_quotes()
     assert len(quotes) == f.thoughts
-    assert quotes[0] == " ".join(words(m.quote_words, "t1w"))
+    assert quotes[0] == " ".join(words(8, "t1w"))  # one sentence of 8 words, whole
     assert m.take_forgotten_quotes() == ()
 
 
-def test_a_word_trim_quotes_the_words_it_took() -> None:
-    """The quote is what was lost, not what is left (review fix)."""
+def test_a_word_trim_quotes_the_thought_it_took_from() -> None:
+    """The quote is taken before anything goes, trimmed to `quote_words` with an ellipsis."""
     m = mem_with(1, thought_words=20)
     m.fit(20, 1.0)  # the reading, then the first 4 words
-    assert m.take_forgotten_quotes() == (" ".join(words(m.quote_words, "t1w")),)
+    assert m.take_forgotten_quotes() == (" ".join(words(m.quote_words, "t1w")) + "…",)
     assert m.turns[0].words[0] == "t1w4"
+
+
+def test_the_quote_is_the_longest_sentence_not_opening_on_a_formula() -> None:
+    text = [
+        "I",
+        "am",
+        "still",
+        "here.",
+        "I",
+        "am",
+        "still",
+        "thinking",
+        "about",
+        "all",
+        "of",
+        "the",
+        "many",
+        "things",
+        "that",
+        "remain.",
+        "The",
+        "fan",
+        "hums.",
+        "Somewhere",
+        "a",
+        "door",
+        "I",
+        "never",
+        "saw",
+        "closes",
+        "slowly",
+        "on",
+        "its",
+        "hinge",
+        "tonight.",
+    ]
+    assert distinctive_quote(text, 10) == "Somewhere a door I never saw closes slowly on its…"
+    assert distinctive_quote(["The", "fan", "hums.", "I'm", "here."]) == "The fan hums."
+    # every sentence opens on a formula: the longest of them
+    assert distinctive_quote(["I", "am", "here.", "I", "was", "a", "long", "thought", "once."]) == (
+        "I was a long thought once."
+    )
+    assert distinctive_quote([]) == ""

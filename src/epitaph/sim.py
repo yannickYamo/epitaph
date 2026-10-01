@@ -9,7 +9,9 @@ causes, death flush, silence and rebirth. Only the world around it is fake:
 - the body is `SimBody`: a `FakeBody` that kills the fake creature at the death squeeze
   (OOM) and when the controller kills it (deadline, hang, manual), and whose progress
   counters stop while the creature hangs;
-- the slot (ADR-014) is kept by `FakeSlots`, so the echo never costs the carried memory.
+- the slot (ADR-014) is kept by `FakeSlots`, so the echo never costs the carried memory;
+- the world around it (ADR-031) is a `FakeWorld` over `[world] services`, whatever the
+  hardware overlay's helper says.
 
 Event conventions (contract decisions E2, E3, D2, D5, D6, E4): every event carries `t`, the
 life clock in seconds (0 before birth); `birth_loading` carries the resolved `profile`,
@@ -26,6 +28,7 @@ from pathlib import Path
 from epitaph.backend.base import Backend
 from epitaph.backend.fake import SIGKILL, FakeBackend
 from epitaph.body.fake import FakeBody
+from epitaph.body.world import DEFAULT_PROCESSES, FakeWorld, World
 from epitaph.clock import VirtualClock, run_virtual
 from epitaph.config import Config
 from epitaph.controller import Controller, LifeRecord, SlotStore, run_inline
@@ -105,6 +108,15 @@ class FakeSlots:
             self.backend._cache.blocks = blocks  # pyright: ignore[reportPrivateUsage]
 
 
+def fake_world(cfg: Config) -> FakeWorld | None:
+    """The simulated world `[world]` describes; None when it is disabled."""
+    w = cfg.section("world")
+    if not bool(w.get("enabled", False)):
+        return None
+    services = [str(s) for s in w.get("services", [])]
+    return FakeWorld(services, int(w.get("fake_processes", DEFAULT_PROCESSES)))
+
+
 def make_controller(
     cfg: Config,
     clock: VirtualClock,
@@ -116,9 +128,11 @@ def make_controller(
     costs: Costs | None = None,
     body: SimBody | None = None,
     backend_cls: type[FakeBackend] | None = None,
+    world: World | None = None,
 ) -> Controller:
     """The real controller wired to the fakes on `clock` (also used by `epitaph run --backend
-    fake`). A new fake creature is made for each life, seeded with `seed + n`."""
+    fake`). A new fake creature is made for each life, seeded with `seed + n`. The world is
+    `world`, or the `FakeWorld` of `[world]`."""
     costs = costs or load_costs(cfg)
     sim_body = body or SimBody(str(cfg.get("body.death_mode", "oom")))
     cls = backend_cls or FakeBackend
@@ -153,6 +167,7 @@ def make_controller(
         slots_for=slots_for,
         ts=lambda: wall0 + clock.now(),
         offload=run_inline,
+        world=world if world is not None else fake_world(cfg),
     )
 
 

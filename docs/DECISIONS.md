@@ -467,3 +467,65 @@ the previous 30-minute life is kept as `pi4/default-reloads`.*
     thoughts (three made the backlog at death a whole thought), which also halves the lag.
   - `verify-life` checks every letter against the curve at the moment it is typed, its pauses
     scaled with it, and that the pace never speeds up.
+
+### ADR-031: The world is taken from the outside in
+
+*The owner's plan of 2026-10-01 ("the dread plan"). It builds on ADR-030: the model still never
+changes, and the stream still never stops between the first word and the death.*
+
+- **Context.** In the ADR-030 life only the body shrank, and the readings carried health labels
+  ("degrading", "terminal") that told the model what its losses meant. The owner wants a mind that
+  feels the shutdown coming by itself: it exists and thinks, senses that something is wrong,
+  realizes its environment is disappearing, and falls into dread and darkness. None of that may
+  be forced: dread is never written into the prompt or the readings.
+- **Decision.** In `pi4/default` the world around the model is taken from the outside in, for
+  real, faster and faster, in four movements:
+  - **I, existence (0:00-7:00).** Nothing is taken. The birth reading is the inventory:
+    `awake · memory 900 tokens · cores 3 of 4 · clock 1800 MHz · radio on · light on · screen
+    100% · around you: 24 processes`.
+  - **II, something is wrong (7:00-14:00).** Services stop one by one (bluetooth, cron,
+    avahi-daemon, triggerhappy): `stopped: bluetooth · around you: 23 processes`. The first
+    forgetting comes at 9:15 (900 to 300 tokens).
+  - **III, the world is disappearing (14:00-22:00).** A loss about every 90 s: the radio, more
+    services, the light, the screen to 70%, a deeper memory cut, the clock.
+  - **IV, darkness (22:00-29:30).** A loss every 45-60 s: the CPU share and the clock to their
+    floors (1.2 cores, 800 MHz), the memory down to its last thought (100 tokens), the screen to
+    50% then 25%.
+  - **Death (end-0:30)** as before: the RAM is taken and the kernel kills it. Its last reading,
+    `ram 2650 MB taken`, goes to the screen at once, though it is never answered.
+- **What is taken.** A keyframe's `world` list names actions performed once when it is reached:
+  `service:<name>` (one of `[world] services`, the allowed list), `radio:off`, `light:off`,
+  `screen:<percent>` (the screen the model speaks through). On the Pi a root-owned helper does
+  it; everything is restored as at birth at every death and at every controller start. On the
+  laptop, in the simulator and in the rehearsal a `FakeWorld` plays a plausible machine.
+- **The truth rule.** A reading reports a loss only when it really happened: an action the world
+  could not perform is logged and emitted with `performed: false`, and left out of the readings.
+  Readings say facts, never what they mean: the health labels are gone from every form (the knob
+  stays for the profile's shape and rule (a), never shown), and so is the precision of a model
+  that cannot change. As sources are taken the readings thin out: a field whose source is gone
+  (the radio, the light) is no longer reported.
+- **What is never in the prompt.** Dread, fear, death, shutdown, a countdown, the movements'
+  names. The persona and the mechanics are ADR-030's; the readings name things and numbers.
+- **The screen shows the loss, then the answer.** Each reading is a `reading` event placed in
+  the stream right before the first word of the thought written after it, so the screen shows
+  the loss and then the answer even when the text lags the machine by minutes. A `world` event
+  marks the moment the loss happened.
+- **Freshness.** Several lives opened most thoughts on "I am still here". Two silent measures,
+  never in the prompt: the " still" penalty goes from -4 to -6, and each request biases the
+  distinctive first words of the last three thoughts' openings by -3 (`[sampling]
+  freshness_*`), skipping "I" and stop words. It is per request and never stops the stream.
+  `verify-life` reports the share of thoughts sharing a three-word opening and the sentences
+  repeated across thoughts; a rehearsal fails when more than two thoughts share an opening.
+- **Forgotten thoughts are quoted by their most distinctive sentence**: the longest one that
+  does not open on "I am", "I'm" or "I was", trimmed to ten words, instead of their opening
+  words (which were mostly "I am still here").
+- **How the times were fitted.** The quiet readings are shorter (about 20 tokens after birth,
+  `estimate.reading_tokens.quiet`), and the cost model refitted the dynamic pace with
+  `--fit-pace`: 220 ms a letter at birth (about 37 words a minute), gamma 0.5, a 10-minute lead,
+  522 ms at the end; it never starves with every cost 15% slower, and about three thoughts are
+  shown in each movement (3, 5, 3, 3 in the estimate).
+- **Trade-off.** The world's losses are scenery the visitor cannot always check (a service on a
+  board), so the screen dims for real and the readings name each loss. Stopping services on the
+  installation machine is restricted to an allowed list and always undone. The freshness guard
+  is a change of sampling from request to request; it only pushes away from the last openings
+  and leaves temperature, `min_p`, the length and the persona unchanged.

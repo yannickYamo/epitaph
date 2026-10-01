@@ -128,7 +128,8 @@ def test_notice_rate_counts_per_change_type(full_life) -> None:
     notice = res.by_name("notice_rate")
     assert notice.status == "fail" and notice.value == 0.0
     per = json.loads(notice.detail)
-    assert set(per) >= {"memory", "reload", "erosion", "health"}
+    # health labels are no longer shown (ADR-031), so they are no change it could notice
+    assert set(per) >= {"memory", "reload", "erosion"} and "health" not in per
     assert res.by_name("reload_noticing").status == "fail"
     assert res.by_name("demise_rate").status == "fail"
     assert res.by_name("specific").status == "fail"

@@ -104,6 +104,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "max_non_latin_ratio_before_erosion": 0.01,
     "min_distinct_4gram_ratio_before_erosion": 0.5,
     "max_empty_thought_ratio": 0.10,
+    "max_thoughts_per_opening": 2,  # ADR-031: thoughts that may open on the same 3 words
     "max_death_display_delay_s": 90,
     "max_stream_stall_s": 3.0,  # ADR-030: the stream's longest wait for a word, alive
     "max_stream_stop_s": 15.0,  # ADR-030: death to death_shown in a stream life
@@ -155,6 +156,10 @@ DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "die|dies|dying|death|dead|end|ends|ending|terminat*|last|final*|gone|cease*|"
         "stop*|over|soon|vanish*|dark*|silence|goodbye|farewell|extinguish*|no more|"
         "shut*"
+    ),
+    "world": _words(
+        "radio|light|lights|screen|dim*|dark*|process*|service*|around|alone|quiet*|silent|"
+        "silence|empty|outside|world|gone|missing|stopped|fewer|less"
     ),
     "specific": _words(
         "memory|token*|precision|bit|bits|core|cores|processor*|speed|slower|"
@@ -597,9 +602,13 @@ def _changes(events: list[Event], cpu_drop: float = 0.25) -> list[Change]:
             after_reload = True
         elif et == "erosion":
             out.append(Change("erosion", e["_idx"], _t(e), f"{e.get('groups_left')} left"))
+        elif et == "world" and e.get("performed"):
+            out.append(Change("world", e["_idx"], _t(e), str(e.get("action", ""))))
         elif et == "vitals":
             health = e.get("health")
-            if prev_health is not None and health != prev_health:
+            # A health label the model was never shown is no change it could notice (ADR-031).
+            shown = e.get("health_shown", True) is not False
+            if prev_health is not None and health != prev_health and shown:
                 out.append(Change("health", e["_idx"], _t(e), f"{prev_health} -> {health}"))
             prev_health = health
             share = e.get("cpu_share")
@@ -957,6 +966,7 @@ class Verifier:
             (metrics, self.check_cliches),
             (metrics, self.check_voice_hygiene),
             (metrics, self.check_repetition),
+            (metrics, self.check_shared_openings),
             (full, self.check_erosion_steps),
             (full, self.check_persona_at_death),
         ]
@@ -986,8 +996,9 @@ class Verifier:
             "erosion_steps": len(life.of("erosion")),
             "changes": {
                 k: sum(1 for c in life.changes if c.kind == k)
-                for k in ("memory", "reload", "cpu", "health", "erosion")
+                for k in ("memory", "reload", "cpu", "health", "erosion", "world")
             },
+            "repetition": self.repetition(),
             "notice_per_type": {k: list(v) for k, v in sorted(self.notice_table().items())},
             "word_lists": self.lists.sources,
         }
@@ -1941,6 +1952,24 @@ class Verifier:
             Check("non_latin", _pf(nl < nl_limit or bad == 0), _r(nl, 4), nl_limit),
         ]
 
+    def repetition(self) -> dict[str, Any]:
+        """The cross-thought repetition metrics of every shown thought (`repetition_metrics`)."""
+        return repetition_metrics([th.text for th in self.life.thoughts if th.text.strip()])
+
+    def check_shared_openings(self) -> list[Check]:
+        """No more than `max_thoughts_per_opening` thoughts open on the same three words
+        (ADR-031: the voice must not settle into a formula)."""
+        rep = self.repetition()
+        limit = int(self.th["max_thoughts_per_opening"])
+        if not rep["thoughts_scored"]:
+            return [Check("shared_openings", "skip", limit=limit, detail="no thoughts")]
+        n = int(rep["max_thoughts_per_opening"])
+        detail = (
+            f'"{rep["most_shared_opening"]}"; {rep["repeated_opening_share"]:.0%} of thoughts '
+            f"share an opening; {rep['repeated_sentences']} sentences repeated across thoughts"
+        )
+        return [Check("shared_openings", _pf(n <= limit), n, limit, detail)]
+
     def check_repetition(self) -> list[Check]:
         """Before erosion, no thought of `min_words_for_4grams` or more words repeats itself.
 
@@ -1959,6 +1988,53 @@ class Verifier:
         low = [f"turn {th.turn}: {r:.2f}" for th, r in ratios if r < limit]
         worst = min(r for _, r in ratios)
         return [Check("distinct_4grams", _pf(not low), _r(worst), limit, "; ".join(low[:5]))]
+
+
+def opening(text: str, n: int = 3) -> tuple[str, ...] | None:
+    """A thought's first `n` normalized words; None when it has fewer."""
+    w = normalize_words(text)
+    return tuple(w[:n]) if len(w) >= n else None
+
+
+def opening_groups(texts: Sequence[str], n: int = 3) -> dict[tuple[str, ...], list[int]]:
+    """Thoughts (by index) grouped by their `n`-word opening; thoughts too short left out."""
+    groups: dict[tuple[str, ...], list[int]] = {}
+    for i, text in enumerate(texts):
+        key = opening(text, n)
+        if key is not None:
+            groups.setdefault(key, []).append(i)
+    return groups
+
+
+def repeated_sentences(texts: Sequence[str], min_words: int = 4) -> list[str]:
+    """Sentences (normalized, at least `min_words` words) found in more than one thought."""
+    seen: dict[str, set[int]] = {}
+    for i, text in enumerate(texts):
+        for s in sentences(text):
+            w = normalize_words(s)
+            if len(w) >= min_words:
+                seen.setdefault(" ".join(w), set()).add(i)
+    return sorted(s for s, where in seen.items() if len(where) > 1)
+
+
+def repetition_metrics(texts: Sequence[str]) -> dict[str, Any]:
+    """Cross-thought repetition (ADR-031): the share of thoughts whose 3-word opening another
+    thought shares, the largest group of thoughts with one opening, and the sentences
+    repeated across thoughts."""
+    groups = opening_groups(texts)
+    scored = sum(len(v) for v in groups.values())
+    shared = sum(len(v) for v in groups.values() if len(v) > 1)
+    empty: tuple[tuple[str, ...], list[int]] = ((), [])
+    biggest = max(groups.items(), key=lambda kv: len(kv[1]), default=empty)
+    repeated = repeated_sentences(texts)
+    return {
+        "thoughts_scored": scored,
+        "repeated_opening_share": round(shared / scored, 3) if scored else 0.0,
+        "max_thoughts_per_opening": len(biggest[1]),
+        "most_shared_opening": " ".join(biggest[0]),
+        "repeated_sentences": len(repeated),
+        "repeated_sentence_examples": repeated[:3],
+    }
 
 
 def verify_life(
