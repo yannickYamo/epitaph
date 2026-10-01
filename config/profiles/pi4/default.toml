@@ -163,6 +163,7 @@ phase = "darkness"
 cpu_mhz = 900                    # the floor of its clock
 
 # The RAM is taken at end-0:30 (death above). No reload and no erosion: rules (b)-(d) have
-# nothing to count. Rule (a) asks each movement (health label) for two answered thoughts.
+# nothing to count. Rule (a) asks each movement (health label) for an answered thought: the
+# last movement, 7.5 minutes at the slowest pace, shows one or two (rehearsed, ADR-031).
 [rules]
-between_health = 2
+between_health = 1

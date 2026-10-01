@@ -433,7 +433,7 @@ model rule (ADR-030) and the dynamic stream are unchanged.
 
 A keyframe's `world` list is performed once at its moment; `[world] services` is the allowed
 list. Readings name a loss only when it was performed; the health labels are never shown (they
-mark the movements for rule (a), `between_health = 2`), and neither is the precision of a model
+mark the movements for rule (a), `between_health = 1`), and neither is the precision of a model
 that cannot change. A reading after birth is about 20 tokens (`estimate.reading_tokens.quiet`).
 
 **The fit.** A first fit (220 ms a letter at birth, gamma 0.5, a 10-minute lead, floors of 1.2
@@ -469,3 +469,14 @@ At the measured costs the thoughts end on screen at 3.7, 5.2, 6.6 (I), 8.2, 9.8,
 each of the first three movements, one or two in the last. The text runs a thought or so behind
 the machine; each reading is shown right before the thought that answers it, so a loss always
 appears before its answer.
+
+**Rehearsed on the real model at Pi costs** (Qwen3 4B on the laptop, `epitaph rehearse --stage
+life --profile pi4/default`, seeds 1-3, the default mechanics and `prompt.mechanics_alt`). On the
+first fit three of six lives starved in their last minutes (33 s, 75 s, 107 s). On this profile
+none of six waits for a word after the first (0 s starved); every life dies `oom` at 29:30 with
+11 or 12 thoughts and 542-576 words shown, 5 to 29 words unshown at the death. Each loss of the
+world is answered on screen after its reading (world losses noticed 8 to 10 of 9-10 per life by
+the keyword proxy, memory cuts 4 to 5 of 4-5). Shared three-word openings: at most two thoughts
+per opening in five lives; one alt life opened eight of ten thoughts on "I am a", which the
+freshness guard cannot bias (every word of it is a stop word). The thought-count rule was at first
+two thoughts per movement; two lives showed only one in the last, so it asks one.

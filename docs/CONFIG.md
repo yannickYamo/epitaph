@@ -397,7 +397,7 @@ when the next thought starts.
 
 Thought-count minimums the cost model and `verify-life` enforce (BUILD_PLAN 5.3, ADR-024). The
 defaults are for a one-hour life; `pi4/default-reloads` sets 2, 1, 1, 3; `pi4/default` (no reload,
-no erosion: only rule (a) counts) sets `between_health = 2`, two thoughts in each movement.
+no erosion: only rule (a) counts) sets `between_health = 1`: the last movement shows one or two thoughts.
 
 | Key | Default | What it does |
 |---|---|---|
