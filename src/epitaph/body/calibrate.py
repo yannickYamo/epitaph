@@ -49,6 +49,7 @@ UNIT_PREFIX = "epitaph-calibrate"
 CALIBRATION_DIR = "calibration"
 KILL_WITHIN_S = 10.0  # BUILD_PLAN 5.5: the kill must come within 10 s, 5 times out of 5
 GIVE_UP_S = 30.0  # how long a trial waits for the kill before calling it a failure
+KILL_WAIT_S = 10.0  # how long the cgroup may stay populated after the trial's own cgroup.kill
 FRACTION_STEP = 0.7  # after a bad trial, the fraction is multiplied by this
 MIN_FRACTION = 0.2
 CALIBRATE_PORT = 8092  # never the controller's port
@@ -89,6 +90,8 @@ class StepResult:
     death_limit_mb: int
     trials_wanted: int
     trials: list[Trial] = field(default_factory=lambda: [])
+    # Why the step stopped early (a creature that would not die): never reliable then.
+    error: str | None = None
 
     @property
     def good_in_a_row(self) -> int:
@@ -102,8 +105,8 @@ class StepResult:
 
     @property
     def reliable(self) -> bool:
-        """Whether the death level killed in time `trials_wanted` times in a row."""
-        return self.good_in_a_row >= self.trials_wanted
+        """Whether the death level killed in time `trials_wanted` times in a row, with no error."""
+        return self.error is None and self.good_in_a_row >= self.trials_wanted
 
     def to_json(self) -> dict[str, Any]:
         """The step as stored in the calibration file."""
@@ -181,14 +184,21 @@ async def calibrate_step(
     """Load, measure and kill one ladder step until `trials` good kills in a row.
 
     At most 2 x `trials` loads; a bad trial lowers the fraction (never below MIN_FRACTION).
-    `clock` times the kill (seconds).
+    `clock` times the kill (seconds). A creature cgroup that is still populated after the
+    kill (and the wait for it) aborts the step with `error` set: nothing new is spawned
+    beside a creature that would not die.
     """
     quant = model.quant(step)
     first: WorkingSet | None = None
     result: StepResult | None = None
+    error: str | None = None
     for i in range(max(1, 2 * trials)):
         body.reset_creature_cgroup()
+        if body.populated():
+            error = "the creature cgroup is still populated after cgroup.kill; not spawning"
+            break
         await creature.start(model, quant, threads)
+        stuck = False
         try:
             await creature.touch()
             ws = body.working_set()
@@ -202,7 +212,7 @@ async def calibrate_step(
             oom = body.oom_kills() > base
             if not killed:
                 body.kill_now(Cause.MANUAL)
-                await wait_dead(body, 10.0)
+                stuck = not await wait_dead(body, KILL_WAIT_S)
         finally:
             await creature.stop()
         ok = killed and oom and kill_s is not None and kill_s <= kill_within_s
@@ -228,6 +238,12 @@ async def calibrate_step(
             + (f"killed in {kill_s:.2f} s" if killed else f"alive after {give_up_s:g} s")
             + f", oom_kill {'yes' if oom else 'no'}: {'ok' if ok else 'BAD'}"
         )
+        if stuck:
+            error = (
+                f"the creature cgroup is still populated {KILL_WAIT_S:g} s after cgroup.kill; "
+                "step aborted"
+            )
+            break
         if result.good_in_a_row >= trials:
             break
         if not ok:
@@ -235,7 +251,14 @@ async def calibrate_step(
                 break
             fraction = max(MIN_FRACTION, fraction * FRACTION_STEP)
     body.reset_creature_cgroup()
-    assert result is not None
+    if result is None:  # aborted before the first load
+        result = StepResult(
+            step, quant, threads, 0, 0, 0, None, round(fraction, 3), 0, trials_wanted=trials
+        )
+    if error is not None:
+        result.error = error
+        log.error("calibrate %s %s: %s", model.name, quant, error)
+        say(f"calibrate {model.name} {quant}: ERROR {error}")
     return result
 
 
@@ -345,6 +368,8 @@ async def calibrate(
                 body, creature, model, step, args.threads, wanted, fraction, say=say
             )
         )
+        if results[-1].error is not None:
+            break  # a creature that would not die: no further loads
     return calibration_record(cfg, model, results, KILL_WITHIN_S), all(r.reliable for r in results)
 
 
