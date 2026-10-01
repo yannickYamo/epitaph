@@ -70,13 +70,43 @@ rehearsal ranks first (checkpoint A confirms two of them).
 
 ## G1: walking skeleton on the Pi (BUILD_PLAN 8.4)
 
+**How the Pi rows run.** Every Pi target takes the Pi lock itself (`AGENT=E` names the
+holder) and writes its evidence under `logs/pi/` (untracked), so the phase report
+`docs/process/reports/1-E.md` quotes the summary lines and names the folders.
+
+- `make pi-smoke` and `make pi-life` both call `tools/smoke_pi.sh`. In one lock hold, it:
+  - finds the Pi (`tools/pi_host.sh`: `pi`, then `pi-eth`) and the installed `epitaph`;
+  - refuses while an earlier `epitaph-pilife-*` or `llama-*` unit is still running;
+  - stops `epitaph-controller` if it is active (two controllers refuse to run), and starts it
+    again at the end, even after a failure or a timeout;
+  - runs `epitaph run --profile <P> --lives <N>` as the detached unit
+    `epitaph-pilife-<stamp>`, as the controller's user, and polls it;
+  - copies the new `lives/NNNNNN` folders and the unit's journal to
+    `logs/pi/<stamp>-<profile>/`;
+  - runs `epitaph verify-life <life> --profile <P> --hardware pi4-4gb` on each new life,
+    adding `--level smoke` for `smoke-300` (other profiles use their own `verify_level`),
+    which writes `verify.json` next to each `events.jsonl`.
+  - Exit 0 means every life passed. Exit 1 means a life failed or is missing, or the run
+    failed.
+- With `LIVES=2` the second life is the first one's next life, so its `next_birth` is judged
+  (the folders keep the `lives/NNNNNN` layout that verify-life looks up). The last life's
+  `next_birth` stays `pending`, which never fails a life.
+- `tools/smoke_pi.sh --dry-run` and `tools/headless_boot_check.sh --dry-run` print every
+  command without taking the lock or reaching the Pi. CI runs both dry runs, and
+  `tests/unit/test_pi_tools.py` runs both scripts against a fake Pi.
+- The order for the gate: `make pi-deploy` (C), then G1.4, G1.1 with G1.2 alongside, and
+  G1.3 last, because it reboots.
+- Budgets (the lock's hard limit): `pi-smoke` 33 min. `pi-life PROFILE=pi4/skeleton-1200
+  LIVES=2` 77 min (2 × (20 min + 5 min load + 3 min) + the 90 s silence + 5 min, plus
+  15 min for the copy and the checks). `pi-boot-check` 17 min.
+
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
-| G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c run_life src/epitaph/sim.py` shows no reference loop; `make sim` drives `controller.py` | open | B6 |
-| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `make pi-life PROFILE=pi4/skeleton-1200` twice; then `$PY -m epitaph.verify <n> --level skeleton` and `<n+1>` both exit 0; `next_birth` passes on the first | open | |
-| G1.2 | The remote view shows them live | `epitaph display --connect pi --driver terminal` during the life; screenshot or transcript in `docs/process/reports/` | open | |
-| G1.3 | Headless boot: no display crash loop | `ssh pi 'sudo reboot'`; after boot `systemctl show epitaph-display -p NRestarts,ActiveState,ConditionResult` (condition false, 0 restarts) and `systemctl is-active epitaph-controller` | open | |
-| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `make pi-smoke` exit 0 | open | E4 (P1) |
+| G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c 'def run_life' src/epitaph/sim.py` prints 0 and `grep -n controller src/epitaph/sim.py` shows it driving `controller.py`; `make sim` exit 0 | open | B6. Today `sim.py` still has its own `run_life` |
+| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `AGENT=E make pi-life PROFILE=pi4/skeleton-1200 LIVES=2` exits 0, and its last line reads `PASS: 2 life(s) of pi4/skeleton-1200`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/skeleton-1200 --hardware pi4-4gb --level skeleton` (the profile's own level) exits 0 for `<n>` and `<n+1>`, and on `<n>`, `python -c 'import json,sys; print([c["status"] for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="next_birth"])' logs/pi/<run>/lives/<n>/verify.json` prints `['pass']` | open | `logs/pi/<stamp>-pi4-skeleton-1200/lives/<n>/verify.json`, `.../<n+1>/verify.json`, `journal.txt`; summary lines in `docs/process/reports/1-E.md` |
+| G1.2 | The remote view shows them live | During the G1.1 run, under the same lock hold (the tunnel only reads the bus): `script -q -c "$PY -m epitaph display --connect pi --driver terminal" logs/pi/remote-view-<stamp>.txt`. It shows birth, words typed letter by letter, the death and the next birth | open | the transcript, with an excerpt in `docs/process/reports/1-E.md`; needs D's `display --connect` |
+| G1.3 | Headless boot: no display crash loop | No screen connected. `AGENT=E make pi-boot-check` exits 0 (it reboots: `tools/headless_boot_check.sh --reboot`, waits for a new `boot_id` over SSH and for `systemctl is-system-running --wait`). It passes when `epitaph-display` is `loaded`, `enabled`, not `failed` or `activating`, has `NRestarts=0` and was skipped by its `ExecCondition` (`Result=exec-condition`; `ConditionResult=no` also counts, for a `Condition*=` line), and `epitaph-controller` is `enabled` and `active`. `REBOOT=0 make pi-boot-check` runs the same checks on the current boot | open | `logs/pi/boot-check-<stamp>.txt`: one `PASS`/`FAIL` line per check, plus reboot-to-SSH seconds, `systemd-analyze time`, the watchdog and `get_throttled` |
+| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `AGENT=E make pi-smoke` exits 0, and its last line reads `PASS: 1 life(s) of pi4/smoke-300` | open | `logs/pi/<stamp>-pi4-smoke-300/lives/<n>/verify.json` (`"level": "smoke"`, `"ok": true`), `journal.txt` |
 | G1.5 | `/code-review high` done on the gate diff | integrator's review note | open | |
 
 ## G2: full decline, checkpoint B (BUILD_PLAN 8.4)
@@ -85,7 +115,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 |---|---|---|---|---|
 | G2.1 | Selftest passes under the installed service | `ssh pi 'sudo -u epitaph epitaph selftest'` (or as the unit user) exit 0 | open | |
 | G2.2 | The fault matrix passes on the Pi (rows that apply) | the fault table below, Pi column | open | |
-| G2.3 | Three `compressed-2700` lives pass `verify-life --level full` | `make pi-life PROFILE=pi4/compressed-2700` ×3; `$PY -m epitaph.verify <n> --level full` exit 0 each | open | layout checks pending until D's `verify_probe` |
+| G2.3 | Three `compressed-2700` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/compressed-2700 LIVES=3` exit 0 (each life judged at the profile's level, `full`); re-check: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/compressed-2700 --hardware pi4-4gb` exit 0 each | open | layout checks pending until D's `verify_probe` |
 | G2.4 | `/code-review high` done | integrator's review note | open | |
 | G2.5 | Checkpoint B reply ("good" or the list) | QUESTIONS / CHANGELOG | open | needs Yannick |
 | G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `$PY -m epitaph.verify <n> --level full --json --no-write \| python -c 'import json,sys; print([c for c in json.load(sys.stdin)["checks"] if c["name"]=="speed_monotonic"])'` shows a value ≤ 1.05 for both reloads, from `gen_end` rates | open | |
@@ -135,8 +165,8 @@ are judged by `verify-life`. `n/a` rows depend on the S3/S3b/S3c results.
 | Controller killed | restarted; previous life `interrupted`; no creature left; counter + 1 | needs B6 | `systemctl kill -s KILL epitaph-controller` | open |
 | Controller stops pinging | systemd restarts it | | test hook | open |
 | Power cut | as a controller kill; state intact | | `echo b > /proc/sysrq-trigger` after a fresh image | open |
-| Clean reboot | services active, words within `first_word_after_boot_s` | | `sudo reboot` | open |
-| Headless boot | display unit skipped by `ExecCondition`; controller up | | reboot, no screen | open |
+| Clean reboot | services active, words within `first_word_after_boot_s` | | `make pi-boot-check` (services); the first `word` after boot from the life's events (A5) | open |
+| Headless boot | display unit skipped by `ExecCondition`; controller up | | `make pi-boot-check`, no screen (G1.3) | open |
 | Display or remote view killed | life continues; redraw from snapshot within 5 s | D3 tests | `systemctl kill epitaph-display`; kill the tunnel | open |
 | Slow subscriber | controller timing unchanged; snapshot after overflow | `tests/unit/test_events.py` (bus overflow) | client reading 1 event/s | open |
 | Two controllers | refuses; points to `epitaph ctl new-life` | `tests/unit/test_state.py` (instance lock) | `epitaph run` while the service runs | open |
@@ -180,8 +210,10 @@ are judged by `verify-life`. `n/a` rows depend on the S3/S3b/S3c results.
 
 ## verify-life coverage of 10.3
 
-Which 10.3 rows `verify.py` implements today (phase 0c), and at which level. Layout rows call
-D's `epitaph.display.layout.verify_probe(cfg)` and are `pending` until it exists. The
+Which 10.3 rows `verify.py` implements today (phase 1), and at which level. A life is judged by the
+hardware overlay it records, else the one its profile's class implies (`pi4/...` → `pi4-4gb`),
+so a Pi life copied to the laptop keeps the Pi's thresholds. Layout rows call
+D's `epitaph.display.layout.verify_probe(cfg)` (on main since phase 0b) and are `pending` only if it cannot load. The
 `rehearsal` level runs the 5.11 metrics plus the recall budget, the sync rule, the
 thought-count rule and `speed_monotonic`; `screen` (stage 1 samples) runs the text metrics only.
 
@@ -189,18 +221,19 @@ thought-count rule and `speed_monotonic`; `screen` (stage 1 samples) runs the te
 |---|---|---|---|
 | Duration within lifespan ± 60 s (`unbounded` ends with `full`) | `duration` | smoke, skeleton, full | built |
 | Cause (`deadline` for smoke/skeleton, `death_mode` for full) | `cause` | smoke, skeleton, full | built |
-| Past-turn tokens ≤ recall + 10% | `recall_budget` | all but screen | built (from `vitals.recall_used`) |
+| At least one word shown (not in 10.3: without it a life that showed nothing passes smoke) | `words_shown` | smoke, skeleton, full | built (phase 1) |
+| Past-turn tokens ≤ recall + 10% | `recall_budget` | all but screen | built (from `vitals.recall_used`); a smoke, skeleton or full life whose vitals never carry `recall_used` fails (phase 1); a rehearsal life skips |
 | Banned phrases, markup or emoji shown: 0 | `banned_phrases_shown`, `markup_or_emoji_shown` | all | built |
 | Sync rule | `sync_rule` | all but screen | built |
 | `death_shown` within `max_death_display_delay_s` | `death_shown_delay` | smoke, skeleton, full | built |
 | Next life within silence + load + 5 min | `next_birth` | smoke, skeleton, full | built; pending until the next life is recorded |
 | Empty thoughts < 10% | `empty_thoughts` | skeleton, full | built |
 | Typing speed in the overlay's ranges | `typing_speed_birth` (phase median), `typing_speed_writing` (every thought) | skeleton, full | built |
-| No word split across lines | `no_split_words` | skeleton, full | pending (D) |
+| No word split across lines | `no_split_words` | skeleton, full | built (D's `display.layout.verify_probe`, phase 1); pending only when the probe cannot load |
 | Thought-count rule (5.3) on this life | `thought_count_rule` | full, rehearsal | built (costmodel's rule logic) |
 | Reload silence; expected number of reloads | `reload_silence`, `reload_count` | full | built |
 | Reload noticing | `reload_noticing` | full, rehearsal, screen | built |
-| Bright words in the last 2 min ≤ 40 (flow) | `bright_words_last_2min` | full | pending (D) |
+| Bright words in the last 2 min ≤ 40 (flow) | `bright_words_last_2min` | full | built (D's probe, as above) |
 | Tokens/s last 5 min < 40% of first 5 min | `speed_decline` | full | built |
 | Speed never rises across a reload (review 2, F2; not yet in the 10.3 table) | `speed_monotonic` | full, rehearsal | built: mean `gen_end.tok_s` of up to `speed_monotonic_thoughts` (2) thoughts after each reload ≤ (1 + `speed_monotonic_tolerance` (0.05)) × the mean before; falls back to `vitals.tok_s`, read as the previous thought's speed. The cost model checks the same rule (`estimate.speed_monotonic`) |
 | Complete sentences ≥ 80%, 6-20 words, before erosion | `complete_sentences`, `sentence_length` | full, rehearsal, screen | built |
