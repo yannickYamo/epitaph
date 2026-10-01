@@ -103,8 +103,12 @@ cpu_period_us = 100000
 cpu_share = true
 progress_signals = ["cpu", "io", "majfault", "tokens"]
 token_gap_timeout_s = 90
-creature_network = "blocked"     # blocked | allowed
-thermal_limit_c = 80
+creature_network = "blocked"     # blocked | allowed (ADR-005)
+netblock_helper = ""             # root helper loading the nftables rule (deploy/sbin/epitaph-netblock); empty: not blocked
+netblock_probe = "1.1.1.1:443"   # selftest: an outbound TCP connect the creature must not make
+thermal_limit_c = 80             # thermal pause at or above this (the Pi 4 runs 40-57 °C)
+thermal_resume_c = 75            # ... until the CPU is back at this
+thermal_poll_s = 15              # how long each pause step waits before reading again
 watchdog = true
 
 [events]

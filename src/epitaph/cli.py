@@ -22,7 +22,6 @@ _log = logging.getLogger(__name__)
 
 # Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
 PLANNED: dict[str, tuple[str, str]] = {
-    "calibrate": ("measure working sets and set the death limit per model", "phase 2"),
     "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
     "bench": ("measure model speeds into bench/", "phase 2"),
     "post": ("publish each life's last line (V1.5)", "V1.5"),
@@ -262,6 +261,18 @@ def cmd_selftest(args: argparse.Namespace) -> int:
     return selftest.report(selftest.run_checks(_load(args)))
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """`epitaph calibrate`: working sets and the death level per ladder step, in a delegated
+    unit (the controller must be stopped); exit 0 when every step is reliable, else 1."""
+    from epitaph.body import calibrate
+
+    try:
+        return calibrate.run(args, _load(args))
+    except ValueError as e:
+        print(f"calibrate: {e}", file=sys.stderr)
+        return 2
+
+
 def cmd_display(args: argparse.Namespace) -> int:
     """`epitaph display`: draw the controller's events, here or through an SSH tunnel.
 
@@ -323,6 +334,15 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
     selftest.add_arguments(p)
     p.set_defaults(fn=cmd_selftest)
+
+    from epitaph.body import calibrate
+
+    p = sub.add_parser(
+        "calibrate", help="measure working sets and the death level per model and step"
+    )
+    _common(p)
+    calibrate.add_arguments(p)
+    p.set_defaults(fn=cmd_calibrate)
 
     p = sub.add_parser("ctl", help="talk to the running controller")
     p.add_argument("action", choices=["status", "new-life", "screenshot"])
