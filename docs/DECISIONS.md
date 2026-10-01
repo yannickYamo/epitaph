@@ -309,3 +309,23 @@ Three rules shaped every decision below.
 - **Trade-off.** On the Pi the controller needs a small privileged helper to write
   `scaling_max_freq`, and must restore the full clock at every death and at boot.
 
+
+### ADR-026: Material readings: it is shown what it lost, in its own words
+
+- **Context.** The owner wanted more drama about its environment disappearing, from data rather
+  than instructions. Raw telemetry and concept sentences made Qwen deny having an inner life.
+- **Decision.** When a thought is forgotten, the reading quotes its opening words instead of a
+  count. After each reload the new, lower-precision weights continue five words of one of its
+  kept sentences with no prompt around them, and the reading quotes the result as "your words
+  now". The temperature leaves the readings. Silent `logit_bias` penalties push back on the
+  clichés small models reach for, never named in the prompt.
+- **Why.** A count tells it something was lost; a quote shows it what. The echo is the most
+  literal form of the precision loss: the same words, from worse weights. Both are true, so the
+  prompt stays thin.
+- **Evidence.** [PROMPT_LOG.md](PROMPT_LOG.md), round 5: blind panel 3 put all three new lives
+  above the best one-hour life (means 39.3, 29.7, 29.0 against 23.7), first and last places
+  unanimous.
+- **Trade-off.** The echo costs about 40 s of each reload silence on the Pi (a raw completion
+  between a slot save and restore), and quotes add about 15 tokens per reading. Both are charged
+  in the cost model. A quote can feed repetition when a thought keeps its own opening; the echo
+  skips "I am" openings for that reason.
