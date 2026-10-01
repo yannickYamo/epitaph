@@ -34,6 +34,9 @@ wpm_writing_range = [3, 75]
 max_death_display_delay_s = 90
 first_word_after_boot_s = 240
 
+[estimate]
+max_first_words_s = 45           # dread plan W4: first words within 45 s of the silence's end
+
 # Estimated costs until spike S1b/S4 writes measured ones into bench/.
 # Keys are "<step>-<threads>"; rates are at full CPU share and scale with it.
 [costs]

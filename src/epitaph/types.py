@@ -218,6 +218,12 @@ class StreamEstimate:
     backlog_words: int = 0
     backlog_s: float = 0.0  # how long the screen would need to show the backlog
     max_buffer_letters: int = 0
+    # The birth (dread plan W4): the life time of the first word, and the seconds from the
+    # end of the silence before the life to it (the load left over from the silence, the
+    # system prompt read or restored, the first reading and sentence or thought).
+    first_word_t: float = 0.0
+    first_words_s: float = 0.0
+    birth_note: str = ""
 
     @property
     def first_starvation(self) -> float | None:

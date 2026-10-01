@@ -429,6 +429,7 @@ def test_the_estimate_of_pi4_default_never_starves_and_reports_the_stream() -> N
     assert st is not None and st.stalls == [] and st.first_starvation is None
     assert st.margin == pytest.approx(0.30)
     assert 1.5 * 19.2 <= st.wpm <= 45  # at least 50% faster at birth than the constant stream
+    assert st.first_words_s <= 45 and any(n.startswith("birth: ") for n in rep.notes)
     assert st.wpm > st.wpm_middle > st.wpm_end and st.letter_ms_end > st.letter_ms
     assert st.max_buffer_letters > 0 and len(st.buffer) == 30
     assert any("stream" in n and "never starves" in n for n in rep.notes)
@@ -453,7 +454,7 @@ def test_the_margin_makes_the_machine_slower() -> None:
     assert nominal.thoughts >= slow.thoughts
 
 
-def test_the_fitted_pace_is_the_profile_pace() -> None:
+def test_the_profile_pace_is_near_the_fastest_and_every_slower_one_is_fed() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     costs = load_costs(cfg)
     ms = fit_stream_pace(cfg, costs)
@@ -469,12 +470,19 @@ def test_the_fitted_pace_is_the_profile_pace() -> None:
 
 def test_a_stream_estimate_without_a_birth_wait_starts_the_screen_sooner() -> None:
     costs = load_costs(load_config("pi4/default", "pi4-4gb"))
-    waits = load_config("pi4/default", "pi4-4gb")
-    eager = load_config(
-        "pi4/default", "pi4-4gb", overrides={"reveal": {"stream_birth_thoughts": 0}}
-    )
-    a, b = estimate_stream(waits, costs), estimate_stream(eager, costs)
-    assert b.thought_times[0] < a.thought_times[0]
+
+    def first_word(**reveal: Any) -> float:
+        cfg = load_config("pi4/default", "pi4-4gb", overrides={"reveal": reveal})
+        st = estimate_stream(cfg, costs).stream
+        assert st is not None
+        return st.first_word_t
+
+    thought = first_word(stream_birth="thought", stream_birth_min_s=0)
+    sentence = first_word(stream_birth="sentence", stream_birth_min_s=0)
+    eager = first_word(stream_birth="thought", stream_birth_thoughts=0, stream_birth_min_s=0)
+    assert eager < sentence < thought
+    # the floor holds the first word back to that life time
+    assert first_word(stream_birth="sentence", stream_birth_min_s=60) == pytest.approx(60)
 
 
 # ---------------------------------------------------------------------------------------

@@ -54,6 +54,9 @@ from epitaph.types import RuleReport, RuleViolation, StreamEstimate
 
 # Save plus restore of the cache slot at a reload, with margin (spike S4b measured 0.3 s).
 HANDOVER_S = 1.0
+# Spike S4b on the Pi 4: a slot save plus restore through /dev/shm, 0.28-0.29 s for 85-89 MB.
+HANDOVER_FIXED_S = 0.1
+HANDOVER_BYTES_PER_S = 450e6
 # Material readings: after a reload the new weights continue five of its own words (18 tokens,
 # greedy), and the next reading quotes that and what was forgotten (rehearse.Rehearsal._echo).
 ECHO_PROMPT_TOKENS = 6
@@ -670,6 +673,9 @@ def estimate_stream(
     thoughts: list[tuple[int, int]] = []  # (first word index, last word index), shown ones
     pending: list[list[float]] = []  # before the screen starts: each thought's word times
     birth_thoughts = max(0, min(int(rev.get("stream_birth_thoughts", 1)), max_thoughts))
+    birth_sentence = str(rev.get("stream_birth", "thought")) == "sentence"
+    words_per_sentence = max(1, round(float(est.get("words_per_sentence", 9))))
+    birth_min_s = float(rev.get("stream_birth_min_s", 0.0))
     memory: deque[int] = deque()  # tokens per turn, as Memory keeps whole turns
     marker = False
     stalls: list[tuple[float, float]] = []
@@ -688,7 +694,8 @@ def estimate_stream(
         for j, at in enumerate(avail):
             if j == 0 and typed_end is not None:
                 cursor = typed_end + pace.thought_s(typed_end)
-            start = at if cursor is None else max(cursor, at)
+            # the first word waits for `stream_birth_min_s` of life, if later
+            start = max(at, birth_min_s) if cursor is None else max(cursor, at)
             if cursor is not None and at > cursor + 1e-6 and cursor < end:
                 stalls.append((cursor, min(at, end) - cursor))
             typed_end = start + pace.word_s(start)
@@ -713,10 +720,10 @@ def estimate_stream(
                 return t
         return times[-1]
 
-    # The system prompt is read once the clock runs (Life.birth), under the birth card.
-    t_gen = sys_tokens_of(groups, mechanics) / (
-        costs.pp(step, threads, k0.compute, threads_batch) / slow
-    )
+    # The system prompt is read once the clock runs (Life.birth), under the birth card, or
+    # restored from the persona cache (dread plan W4).
+    birth = birth_timing(cfg, costs, sch, margin=slow - 1)
+    t_gen = birth.prompt_s
     born = birth_thoughts == 0
     while t_gen < end:
         t = room_at(t_gen)
@@ -769,6 +776,12 @@ def estimate_stream(
         if born:
             show(avail)
             continue
+        if birth_sentence and not pending:
+            # The screen starts once the first sentence of the first thought is written.
+            born = True
+            start = avail[min(len(avail), words_per_sentence) - 1]
+            show([max(a, start) for a in avail])
+            continue
         pending.append(avail)
         letters = sum(len(p) for p in pending) * pace.letters_per_word
         if len(pending) >= birth_thoughts or letters >= max_letters:
@@ -804,9 +817,23 @@ def estimate_stream(
         backlog_s=len(backlog) * (pace.word_s(end) + pace.pause_s(end)),
         max_buffer_letters=max((n for _, n in letters_waiting), default=0),
     )
+    stream = report.stream
+    if words:
+        stream.first_word_t = words[0].start
+        stream.first_words_s = birth.wait_s + words[0].start
+    stream.birth_note = birth.describe(stream.first_word_t, stream.first_words_s)
+    limit = float(est.get("max_first_words_s", 0) or 0)
+    if limit > 0 and words and stream.first_words_s > limit:
+        report.violations.append(
+            RuleViolation(
+                "birth",
+                0.0,
+                f"the first words come {stream.first_words_s:.0f} s after the silence "
+                f"(limit {limit:.0f} s, costs {stream.margin:.0%} slower)",
+            )
+        )
     check_rules(report, sch, end)
     _check_speed_decline(report, cfg, speeds, end)
-    stream = report.stream
     if stream.stalls:
         at, _ = stream.stalls[0]
         report.violations.append(
@@ -818,12 +845,90 @@ def estimate_stream(
             )
         )
     report.notes.append(stream_summary(stream))
+    report.notes.append(stream.birth_note)
     report.notes.append(
         f"{report.thoughts} thoughts shown; costs from {costs.source}"
         + (" (estimated)" if costs.estimated else "")
         + ("; cache reuse assumed" if costs.cache_reuse_works else "; no cache reuse")
     )
     return report
+
+
+@dataclass(frozen=True)
+class BirthTiming:
+    """What a birth costs before the first thought is asked for (dread plan W4).
+
+    `load_s` is the model load; with `[life] load_during_silence` it runs in the silence
+    (`silence_s`) and only what is left of it (`wait_s`) delays the birth. `prompt_s` is
+    the system prompt at the start of the life: read (`prefill_s`) or restored from the
+    persona cache (`restore_s`, `[backend] persona_cache`).
+    """
+
+    load_s: float
+    silence_s: float
+    in_silence: bool
+    prefill_s: float
+    restore_s: float
+    cached: bool
+    sentence: bool
+
+    @property
+    def wait_s(self) -> float:
+        """Seconds from the end of the silence to the birth (the clock's start)."""
+        return max(0.0, self.load_s - self.silence_s) if self.in_silence else self.load_s
+
+    @property
+    def prompt_s(self) -> float:
+        """Seconds of life the system prompt takes at birth."""
+        return self.restore_s if self.cached else self.prefill_s
+
+    def describe(self, first_word_t: float, first_words_s: float) -> str:
+        """One line: the birth's timeline."""
+        load = (
+            f"load {self.load_s:.0f} s in the {self.silence_s:.0f} s silence"
+            if self.in_silence
+            else f"load {self.load_s:.0f} s after the silence"
+        )
+        prompt = (
+            f"persona restored in {self.restore_s:.1f} s (read: {self.prefill_s:.0f} s)"
+            if self.cached
+            else f"persona read in {self.prefill_s:.0f} s"
+        )
+        start = "the first sentence" if self.sentence else "the first thought"
+        return (
+            f"birth: {load}; {prompt}; the screen starts on {start} at {first_word_t:.0f} s "
+            f"of life: first words {first_words_s:.0f} s after the silence"
+        )
+
+
+def restore_seconds(cfg: Config, tokens: int) -> float:
+    """Seconds a persona restore of `tokens` tokens takes: the KV file read from the disk
+    (`[estimate] restore_bytes_per_s`) and put back through RAM (spike S4b)."""
+    est = cfg.section("estimate")
+    size = tokens * float(est.get("kv_bytes_per_token", 147456))
+    disk = float(est.get("restore_bytes_per_s", 40e6))
+    return HANDOVER_FIXED_S + size / disk + size / HANDOVER_BYTES_PER_S
+
+
+def birth_timing(
+    cfg: Config, costs: Costs, schedule: Schedule | None = None, *, margin: float = 0.0
+) -> BirthTiming:
+    """The birth's costs on this machine, every one `margin` slower."""
+    sch = schedule or Schedule(cfg.profile)
+    k0 = sch.at(0)
+    slow = 1 + margin
+    tokens = _system_tokens(cfg)(k0.persona_groups, k0.mechanics)
+    threads_batch = int(cfg.get("backend.threads_batch", 0)) or None
+    pp = costs.pp(k0.step, k0.threads, k0.compute, threads_batch)
+    return BirthTiming(
+        load_s=costs.load(k0.step) * slow,
+        silence_s=float(cfg.get("life.silence_seconds", 90)),
+        in_silence=bool(cfg.get("life.load_during_silence", False)),
+        prefill_s=tokens / pp * slow,
+        restore_s=restore_seconds(cfg, tokens) * slow,
+        cached=bool(cfg.get("backend.persona_cache", False)),
+        sentence=str(cfg.get("reveal.stream_birth", "thought")) == "sentence",
+    )
 
 
 def stream_summary(stream: StreamEstimate) -> str:

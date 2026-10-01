@@ -14,6 +14,10 @@
   (`"slot"`, spike S4b): the old server saves its slot to `slot_save_path` (RAM, /dev/shm),
   the new quant restores it, and cache reuse absorbs the reload's cut on the next request.
   Any failure falls back to the re-read.
+- The persona cache (`persona_cache_dir`, dread plan W4): the first `prefill` of a system
+  prompt saves the slot to disk; every later one on the same server, model and prompt
+  restores it instead of reading it again (`persona_cache.py`). Any failure falls back to
+  the prefill. `last_prefill` says what happened.
 
 Flags at llama.cpp b11277: `--no-mmap` no longer exists; `--load-mode none` replaces it.
 `--cache-ram 0` keeps the server from holding prompt caches in host RAM (8 GB by default).
@@ -35,6 +39,7 @@ from typing import Any
 import httpx
 
 from epitaph.backend.base import BackendError, ContextFull, CreatureDied
+from epitaph.backend.persona_cache import PersonaStore, PrefillInfo, persona_key
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
 _PROBE = Msg("user", "x")
@@ -111,6 +116,9 @@ class ServerSettings:
     reload_handover: str = "reread"
     # Where slot files go (--slot-save-path). RAM: the SD card reads 40 MB/s.
     slot_save_path: str = "/dev/shm/epitaph-slots"
+    # Where the persona cache keeps its slot files (None: off; the system prompt is read at
+    # every birth). On disk: a reboot keeps them.
+    persona_cache_dir: str | None = None
 
     def __post_init__(self) -> None:
         """Reject an unknown `reload_handover`."""
@@ -149,7 +157,20 @@ class ServerSettings:
             slot_timeout_s=float(cfg.get("backend.slot_timeout_s", cls.slot_timeout_s)),
             reload_handover=str(cfg.get("backend.reload_handover", cls.reload_handover)),
             slot_save_path=str(cfg.get("backend.slot_save_path", cls.slot_save_path)),
+            persona_cache_dir=persona_cache_dir(cfg),
         )
+
+
+def persona_cache_dir(cfg: Any) -> str | None:
+    """`[backend] persona_cache_dir` ("auto": `<state_dir>/cache`), None when the cache is off."""
+    if not bool(cfg.get("backend.persona_cache", False)):
+        return None
+    raw = str(cfg.get("backend.persona_cache_dir", "auto"))
+    return str(Path(cfg.state_dir) / "cache") if raw == "auto" else raw
+
+
+def _uses_slots(s: ServerSettings) -> bool:
+    return s.reload_handover == "slot" or s.persona_cache_dir is not None
 
 
 def _opt_int(v: Any) -> int | None:
@@ -183,7 +204,7 @@ def build_argv(s: ServerSettings, model: ModelSpec, quant: str, threads: int) ->
         argv += ["--load-mode", "none"]
     if s.swa_full is True or (s.swa_full == "auto" and model.sliding_window):
         argv += ["--swa-full"]
-    if s.reload_handover == "slot":
+    if _uses_slots(s):
         argv += ["--slot-save-path", str(Path(s.slot_save_path).expanduser())]
     argv += list(s.extra_args)
     return argv
@@ -337,7 +358,15 @@ class LlamaServerBackend:
         self.last_timings: dict[str, Any] | None = None
         self.last_handover = Handover()
         self._model_name: str | None = None
+        self._model: ModelSpec | None = None
+        self._quant: str | None = None
         self._restored = False
+        self.last_prefill = PrefillInfo()
+        self.persona = (
+            PersonaStore(settings.persona_cache_dir, settings.slot_save_path)
+            if settings.persona_cache_dir
+            else None
+        )
         self.strict_roles = False  # set at start(): the template wants alternating turns
 
     # -- process -----------------------------------------------------------------------------
@@ -369,7 +398,7 @@ class LlamaServerBackend:
         self._restored = False
         saved = await self._save_slot(model)
         await self.stop()
-        if self.s.reload_handover == "slot":
+        if _uses_slots(self.s):
             # llama-server refuses to start when --slot-save-path does not exist, and /dev/shm
             # is emptied at every boot: create it before every spawn, not only at a reload.
             Path(self.s.slot_save_path).expanduser().mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -396,6 +425,7 @@ class LlamaServerBackend:
             raise
         self.load_s = loop.time() - t0
         self._model_name = model.name
+        self._model, self._quant = model, quant
         if saved is not None:
             await self._restore_slot(saved)
 
@@ -637,7 +667,9 @@ class LlamaServerBackend:
 
         Used after a load to read the system prompt during the birth card or the reload
         silence, so the first thought only reads its reading (S1b: the system prompt alone is
-        about 100 s of prompt processing for a 3B on the Pi 4).
+        about 100 s of prompt processing for a 3B on the Pi 4). With the persona cache, a
+        system prompt read before on this server and model is restored instead (and 0 is
+        returned); the first one read is saved. `last_prefill` says which.
         """
         if not self._alive():
             raise CreatureDied(self.status())
@@ -645,7 +677,89 @@ class LlamaServerBackend:
             # The restored cache already starts with this prompt and holds the memory after
             # it; a prefill request would cut the cache back to the system prompt.
             self._restored = False
+            self.last_prefill = PrefillInfo("handover")
             return 0
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        key = self._persona_key(messages)
+        error: str | None = None
+        if key is not None:
+            info = await self._restore_persona(key)
+            if info.mode == "restore":
+                info.seconds = loop.time() - t0
+                self.last_prefill = info
+                return 0
+            error = info.error
+        n = await self._prefill_request(messages)
+        info = PrefillInfo("prefill", tokens=n, error=error)
+        if key is not None:
+            await self._save_persona(key, info)
+        info.seconds = loop.time() - t0
+        self.last_prefill = info
+        return n
+
+    # -- the persona cache (dread plan W4) -----------------------------------------------------
+
+    def _persona_key(self, messages: list[Msg]) -> str | None:
+        # Only the system prompt is cached: a memory re-read (a rehearsal's re-warm) never is.
+        if self.persona is None or self._model is None or self._quant is None:
+            return None
+        if not messages or any(m.role != "system" for m in messages):
+            return None
+        s, model = self.s, self._model
+        return persona_key(
+            model_file=Path(s.models_dir).expanduser() / model.name / f"{self._quant}.gguf",
+            server_bin=Path(s.bin).expanduser(),
+            model=model.name,
+            quant=self._quant,
+            ctx=s.ctx,
+            cache_type_k=s.cache_type_k,
+            cache_type_v=s.cache_type_v,
+            swa_full=s.swa_full is True or (s.swa_full == "auto" and model.sliding_window),
+            messages=messages,
+        )
+
+    async def _restore_persona(self, key: str) -> PrefillInfo:
+        """Restore the cached slot of `key`; mode "restore" on success, else why not."""
+        store = self.persona
+        if store is None or not store.has(key):
+            return PrefillInfo("prefill")
+        try:
+            size = await asyncio.to_thread(store.stage, key)
+        except OSError as e:
+            return PrefillInfo("prefill", error=f"stage failed: {e!r}")
+        try:
+            r = await self._slot_action("restore", store.slot_name(key))
+        finally:
+            store.unstage(key)
+        if r is None or not r.get("n_restored"):
+            if r is not None and "status" in r:
+                # A file the server refused to read is dropped: the prefill saves a good one.
+                store.forget(key)
+            _log.warning("persona restore failed, the system prompt is read: %s", r)
+            return PrefillInfo("prefill", error=f"restore failed: {r}")
+        return PrefillInfo("restore", tokens=int(r["n_restored"]), file_bytes=size)
+
+    async def _save_persona(self, key: str, info: PrefillInfo) -> None:
+        """Save the slot after a prefill for the next births; a failure only costs that."""
+        store = self.persona
+        if store is None:
+            return
+        r = await self._slot_action("save", store.slot_name(key))
+        if r is None or not r.get("n_saved"):
+            store.unstage(key)
+            info.error = info.error or f"save failed: {r}"
+            _log.warning("persona save failed, the next birth reads it again: %s", r)
+            return
+        try:
+            info.file_bytes = await asyncio.to_thread(store.keep_saved, key)
+        except OSError as e:
+            info.error = info.error or f"keep failed: {e!r}"
+            _log.warning("persona cache file not kept: %r", e)
+            return
+        info.saved = True
+
+    async def _prefill_request(self, messages: list[Msg]) -> int:
         for attempt in range(2):
             body = request_body(
                 [*self._roles(messages), _PROBE], Sampling(temperature=0.0, min_p=0.0), 1

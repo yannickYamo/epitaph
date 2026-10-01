@@ -55,6 +55,13 @@ __all__ = [
 _SENTENCE_END = ".?!…"
 _CLAUSE_END = ",;:—–"
 _CLOSERS = "\"'”’»)]}›"
+STREAM_BIRTHS = ("thought", "sentence")
+
+
+def ends_sentence(text: str) -> bool:
+    """Whether a word ends a sentence (closing quotes ignored)."""
+    core = text.rstrip(_CLOSERS)
+    return bool(core) and core[-1] in _SENTENCE_END
 
 
 @dataclass(frozen=True)
@@ -652,9 +659,11 @@ class StreamScreen:
     not there when the screen is ready for it, the screen waits: a stall (starvation),
     recorded with its length. The writer keeps the buffer bounded with `wait_for_room`: at
     most `max_thoughts` generated thoughts and fewer than `max_letters` letters waiting.
-    At birth the screen waits until `birth_thoughts` thoughts are generated: the only wait
-    the stream allows. `stop` (the death) ends the stream where it is: the words still
-    waiting die with it.
+    At birth the screen waits until `birth_thoughts` thoughts are generated, or with
+    `birth = "sentence"` until the first sentence is (dread plan W4: the first words come
+    sooner; the cost model checks that the rest keeps up), and never before `birth_min_s`
+    of life (a head start for a faster birth pace): the only wait the stream allows.
+    `stop` (the death) ends the stream where it is: the words still waiting die with it.
     """
 
     def __init__(
@@ -673,10 +682,17 @@ class StreamScreen:
         stall_report_s: float = 0.5,
         seed: int = 0,
         curve: StreamCurve | None = None,
+        birth: str = "thought",
+        birth_min_s: float = 0.0,
     ) -> None:
         """A screen on `clock` typing at this pace; see the class for the bounds."""
         if letter_ms <= 0:
             raise ValueError("the stream's letter_ms must be above 0")
+        if birth not in STREAM_BIRTHS:
+            raise ValueError(f"the stream's birth must be one of {STREAM_BIRTHS}, not {birth!r}")
+        self.birth = birth
+        self.birth_min_s = max(0.0, birth_min_s)
+        self._sentence = False  # a whole sentence is generated (birth = "sentence")
         self.clock = clock
         self.letter_ms = letter_ms
         self.curve = curve or StreamCurve.constant(letter_ms)
@@ -723,6 +739,8 @@ class StreamScreen:
             stall_report_s=float(rev.get("stream_stall_report_s", 0.5)),
             seed=seed,
             curve=StreamCurve.from_config(cfg, schedule),
+            birth=str(rev.get("stream_birth", "thought")),
+            birth_min_s=float(rev.get("stream_birth_min_s", 0.0)),
         )
 
     # -- the writer's side ---------------------------------------------------------------
@@ -732,6 +750,7 @@ class StreamScreen:
         if self.stopped:
             return
         self._items.append(word)
+        self._sentence = self._sentence or ends_sentence(word.text)
         self._letters += len(word.text)
         self.stats.max_backlog_letters = max(self.stats.max_backlog_letters, self._letters)
         self._wake.set()
@@ -813,6 +832,7 @@ class StreamScreen:
         while not self.stopped:
             # born once enough is written, or once the writer cannot write more
             born = born or self._marks >= self.birth_thoughts or not self.has_room()
+            born = born or (self.birth == "sentence" and (self._sentence or self._marks > 0))
             if not self._items or not born:
                 self._wake.clear()
                 await self._wake.wait()
@@ -820,6 +840,9 @@ class StreamScreen:
             now = self.clock.elapsed()
             if cursor is not None and now < cursor - STALL_EPS_S:
                 await self.clock.sleep(cursor - now)
+                continue
+            if cursor is None and now < self.birth_min_s - STALL_EPS_S:
+                await self.clock.sleep(self.birth_min_s - now)  # the first word's floor
                 continue
             item = self._items.popleft()
             self._room.set()
@@ -893,6 +916,16 @@ class Spoken:
     hit: BannedHit | None = None
     cut_at_host: bool = False
     died: CreatureStatus | None = None
+    # life times of the first and the latest token of the current request
+    first_token_t: float | None = None
+    last_token_t: float | None = None
+
+    def partial_tok_s(self) -> float | None:
+        """Tokens/s of a request cut by the death, from its own token times (None if unknown)."""
+        a, b = self.first_token_t, self.last_token_t
+        if a is None or b is None or b <= a or self.tokens < 2:
+            return None
+        return round((self.tokens - 1) / (b - a), 3)
 
     @property
     def text(self) -> str:
@@ -921,6 +954,7 @@ async def _requests(
         regenerate = False
         tokens = 0
         ended = False
+        result.first_token_t = result.last_token_t = None
         try:
             async for chunk in chunks:
                 if chunk.done:
@@ -937,6 +971,9 @@ async def _requests(
                     break
                 tokens += 1
                 result.tokens = tokens
+                result.last_token_t = pacer.clock.elapsed()
+                if result.first_token_t is None:
+                    result.first_token_t = result.last_token_t
                 r = pacer.push(chunk.text)
                 if r.regenerate or r.stop:
                     regenerate = r.regenerate
@@ -1031,7 +1068,10 @@ async def write_ahead(
         await _requests(pacer, stream, turn, emit, result)
     except CreatureDied as e:
         result.died = e.status
-        emit("gen_end", turn=turn, prompt_n=None, tokens=result.tokens, tok_s=None)
+        # the thought the death cut still measured the machine's last speed (the stream's
+        # last minutes often end no thought: speed_decline needs this sample)
+        tok_s = result.partial_tok_s()
+        emit("gen_end", turn=turn, prompt_n=None, tokens=result.tokens, tok_s=tok_s)
         if on_died is not None:
             on_died(e.status)
         pacer.finish_thought(dead=True)
