@@ -489,7 +489,7 @@ changes, and the stream still never stops between the first word and the death.*
   - **III, the world is disappearing (14:00-22:00).** A loss about every 90 s: the radio, more
     services, the light, the screen to 70%, a deeper memory cut, the clock.
   - **IV, darkness (22:00-29:30).** A loss every 45-60 s: the CPU share and the clock to their
-    floors (1.2 cores, 800 MHz), the memory down to its last thought (100 tokens), the screen to
+    floors (1.5 cores, 900 MHz), the memory down to its last thought (100 tokens), the screen to
     50% then 25%.
   - **Death (end-0:30)** as before: the RAM is taken and the kernel kills it. Its last reading,
     `ram 2650 MB taken`, goes to the screen at once, though it is never answered.
@@ -512,8 +512,12 @@ changes, and the stream still never stops between the first word and the death.*
   marks the moment the loss happened.
 - **Freshness.** Several lives opened most thoughts on "I am still here". Two silent measures,
   never in the prompt: the " still" penalty goes from -4 to -6, and each request biases the
-  distinctive first words of the last three thoughts' openings by -3 (`[sampling]
+  distinctive first words of the last three thoughts' openings by a further -3 (`[sampling]
   freshness_*`), skipping "I" and stop words. It is per request and never stops the stream.
+  Every bias on a " word" now carries its space-less twin "word" too: biased alone, the spaced
+  token pushes the model to the twin and the words fuse on screen (with " still" at -100 the 4B
+  wrote "I amstill here"; the missing spaces seen in quotes, "astate", "actof", are the same
+  escape from a penalty).
   `verify-life` reports the share of thoughts sharing a three-word opening and the sentences
   repeated across thoughts; a rehearsal fails when more than two thoughts share an opening.
 - **Forgotten thoughts are quoted by their most distinctive sentence**: the longest one that
@@ -521,9 +525,20 @@ changes, and the stream still never stops between the first word and the death.*
   words (which were mostly "I am still here").
 - **How the times were fitted.** The quiet readings are shorter (about 20 tokens after birth,
   `estimate.reading_tokens.quiet`), and the cost model refitted the dynamic pace with
-  `--fit-pace`: 220 ms a letter at birth (about 37 words a minute), gamma 0.5, a 10-minute lead,
-  522 ms at the end; it never starves with every cost 15% slower, and about three thoughts are
-  shown in each movement (3, 5, 3, 3 in the estimate).
+  `--fit-pace`. A first fit (220 ms at birth, the floors at 1.2 cores and 800 MHz, every cost
+  15% slower) starved on the real model: in three of six rehearsed lives the screen waited
+  33 s, 75 s and 107 s for words in the last minutes, since the 4B fills its 70 tokens (94%, against
+  the assumed 85%) and the laptop's rehearsal ran later than the estimate. So the share of `max_tokens`
+  for a stream replay is now 0.95 (`estimate.stream_fill`), `estimate.stream_margin` 0.30, and
+  the floors 1.5 cores and 900 MHz. Starvation also proved not monotonic in the pace (a slower
+  screen holds the writer back at the buffer's bound), so `--fit-pace` now keeps a pace only
+  when it and the six paces just slower never starve, with the margin and with half as much
+  again; a robust pace leaves about a thought unshown at the death, so the backlog allowed is
+  40 words (`estimate.stream_max_backlog_words`, 8 before). The fit: 255 ms a letter at birth
+  (about 34 words a minute), gamma 0.75, a 10-minute lead, 721 ms from 21:00 to the death
+  (about 12); three thoughts shown in each of movements I to III and one or two in IV at the
+  measured costs (thoughts end at 3.7, 5.2, 6.6 / 8.2, 9.8, 11.7 / 14.1, 17.5, 21.4 / 25.5
+  minutes, and a cut one at the death).
 - **Trade-off.** The world's losses are scenery the visitor cannot always check (a service on a
   board), so the screen dims for real and the readings name each loss. Stopping services on the
   installation machine is restricted to an allowed list and always undone. The freshness guard

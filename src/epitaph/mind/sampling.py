@@ -27,7 +27,7 @@ from typing import Any
 
 from epitaph.types import Knobs, Sampling
 
-__all__ = ["freshness_bias", "latin_only_at", "opening_words", "sampling_for"]
+__all__ = ["freshness_bias", "latin_only_at", "opening_words", "sampling_for", "with_twins"]
 
 
 def latin_only_at(section: Mapping[str, Any], step: int) -> bool:
@@ -75,8 +75,9 @@ def freshness_bias(
 
     `recent` holds the words of the thoughts already written, oldest first; the last
     `freshness_thoughts` are looked at, their first `freshness_words` words each. Each
-    distinctive word is biased by `freshness_bias` as " word" (mid-text) and "Word" (the
-    opening token). Nothing when the bias is 0 or no thought was written yet.
+    distinctive word is biased by `freshness_bias` as " word" and " Word" (with their
+    space-less twins, "word" and "Word", the opening token: see `with_twins`). Nothing when
+    the bias is 0 or no thought was written yet.
     """
     bias = float(section.get("freshness_bias", 0.0))
     k = int(section.get("freshness_thoughts", 3))
@@ -90,17 +91,35 @@ def freshness_bias(
                 words.append(w)
     out: list[tuple[str, float]] = []
     for w in words:
-        out += [(f" {w}", bias), (w.capitalize(), bias)]
+        out += [(f" {w}", bias), (f" {w.capitalize()}", bias)]
     return tuple(out)
+
+
+def with_twins(bias: Iterable[tuple[str, float]]) -> dict[str, float]:
+    """Each " word" bias also on "word", its space-less twin.
+
+    A word token with its leading space has a twin without it. Biased alone, the spaced one
+    pushes the model to the twin, and the words fuse on screen ("I amstill here", seen with
+    " still" at -100 on the 4B; DRY does the same to " of" in "actof"). So both carry the
+    bias. A twin set explicitly keeps its own value."""
+    out: dict[str, float] = {}
+    for w, b in bias:
+        out[w] = b
+    for w, b in list(out.items()):
+        bare = w[1:]
+        if w.startswith(" ") and bare.strip() and bare not in out:
+            out[bare] = b
+    return out
 
 
 def _merge_bias(
     static: Iterable[tuple[str, float]], extra: Iterable[tuple[str, float]]
 ) -> tuple[tuple[str, float], ...]:
-    """The static biases with the guard's added; a string in both keeps the stronger one."""
-    merged: dict[str, float] = {}
-    for w, b in (*static, *extra):
-        merged[w] = min(b, merged[w]) if w in merged else b
+    """The static biases with the guard's added on top (a word the guard names is pushed
+    further than its static bias alone), each with its space-less twin."""
+    merged = with_twins(static)
+    for w, b in with_twins(extra).items():
+        merged[w] = merged.get(w, 0.0) + b
     return tuple(merged.items())
 
 

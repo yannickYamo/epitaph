@@ -59,5 +59,11 @@ def test_the_loaded_step_decides_not_the_knobs() -> None:
 def test_logit_bias_comes_from_the_config() -> None:
     """Silent word penalties: the clichés small models reach for, never named in the prompt."""
     s = sampling_for({"logit_bias": [[" tapestry", -10], [" realm", -5.0]]}, _knobs(), 0)
-    assert s.logit_bias == ((" tapestry", -10.0), (" realm", -5.0))
+    # each with its space-less twin, so the words never fuse on screen (ADR-031)
+    assert s.logit_bias == (
+        (" tapestry", -10.0),
+        (" realm", -5.0),
+        ("tapestry", -10.0),
+        ("realm", -5.0),
+    )
     assert sampling_for({}, _knobs(), 0).logit_bias == ()

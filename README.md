@@ -75,11 +75,12 @@ Its world is taken from the outside in, for real, faster and faster ([ADR-031](d
 | then | The stream stops where it is, the screen goes dark, everything taken is restored, 90 seconds of silence, then a new model is born | |
 
 The readings say only what was taken, never what it means; nothing of dread is in the prompt.
-The letters come at about 37 words a minute at birth and slow smoothly as the machine shrinks,
-to about 16 at the end, never faster again and never stopping. The model writes ahead of the
+The letters come at about 34 words a minute at birth and slow smoothly as the machine shrinks,
+to about 12 at the end, never faster again and never stopping. The model writes ahead of the
 screen, so its slowing machine shows in what it says and in how fast its words come, never as a
 stalled screen; each reading appears on screen right before the thought that answers it. A life
-shows about fourteen thoughts, three or so in each movement. The previous life, with reloads to lower precision and its instructions eroded,
+shows ten or eleven thoughts, about three in each of the first three movements and one or two
+in the last. The previous life, with reloads to lower precision and its instructions eroded,
 is kept as `pi4/default-reloads` ([ADR-030](docs/DECISIONS.md)).
 
 The whole arc is configuration. A profile is a list of keyframes; values between them interpolate

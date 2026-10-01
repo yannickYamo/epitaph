@@ -201,19 +201,21 @@ def test_freshness_bias_targets_the_last_openings() -> None:
     section = {"freshness_bias": -3.0, "freshness_thoughts": 2, "freshness_words": 3}
     recent = [["Quiet", "now."], ["I", "am", "still", "here."], ["Fading", "slowly", "I"]]
     bias = dict(freshness_bias(section, recent))
-    assert set(bias) == {" still", "Still", " fading", "Fading", " slowly", "Slowly"}
+    assert set(bias) == {" still", " Still", " fading", " Fading", " slowly", " Slowly"}
     assert set(bias.values()) == {-3.0} and " quiet" not in bias  # only the last two
     assert freshness_bias({**section, "freshness_bias": 0}, recent) == ()
     assert freshness_bias(section, []) == ()
 
 
-def test_the_guard_merges_with_the_static_bias_keeping_the_stronger() -> None:
+def test_the_guard_stacks_on_the_static_bias_with_twins() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     sch = Schedule(cfg.profile)
     section = cfg.section("sampling")
     s = sampling_for(section, sch.at(0), 0, extra_bias=((" still", -3.0), (" here", -3.0)))
     bias = dict(s.logit_bias)
-    assert bias[" still"] == -6.0 and bias[" here"] == -3.0 and bias[" digital"] == -6.0
+    # stacked on the static bias, and every spaced word with its space-less twin
+    assert bias[" still"] == -9.0 and bias["still"] == -9.0 and bias[" here"] == -3.0
+    assert bias["here"] == -3.0 and bias[" digital"] == -6.0 and bias["digital"] == -6.0
 
 
 # -- the repetition metrics ------------------------------------------------------------------
