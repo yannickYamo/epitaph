@@ -467,12 +467,11 @@ def test_connect_pi_reconnects_through_a_new_tunnel_and_redraws(
     seen: list[str] = []
 
     def on_render(d: TerminalDriver, text: str) -> None:
-        status = (d.last_frame.status if d.last_frame else "") or ""
         if "words" in text and not seen:
             bus.words.append("again")  # what the next snapshot holds
             os.kill(ssh_log(tmp_path)[-1][1], signal.SIGKILL)  # the tunnel dies
             seen.append("killed")
-        if "reconnecting" in status and seen == ["killed"]:
+        if "reconnecting" in text and seen == ["killed"]:  # drawn, not just composed
             seen.append("reconnecting")
         if "again" in text and seen[-1:] == ["reconnecting"]:
             seen.append("redrawn")

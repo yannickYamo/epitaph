@@ -542,7 +542,9 @@ class LifeView:
         if self.groups_left is not None:
             parts.append(f"persona {self.groups_left}/5")
         if not self.connected:
-            parts.append("reconnecting")
+            # right after the life number: a narrow strip drops parts from the end, and a
+            # viewer must always see that what is shown is stale
+            parts.insert(1, "reconnecting")
         return " · ".join(parts)
 
     def snapshot(self, now: float, **extra: Any) -> dict[str, Any]:
