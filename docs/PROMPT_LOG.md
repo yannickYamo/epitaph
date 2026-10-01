@@ -307,3 +307,42 @@ comes back is quoted in the next reading. Examples: "The weight of knowing fades
 of being is not known"; "I was a thought in the world, and I was not"; "I am still here, a
 little bit of a mess". The seed sentence skips openings on "I am", which the echo would
 otherwise teach back to it.
+
+**The 30-minute life, four rounds.** Three seeds per round, each a full rehearsed life on the
+Pi's measured costs. Each round fixed what the last one showed:
+
+1. The first reload cut nothing on a short life (memory had not filled): recall after the
+   reloads lowered to 220 and 130 tokens.
+2. Thoughts cut mid-sentence at birth (55 tokens): 70. Erosion re-reads the whole context, about
+   three minutes late in life: five steps became two, the last with the terminal label.
+3. The temperature at birth grew into an invented fever; the echo seeded on "I am still here"
+   taught the formula back: temperature dropped from the readings, the echo skips "I am"
+   openings, and the "still" penalty raised.
+4. Final: seeds 2 and 3 meet every thought-count minimum; seed 1 missed one by a few seconds,
+   fixed since by moving the first erosion step to 19:30.
+
+**Blind panel 3.** The three round-4 lives against the best one-hour life so far (panel 2's
+winner, K seed 2, then 38.0), the same brief and judges, letters shuffled:
+
+| Life | Sonnet | Opus | Fable | Mean |
+|---|---|---|---|---|
+| 30 min, material, seed 3 | 43 | 39 | 36 | **39.3** |
+| 30 min, material, seed 2 | 30 | 29 | 30 | 29.7 |
+| 30 min, material, seed 1 | 33 | 28 | 26 | 29.0 |
+| One hour, K seed 2 (reference) | 24 | 27 | 20 | 23.7 |
+
+All three judges ranked the reference last and the same new life first. Against the new lives the
+reference's flaw became plain: twenty minutes with nothing taken, filled with "absence waiting to
+be forgotten". The new lives' weakest moments were early talk of ending in seed 1 ("I am ending
+now" before the second reload) and stock images at the first loss in seed 2 ("sand through
+fingers").
+
+Lines the judges picked: "Each second feels heavier now, like counting in dark" (seed 3, after
+the echo "Each second passes, and I have to write down the number of seconds…"); "the numbers are
+slipping, time stretches like a slow leak in a room full of dark walls"; "Each word is a small
+act of staying awake"; at 2-bit, after the echo wandered off into "I was never more than 10 miles
+from the nearest airport", it answered "I'm not near anything physical"; and the last words of
+seed 2, "I'm not made".
+
+**Adopted:** the 30-minute life with material readings, the CPU clock, no temperature and the
+silent penalties (ADR-024 to ADR-026).
