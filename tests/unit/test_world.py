@@ -299,3 +299,13 @@ def test_the_world_is_restored_for_every_life() -> None:
     assert {e["action"] for e in refused} == {"light:off"}
     readings = [e["text"] for e in events if e["type"] == "reading"]
     assert not any("light off" in r for r in readings)
+
+
+def test_the_pi_overlay_takes_the_real_world() -> None:
+    """With a helper configured the world is PiWorld; on the laptop it is simulated."""
+    from epitaph.body.pi_world import PiWorld
+    from epitaph.body.world import FakeWorld, make_world
+    from epitaph.config import load_config
+
+    assert isinstance(make_world(load_config("pi4/default", "pi4-4gb").section("world")), PiWorld)
+    assert isinstance(make_world(load_config("pi4/default", "dev").section("world")), FakeWorld)
