@@ -94,14 +94,21 @@ def test_typing_cursor_fade_dim_and_cards(tmp_path: Path) -> None:
         d.screenshot(str(tmp_path / "fade.png"))
         mid = PLAIN.word("fading", 0.5)
         assert any(abs(sum(c) - sum(mid)) < 12 for c in pixels(tmp_path / "fade.png"))
+        d.handle(word(1, 1, "again", 0, life=4))
         d.handle(ev("reload", life=4, **{"from": "Q6_K", "to": "Q4_K_M"}))
+        d.render()
+        d.screenshot(str(tmp_path / "reload.png"))
+        c = shot.measure_contrast(tmp_path / "reload.png")
+        assert c["ratio"] >= 12  # the text stays readable during a reload
+        assert PLAIN.dimmed(PLAIN.live) in pixels(tmp_path / "reload.png")  # the dim cursor
+        d.view.s.reload_dim_text = True
         d.render()
         d.screenshot(str(tmp_path / "dim.png"))
         c = shot.measure_contrast(tmp_path / "dim.png")
-        assert c["ratio"] < 8  # the text is dimmed during a reload
+        assert c["ratio"] < 8  # the text is dimmed during a reload, when asked
         d.handle(ev("death", life=4, cause="oom", lived_s=100))
         d.handle(ev("death_shown", life=4))
-        t[0] += 1.0
+        t[0] += d.view.s.fade_s + 1.0
         d.render()
         assert d.last_frame.card is not None and d.last_frame.card[0] == "death"
     finally:
@@ -217,8 +224,9 @@ def test_an_unchanged_frame_is_not_painted_again() -> None:
 # -- D7: partial redraw ---------------------------------------------------------------------
 
 
-def _script() -> list[tuple[float, list[dict[str, Any]]]]:
-    """A short life touching everything the screen draws, as (time, events) steps."""
+def _script(style: str = "dark") -> list[tuple[float, list[dict[str, Any]]]]:
+    """A short life touching everything the screen draws, as (time, events) steps: cards,
+    typing, a fade, a reload, the death fade and the silence in `style`."""
     text = "the quick grey words scroll up the screen one letter at a time until it ends"
     steps: list[tuple[float, list[dict[str, Any]]]] = [
         (0.0, [ev("birth_loading", model="m", quant="Q6_K"), ev("birth", t=0)]),
@@ -233,15 +241,15 @@ def _script() -> list[tuple[float, list[dict[str, Any]]]]:
         (74.0, [ev("reload_done", seconds=2)]),
         (75.0, [ev("vitals", t=75, recall=500, recall_used=480, health="failing")]),
         (80.0, [ev("death", cause="oom", lived_s=80), ev("death_shown")]),
-        (95.0, [ev("silence", seconds=90, style="dark")]),
+        (95.0, [ev("silence", seconds=90, style=style)]),
     ]
     return steps
 
 
-def _frames_match_a_full_repaint(d: ScreenDriver) -> tuple[int, int]:
+def _frames_match_a_full_repaint(d: ScreenDriver, style: str = "dark") -> tuple[int, int]:
     """Play `_script` at 30 fps; after each partial repaint compare the window's pixels with
     a full repaint of the same moment. Returns (partial repaints, full repaints)."""
-    steps = _script()
+    steps = _script(style)
     partial = full = 0
     k = 0
     for n, (at, events) in enumerate(steps):
@@ -269,14 +277,19 @@ def _frames_match_a_full_repaint(d: ScreenDriver) -> tuple[int, int]:
         {"size": (640, 360)},
         {"size": (800, 480), "orientation": "portrait"},
         {"size": (640, 240), "layout": "grid", "grid": (6, 16), "charset": "ascii"},
+        {"size": (800, 480), "theme": SEGMENT16, "style": "idle"},
+        {"size": (640, 360), "style": "idle"},
     ],
-    ids=["flow", "portrait", "grid"],
+    ids=["flow", "portrait", "grid", "segment16", "idle"],
 )
 def test_partial_repaint_matches_a_full_repaint(opts: dict[str, Any]) -> None:
-    d = ScreenDriver(settings=ViewSettings(fade_s=2.0, birth_card_s=0.1), min_font_px=24, **opts)
+    opts = dict(opts)
+    style = opts.pop("style", "dark")
+    settings = ViewSettings(fade_s=2.0, birth_card_s=0.1, idle_step_s=1.0)
+    d = ScreenDriver(settings=settings, min_font_px=24, **opts)
     d.open()
     try:
-        partial, full = _frames_match_a_full_repaint(d)
+        partial, full = _frames_match_a_full_repaint(d, style)
     finally:
         d.close()
     assert partial > 100
@@ -322,9 +335,35 @@ def test_render_bench(capsys: pytest.CaptureFixture[str]) -> None:
     assert 0 < r["painted"] <= r["frames"] <= 30 and r["core_share"] > 0
     f = bench.bench_render((640, 360), "fade", seconds=1.0, partial=False, layout="grid")
     assert f["partial"] is False and f["painted"] > 0
+    d = bench.bench_render((640, 360), "death", seconds=12.0, char_ms=165, theme="segment16")
+    assert d["layout"] == "grid" and d["theme"] == "segment16"
+    assert d["painted"] >= 15  # the vanished text, then the card letter by letter
     with pytest.raises(ValueError):
         bench.bench_render((640, 360), "nope", seconds=0.1)
     assert bench.main(["--sizes", "320x240", "--seconds", "0.2", "--full"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 4 and '"core_share"' in lines[0]
     assert bench.main(["--sizes", "320x240", "--seconds", "0.2", "--budget", "1e-9"]) == 1
+
+
+@pytest.mark.parametrize("theme", [PLAIN, SEGMENT16], ids=["plain", "segment16"])
+def test_a_card_is_repainted_as_it_types(theme: Any) -> None:
+    """Regression: the frame signature ignored how much of a card was typed, so a card
+    was painted once, with its first letter, and never again."""
+    d = ScreenDriver(size=(640, 360), theme=theme)
+    d.open()
+    try:
+        d.view.handle(ev("birth_loading", life=2, model="m", quant="Q4"), 0.0)
+        card = d.view.card(0.0)
+        assert card is not None and card.flat == "m · Q4\nwaking"
+        shots: list[bytes] = []
+        for at in card.times:
+            if card.flat[card.typed(at) - 1] in " \n":
+                continue  # a space or a line break shows nothing new
+            assert d.draw(at + 0.001)  # every letter typed repaints
+            shots.append(pygame.image.tobytes(d.window, "RGB"))
+        assert len(shots) == 10 and len(set(shots)) == len(shots)
+        assert d.last_frame is not None and d.last_frame.card_shown == [6, 6]
+        assert not d.draw(30.0) or not d.draw(30.1)  # typed: still again
+    finally:
+        d.close()

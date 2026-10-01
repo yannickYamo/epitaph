@@ -3,8 +3,10 @@ or offscreen for screenshots and tests (`SDL_VIDEODRIVER=offscreen`) (BUILD_PLAN
 
 It draws the same `Frame` as the terminal: letters typed one by one with each word's
 cadence, a block cursor (solid while typing, blinking in pauses, dim in a reload, gone at
-death), forgotten words fading through grey, the whole text dimmed during a reload, a
-small status strip above the text, and the birth and death cards.
+death), forgotten words fading through grey (at least 12:1) until they are gone, a
+small status strip above the text, and the birth and death cards typed letter by letter.
+With `reload_dim_text` the whole text dims during a reload.
+With the `segment16` theme it draws a grid of 16-segment LED cells instead of a font.
 
 Only what changed is repainted (D7): each frame is reduced to the items of each text row
 and the status strip, and only rows whose items differ are cleared, redrawn and sent to
@@ -33,6 +35,7 @@ from epitaph.display.layout import (
     flow_metrics,
 )
 from epitaph.display.themes import PLAIN, Rgb, Theme
+from epitaph.display.themes import segment16 as seg
 
 DEFAULT_WINDOW = (1280, 720)
 
@@ -105,6 +108,8 @@ class ScreenDriver:
         self.size = size
         self.fullscreen = fullscreen
         self.clock = clock
+        if theme.look == "segment16":  # the 16-segment look exists only as a grid
+            self.layout, self.charset = "grid", "segment16"
         self.closed = False
         self.pg: Any = None
         self.window: Any = None
@@ -120,6 +125,8 @@ class ScreenDriver:
         self.dirty: list[Rect] | None = None
         self._fonts: dict[int, Any] = {}
         self.font_path: Path | None = None
+        self._cells: dict[tuple[frozenset[str], Rgb], Any] = {}
+        self._panel: Any = None  # the segment look's unlit panel, behind every repaint
 
     # -- setup ------------------------------------------------------------------------------
 
@@ -153,6 +160,8 @@ class ScreenDriver:
         self.surface = pg.Surface(logical) if self.rotate else self.window
         self._cache.clear()
         self._fonts.clear()
+        self._cells.clear()
+        self._panel = None
         self._sig = None
         self._rows = None
         self.font_path = _font_path(self.theme)
@@ -279,24 +288,27 @@ class ScreenDriver:
         frame = self.compose(now)
         self.last_frame = frame
         g = self._geometry()
-        rows = _rows(frame, self.theme)
-        scene = (frame.dark, frame.card is not None, frame.dim)
+        rows = row_items(frame, self.theme)
+        scene = (frame.dark, frame.card is not None, frame.dim, frame.idle)
         status = self._status_text(frame.status) if frame.status and not frame.dark else None
-        card = (frame.card[0], tuple(frame.card[1])) if frame.card is not None else None
+        card = (
+            (frame.card[0], tuple(frame.card[1]), tuple(frame.card_shown or ()))
+            if frame.card is not None
+            else None
+        )
         sig = (tuple(sorted(rows.items())), status, card, scene)
         if not force and sig == self._sig:
             return False
         self._sig = sig
-        surf = self.surface
         full = force or self._rows is None or scene != self._scene or frame.card is not None
         if full:
-            surf.fill(self.theme.bg)
+            self._fill(None, frame.dark or frame.idle)
             rects: list[Rect] | None = None
             if not frame.dark:
                 if status:
                     self._draw_status(status)
                 if frame.card is not None:
-                    self._draw_card(frame.card[1], g.px)
+                    self._draw_card(frame.card[1], g.px, frame.card_shown)
                 else:
                     for r, items in rows.items():
                         self._draw_row(r, items, g, frame)
@@ -324,16 +336,61 @@ class ScreenDriver:
         m = self.metrics
         assert m is not None
         if self.layout == "grid":
-            _, _, margin, cell_w, line_h, px = self._grid_geometry()
-            return _Geometry(margin, margin, cell_w, line_h, px)
+            _, _, left, top, cell_w, line_h, px = self._grid_geometry()
+            return _Geometry(left, top, cell_w, line_h, px)
         left = m.margin_x + (m.width - 2 * m.margin_x - m.cols * m.cell_w) / 2
         return _Geometry(left, m.margin_y + m.strip_h, m.cell_w, m.line_h, m.font_px)
 
     def _paint_band(self, rect: Rect) -> Rect:
         """Fill `rect` with the background; returns it, clipped to the logical surface."""
         r = self.pg.Rect(rect).clip(self.surface.get_rect())
-        self.surface.fill(self.theme.bg, r)
+        self._fill(r, self._scene is not None and self._scene[3])
         return (r.x, r.y, r.w, r.h)
+
+    def _fill(self, rect: Any, dark: bool = False) -> None:
+        """Paint the background into `rect` (None: everywhere): the plain colour, or the
+        unlit 16-segment panel (not when `dark`: closed hours and the silence are black)."""
+        if self.theme.look != "segment16" or dark:
+            self.surface.fill(self.theme.bg, rect)
+            return
+        panel = self._segment_panel()
+        if rect is None:
+            self.surface.blit(panel, (0, 0))
+        else:
+            self.surface.blit(panel, (rect.x, rect.y), rect)
+
+    def _segment_panel(self) -> Any:
+        """The whole grid with every segment unlit (`Theme.ghost`), drawn once per size."""
+        if self._panel is None:
+            pg = self.pg
+            panel = pg.Surface(self.surface.get_size())
+            panel.fill(self.theme.bg)
+            rows, cols, left, top, cell_w, line_h, _ = self._grid_geometry()
+            blank = self._segment_cell(frozenset(), self.theme.bg, cell_w, line_h)
+            for r in range(rows):
+                for c in range(cols):
+                    panel.blit(blank, (round(left + c * cell_w), round(top + r * line_h)))
+            self._panel = panel
+        return self._panel
+
+    def _segment_cell(self, mask: frozenset[str], colour: Rgb, w: float, h: float) -> Any:
+        """One 16-segment cell: `mask` lit in `colour`, the rest in the ghost colour."""
+        key = (mask, colour)
+        cell = self._cells.get(key)
+        if cell is None:
+            pg = self.pg
+            cell = pg.Surface((max(1, int(w + 1)), max(1, int(h + 1))))
+            cell.fill(self.theme.bg)
+            for name, poly in seg.polygons(w, h).items():
+                pg.draw.polygon(cell, colour if name in mask else self.theme.ghost, poly)
+            self._cells[key] = cell
+        return cell
+
+    def _segment_text(self, text: str, x: float, y: float, colour: Rgb, g: _Geometry) -> None:
+        """Draw `text` one 16-segment cell per letter from the cell at pixel (x, y)."""
+        for k, ch in enumerate(text):
+            cell = self._segment_cell(seg.glyph_mask(ch), colour, g.cell_w, g.line_h)
+            self.surface.blit(cell, (round(x + k * g.cell_w), round(y)))
 
     def _row_band(self, row: int, g: _Geometry) -> Rect:
         """The full-width band of text row `row`; bands of neighbouring rows never overlap."""
@@ -400,8 +457,15 @@ class ScreenDriver:
         glyphs = self._glyphs(self._status_px(), text, self.theme.status)
         self.surface.blit(glyphs, (m.margin_x, m.margin_y))
 
-    def _draw_card(self, lines: list[str], px: int) -> None:
-        """Draw a birth or death card centred, the first line larger, shrinking to fit."""
+    def _draw_card(self, lines: list[str], px: int, shown: list[int] | None = None) -> None:
+        """Draw a birth or death card centred, the first line larger, shrinking to fit.
+
+        Only the first `shown[n]` letters of line n are drawn (the card is being typed),
+        placed where the whole line will stand, so nothing moves as it types.
+        """
+        if self.theme.look == "segment16":
+            self._draw_segment_card(lines, shown)
+            return
         m = self.metrics
         assert m is not None
         big = round(px * 1.2)
@@ -409,24 +473,41 @@ class ScreenDriver:
         gap = px * 0.8
         total = sum(heights) + gap * (len(lines) - 1)
         y = (m.height - total) / 2
+        room = m.width - 2 * m.margin_x
         for n, line in enumerate(lines):
             size = heights[n]
-            colour = self.theme.card if n == 0 else self.theme.status
-            g = self._glyphs(size, line, colour)
-            if g.get_width() > m.width - 2 * m.margin_x:
-                g = self._glyphs(
-                    max(12, int(size * (m.width - 2 * m.margin_x) / g.get_width())), line, colour
-                )
-            self.surface.blit(g, ((m.width - g.get_width()) / 2, y))
-            y += size + gap
+            colour = self.theme.card if n == 0 else self.theme.forgotten
+            full = self._glyphs(size, line, colour)
+            if full.get_width() > room:
+                size = max(12, int(size * room / full.get_width()))
+                full = self._glyphs(size, line, colour)
+            k = len(line) if shown is None else shown[n]
+            if k > 0:
+                part = full if k >= len(line) else self._glyphs(size, line[:k], colour)
+                self.surface.blit(part, ((m.width - full.get_width()) / 2, y))
+            y += heights[n] + gap
+
+    def _draw_segment_card(self, lines: list[str], shown: list[int] | None) -> None:
+        """A card on the 16-segment grid: lines centred on whole cells, typed in order."""
+        rows, cols, left, top, cell_w, line_h, px = self._grid_geometry()
+        g = _Geometry(left, top, cell_w, line_h, px)
+        r0 = max(0, (rows - len(lines)) // 2)
+        for n, line in enumerate(lines[:rows]):
+            k = len(line) if shown is None else shown[n]
+            c0 = max(0, (cols - len(line)) // 2)
+            y = top + (r0 + n) * line_h
+            self._segment_text(line[:k], left + c0 * cell_w, y, self.theme.card, g)
 
     def _extent(self, items: set[RowItem], g: _Geometry) -> tuple[int, int]:
         """The horizontal pixel span covering `items` as drawn (a margin of 1 pixel)."""
         width = self.surface.get_width()
         x0, x1 = width, 0
+        segment = self.theme.look == "segment16"
         for kind, col, text, colour in items:
             x = round(g.left + col * g.cell_w)
-            if kind == "text":
+            if kind == "text" and segment:
+                end = x + round(len(text) * g.cell_w) + 1
+            elif kind == "text":
                 end = x + self._glyphs(g.px, text, colour).get_width()
             elif kind == "cursor":
                 end = x + round(g.cell_w)
@@ -448,8 +529,12 @@ class ScreenDriver:
         Drawing is clipped to the row's band (and to `clip`), so a font taller than the
         row (small grids) never paints into pixels a partial repaint does not clear.
         """
-        font_h = self.font(g.px).get_height()
-        y = g.top + row * g.line_h + (g.line_h - font_h) / 2
+        if self.theme.look == "segment16":
+            font_h = round(g.line_h)
+            y = g.top + row * g.line_h
+        else:
+            font_h = self.font(g.px).get_height()
+            y = g.top + row * g.line_h + (g.line_h - font_h) / 2
         band = self.pg.Rect(self._row_band(row, g))
         self.surface.set_clip(band.clip(clip) if clip is not None else band)
         try:
@@ -461,6 +546,9 @@ class ScreenDriver:
         self, items: tuple[RowItem, ...], y: float, font_h: int, g: _Geometry, frame: Frame
     ) -> None:
         """Draw a row's items with their tops at `y` pixels."""
+        if self.theme.look == "segment16":
+            self._draw_segment_items(items, y, g, frame)
+            return
         for kind, col, text, colour in items:
             x = g.left + col * g.cell_w
             if kind == "text":
@@ -471,6 +559,21 @@ class ScreenDriver:
                 self.pg.draw.rect(
                     self.surface, colour, (round(x), round(y), round(g.cell_w), font_h)
                 )
+
+    def _draw_segment_items(
+        self, items: tuple[RowItem, ...], y: float, g: _Geometry, frame: Frame
+    ) -> None:
+        """A row of 16-segment cells: words, the gauge as lit dashes, the cursor as "_"."""
+        for kind, col, text, colour in items:
+            x = g.left + col * g.cell_w
+            if kind == "text":
+                self._segment_text(text, x, y, colour, g)
+            elif kind == "gauge":
+                n = round((frame.gauge or 0.0) * frame.cols)
+                self._segment_text("-" * n, x, y, colour, g)
+            else:  # the cursor
+                cell = self._segment_cell(seg.cursor_mask(), colour, g.cell_w, g.line_h)
+                self.surface.blit(cell, (round(x), round(y)))
 
     def _draw_gauge(
         self, fraction: float | None, x: float, y: float, width: float, h: float
@@ -485,8 +588,16 @@ class ScreenDriver:
             self.surface, th.gauge, (round(x), y0, round(width * (fraction or 0.0)), bar_h)
         )
 
-    def _grid_geometry(self) -> tuple[int, int, int, float, float, int]:
-        """Rows, cols, margin, cell width, line height and font size (pixels) for the grid."""
+    def grid_cells(self) -> tuple[int, int, float, float, float, float]:
+        """The grid layout's cells on the window: rows, cols, the first cell's left and top,
+        cell width and height in pixels (screenshots read 16-segment cells back with it)."""
+        self._ensure()
+        rows, cols, left, top, cell_w, line_h, _ = self._grid_geometry()
+        return rows, cols, left, top, cell_w, line_h
+
+    def _grid_geometry(self) -> tuple[int, int, float, float, float, float, int]:
+        """Rows, cols, left and top of the first cell, cell width, line height and font
+        size (pixels) for the grid."""
         th = self.theme
         w, h = self.surface.get_size()
         margin = max(4, round(min(w, h) * 0.04))
@@ -495,11 +606,19 @@ class ScreenDriver:
         )
         cell_w = (w - 2 * margin) / cols
         line_h = (h - 2 * margin) / rows
+        if th.look == "segment16":
+            # LED cells keep a module's proportions (about 2:3), centred on the screen
+            cell_w = min(cell_w, line_h * 0.7)
+            line_h = min(line_h, cell_w / 0.55)
+            left = (w - cols * cell_w) / 2
+            top = (h - rows * line_h) / 2
+            px = int(min(cell_w / th.advance, line_h / 1.25))
+            return rows, cols, left, top, cell_w, line_h, px
         px = int(min(cell_w / th.advance, line_h / 1.25))
-        return rows, cols, margin, cell_w, line_h, px
+        return rows, cols, margin, margin, cell_w, line_h, px
 
 
-def _rows(frame: Frame, theme: Theme) -> dict[int, tuple[RowItem, ...]]:
+def row_items(frame: Frame, theme: Theme) -> dict[int, tuple[RowItem, ...]]:
     """What each text row shows, as comparable items: a row is repainted when its items
     change. Colours, not fade progress, are compared, and fades move in `FADE_STEPS`
     steps, so a fading row is repainted only when its colour visibly moves."""

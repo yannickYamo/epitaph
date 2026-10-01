@@ -128,6 +128,10 @@ async def iterate(events: list[Event]) -> AsyncIterator[Event]:
 def display_config(hardware: str | None = None, profile: str | None = None) -> dict[str, Any]:
     """The `[display]` section (default.toml + hardware overlay), plus `events_port`.
 
+    Cards also take `reveal_life_number` from `[life]`, and their word gap and line pause
+    from `[reveal]` (`word_gap_ms`, `comma_pause_ms`) unless `[display]` sets
+    `card_word_gap_ms` or `card_line_pause_ms`, so they are typed with the life's rhythm.
+
     No profile is needed to draw, so none is loaded (`profile` is accepted and ignored).
     Falls back to the built-in defaults when the files cannot be read.
     """
@@ -147,6 +151,13 @@ def display_config(hardware: str | None = None, profile: str | None = None) -> d
         return {}
     out = dict(data.get("display", {}))
     out.setdefault("events_port", int(data.get("events", {}).get("port", 7707)))
+    life = data.get("life", {})
+    reveal = data.get("reveal", {})
+    out.setdefault("reveal_life_number", bool(life.get("reveal_life_number", False)))
+    if "word_gap_ms" in reveal:
+        out.setdefault("card_word_gap_ms", int(reveal["word_gap_ms"]))
+    if "comma_pause_ms" in reveal:
+        out.setdefault("card_line_pause_ms", int(reveal["comma_pause_ms"]))
     return out
 
 
@@ -173,6 +184,9 @@ def make_driver(name: str, cfg: dict[str, Any], **opts: Any) -> Driver:
     settings = ViewSettings.from_config(cfg)
     theme = get_theme(str(opts.pop("theme", None) or cfg.get("theme", "plain")))
     layout = str(opts.pop("layout", None) or cfg.get("layout", "flow"))
+    charset = str(cfg.get("charset", "unicode"))
+    if theme.look == "segment16":  # the 16-segment look is a grid with its own charset
+        layout, charset = "grid", "segment16"
     grid_raw = cfg.get("grid", [6, 16])
     grid = (int(grid_raw[0]), int(grid_raw[1]))
     common: dict[str, Any] = {
@@ -182,7 +196,7 @@ def make_driver(name: str, cfg: dict[str, Any], **opts: Any) -> Driver:
         "status_strip": bool(cfg.get("status_strip", True)),
         "layout": layout,
         "grid": grid,
-        "charset": str(cfg.get("charset", "unicode")),
+        "charset": charset,
     }
     if name == "terminal":
         from epitaph.display.terminal import TerminalDriver
