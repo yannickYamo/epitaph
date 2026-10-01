@@ -1195,7 +1195,8 @@ def life_times(events: Sequence[dict[str, Any]]) -> list[float]:
 
 
 def _is_number(x: Any) -> TypeGuard[int | float]:
-    return isinstance(x, int | float) and not isinstance(x, bool)
+    """A real, finite number: not a bool, and not inf or NaN (int(nan) raises)."""
+    return isinstance(x, int | float) and not isinstance(x, bool) and math.isfinite(x)
 
 
 class VerifyProbe:

@@ -116,6 +116,26 @@ def test_death_fades_the_text_then_types_the_card_then_the_silence() -> None:
     assert v.card(card.end + 2.1) is None and v.dark(card.end + 2.1)
 
 
+@pytest.mark.parametrize("lived", [math.nan, math.inf, -math.inf])
+def test_a_death_with_no_finite_lived_s_still_draws_its_card(lived: float) -> None:
+    """Regression: int(nan) raised in the death card, live and from a snapshot."""
+    assert cards.death_lines(3, lived, "oom", cards.CardStyle(reveal_life_number=True)) == [
+        "life 3",
+        cards.CAUSE_TEXT["oom"],
+    ]
+    v = LifeView(ViewSettings(fade_s=0.0, death_card_s=2.0))
+    born(v)
+    thought(v, 1, "last words", 0.0)
+    v.handle(ev("death", cause="oom", lived_s=lived), 1.0)
+    v.handle(ev("death_shown", last_line="last words"), 1.0)
+    v.handle(ev("silence", seconds=90, style="dark"), 1.0)
+    card = v.card(5.0)
+    assert card is not None and not any("lived" in line for line in card.lines)
+    again = LifeView(ViewSettings(fade_s=0.0, death_card_s=2.0))
+    again.handle(v.snapshot(5.0), 100.0)
+    compose_flow(again, 100.0, 30, 6)
+
+
 def test_last_words_style_keeps_the_text_unfaded() -> None:
     v = LifeView(ViewSettings(fade_s=4.0, death_card_s=1.0, silence_style="last_words"))
     born(v)
