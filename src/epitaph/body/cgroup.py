@@ -1,3 +1,4 @@
+# pyright: strict
 """The real body: a delegated cgroup v2 subtree around the creature (BUILD_PLAN 5.5, 9 C3).
 
 Layout under the controller's delegated cgroup (systemd `Delegate=yes`)::
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from epitaph.body.base import Body
+from epitaph.body.cpuclock import MAX_MHZ, CpuClock
 from epitaph.body.vitals import DEFAULT_PATHS, SysPaths, VitalsReader, machine_facts
 from epitaph.types import Cause, CreatureStatus, Knobs, MachineFacts, ProgressCounters, Vitals
 
@@ -57,6 +59,8 @@ class CgroupSettings:
     death_limit_mb: int | None = None
     death_fraction: float = 0.5
     kill_wait_s: float = 5.0
+    # The clock helper (cpuclock.HELPER on the Pi); empty leaves the CPU clock alone.
+    clock_helper: str = ""
 
     @classmethod
     def from_config(cls, cfg: Config) -> CgroupSettings:
@@ -71,6 +75,7 @@ class CgroupSettings:
             cpu_period_us=int(body.get("cpu_period_us", 100_000)),
             death_limit_mb=int(limit) if limit is not None else None,
             death_fraction=float(body.get("death_fraction", 0.5)),
+            clock_helper=str(body.get("clock_helper", "") or ""),
         )
 
     @property
@@ -165,10 +170,12 @@ class CgroupBody:
         settings: CgroupSettings = DEFAULT_SETTINGS,
         vitals: VitalsReader | None = None,
         sys_paths: SysPaths = DEFAULT_PATHS,
+        clock: CpuClock | None = None,
     ) -> None:
         """`root` is the delegated cgroup; nothing is touched until setup().
 
-        `vitals` defaults to a VitalsReader on `sys_paths`.
+        `vitals` defaults to a VitalsReader on `sys_paths`. `clock` defaults to a CpuClock on
+        `settings.clock_helper`, or none when that is empty.
         """
         self.root = root
         self.settings = settings
@@ -181,6 +188,9 @@ class CgroupBody:
         self._squeezed_at: float | None = None
         self._kill_cause: Cause | None = None
         self._oom_base = 0
+        if clock is None and settings.clock_helper:
+            clock = CpuClock(settings.clock_helper)
+        self.clock = clock
 
     # --- setup -------------------------------------------------------------------------
 
@@ -296,12 +306,18 @@ class CgroupBody:
 
     # --- the Body protocol -------------------------------------------------------------
 
+    def restore_clock(self, force: bool = False) -> None:
+        """Back to the full clock; without `force`, only if a lower cap is (or may be) set."""
+        if self.clock is not None and (force or self.clock.mhz != MAX_MHZ):
+            self.clock.reset()
+
     def reset_creature_cgroup(self) -> None:
-        """Kill any leftover creature and restore the birth limits.
+        """Kill any leftover creature and restore the birth limits and the full clock.
 
         cpu.max unlimited, memory.high and memory.max off, swap 0, memory.oom.group on. The share,
         squeeze and kill cause are forgotten, and the OOM-kill count is taken as the new baseline
-        so that an earlier life's kill is not read as this life's death.
+        so that an earlier life's kill is not read as this life's death. The clock helper is
+        always called here: a controller that crashed may have left the clock capped.
         """
         if self.populated():
             self._kill_all()
@@ -317,18 +333,22 @@ class CgroupBody:
         self._squeezed_at = None
         self._kill_cause = None
         self._oom_base = self._oom_kills()
+        self.restore_clock(force=True)
 
     def wrap_spawn(self, argv: list[str]) -> list[str]:
         """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv)."""
         return wrap_argv(argv, self.creature / "cgroup.procs", self.settings.creature_cpus)
 
     def apply(self, knobs: Knobs) -> None:
-        """Set cpu.max when the share changed; squeeze to death once, when the knobs ask for it.
+        """Set cpu.max and the clock cap when they changed; squeeze to death once, when asked.
 
-        The squeeze needs the oom death mode in force and `squeeze` not "off".
+        The squeeze needs the oom death mode in force and `squeeze` not "off". The clock helper
+        runs only when `cpu_mhz` changes (CpuClock remembers the last value).
         """
         if self.settings.cpu_share and knobs.cpu_share != self._share:
             self.set_cpu_share(knobs.cpu_share)
+        if self.clock is not None:
+            self.clock.set(knobs.cpu_mhz)
         if (
             knobs.death_squeeze
             and self._squeezed_at is None
@@ -383,14 +403,19 @@ class CgroupBody:
         )
 
     def kill_now(self, cause: Cause) -> None:
-        """Record `cause` and kill every process in the creature cgroup."""
+        """Record `cause`, kill every process in the creature cgroup, restore the full clock."""
         self._kill_cause = cause
         self._kill_all()
+        self.restore_clock()
 
     def death_cause(self, status: CreatureStatus) -> Cause:
         """The recorded kill cause; else OOM if the kernel OOM-killed it or a SIGKILL followed
         the squeeze; else a crash.
+
+        Every death passes through here, so the full clock is restored here too (an OOM or a
+        crash never goes through kill_now).
         """
+        self.restore_clock()
         if self._kill_cause is not None:
             return self._kill_cause
         if self._oom_kills() > self._oom_base:

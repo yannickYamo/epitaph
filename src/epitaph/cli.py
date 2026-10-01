@@ -19,7 +19,6 @@ from epitaph.config import ConfigError, load_config, parse_duration
 
 # Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
 PLANNED: dict[str, tuple[str, str]] = {
-    "selftest": ("check cgroups, limits and the network block on this machine", "phase 2"),
     "calibrate": ("measure working sets and set the death limit per model", "phase 2"),
     "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
     "bench": ("measure model speeds into bench/", "phase 2"),
@@ -235,6 +234,19 @@ def cmd_ctl(args: argparse.Namespace) -> int:
     return 1 if "error" in reply else 0
 
 
+def cmd_selftest(args: argparse.Namespace) -> int:
+    """`epitaph selftest`: the body's checks in a delegated unit; exit 0 if all pass, else 1.
+
+    From a shell it relaunches itself as a transient Delegate=yes unit for the service user;
+    `--inside` (what that unit runs) checks in place.
+    """
+    from epitaph.body import selftest
+
+    if not (args.inside or selftest.in_epitaph_unit()):
+        return selftest.relaunch(args)
+    return selftest.report(selftest.run_checks(_load(args)))
+
+
 def _stub(name: str) -> Callable[[argparse.Namespace], int]:
     _, arrives = PLANNED[name]
 
@@ -278,6 +290,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="fake: virtual time, a whole life in seconds (fake backend only)",
     )
     p.set_defaults(fn=cmd_run)
+
+    from epitaph.body import selftest
+
+    p = sub.add_parser("selftest", help="check cgroups, limits, the clock helper and llama-server")
+    _common(p)
+    selftest.add_arguments(p)
+    p.set_defaults(fn=cmd_selftest)
 
     p = sub.add_parser("ctl", help="talk to the running controller")
     p.add_argument("action", choices=["status", "new-life", "screenshot"])

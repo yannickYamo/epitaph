@@ -1,0 +1,5 @@
+# epitaph (ADR-025): the controller runs unprivileged and may cap the CPU clock, and nothing
+# else, without a password. Installed by deploy/install.sh as /etc/sudoers.d/020_epitaph-clock
+# (mode 0440, checked with visudo -cf); @USER@ is the service user. The helper itself also
+# rejects anything but a whole MHz value in 600-1800 or "reset".
+@USER@ ALL=(root) NOPASSWD: /usr/local/sbin/epitaph-clock reset, /usr/local/sbin/epitaph-clock ^[1-9][0-9]{2,3}$
