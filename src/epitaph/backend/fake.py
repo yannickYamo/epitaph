@@ -13,6 +13,10 @@ It models what matters about llama-server for the life loop:
   reload of the same model (spike S4b: save, stop, load, restore, `handover_s` on the clock);
   the next `prefill` is then skipped, as the real backend does. The final chunk's
   `prompt_n` is the processed count.
+- **Persona cache** (`persona_store`, dread plan W4): a system prompt prefilled once on a
+  model and quant is kept in the store (shared across the fakes of a simulation, as the
+  disk is across lives) and restored at the next prefill of the same prompt, taking
+  `restore_s(tokens)` on the clock instead of the prompt time. `last_prefill` says which.
 - **Faults** (`FakeFaults`): OOM kill, crash, hang (alive, silent, no progress), full context,
   slow load, slow prompt processing, and a hang during load. Each can fire at a token count or
   at a clock time.
@@ -30,6 +34,7 @@ from typing import Protocol
 
 from epitaph.backend.base import ContextFull, CreatureDied
 from epitaph.backend.llama_server import Handover
+from epitaph.backend.persona_cache import PrefillInfo
 from epitaph.costmodel import Costs
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
@@ -65,6 +70,18 @@ class FakeBackendClock(Protocol):
 # f16 KV cache bytes per token of a 1.7-3B candidate (S4b: 28 layers x 8 KV heads x 128 x 2 x
 # 2 bytes = 112 KiB for Qwen3 1.7B and Llama 3.2 3B); sizes the fake's slot file.
 KV_BYTES_PER_TOKEN = 114_688
+# A persona restore on the Pi 4: the cached file read from the SD card (about 40 MB/s) and
+# put back through /dev/shm (S4b), plus a fixed cost.
+RESTORE_FIXED_S = 0.1
+RESTORE_BYTES_PER_S = 40e6
+
+PersonaStore = dict[str, list[tuple[str, int]]]
+
+
+def restore_s(tokens: int) -> float:
+    """Seconds the fake takes to restore a cached persona of `tokens` tokens."""
+    return RESTORE_FIXED_S + tokens * KV_BYTES_PER_TOKEN / RESTORE_BYTES_PER_S
+
 
 SIGKILL = int(_signal.SIGKILL)
 SIGSEGV = int(_signal.SIGSEGV)
@@ -127,6 +144,7 @@ class FakeBackend:
         faults: FakeFaults | None = None,
         reload_handover: str = "reread",
         handover_s: float = 0.3,
+        persona_store: PersonaStore | None = None,
     ) -> None:
         """Create a stopped creature on `clock`, with the speeds of `costs`.
 
@@ -135,6 +153,7 @@ class FakeBackend:
         `cache_reuse_min` is the shortest reusable run, in tokens. `reload_handover` is
         "reread" or "slot" (the cache survives a reload of the same model; saving and
         restoring it takes `handover_s` seconds; S4b: 0.28-0.29 s on the Pi 4).
+        `persona_store` turns the persona cache on (see the module notes); None: off.
         """
         self.clock = clock
         self.costs = costs
@@ -165,7 +184,10 @@ class FakeBackend:
         self.handovers = 0  # reloads that carried the cache
         self.last_handover = Handover()  # as LlamaServerBackend reports it
         self._model: str | None = None
+        self._quant: str | None = None
         self._restored = False
+        self.persona_store = persona_store
+        self.last_prefill = PrefillInfo()
 
     # -- lifecycle ---------------------------------------------------------------------------
 
@@ -185,6 +207,7 @@ class FakeBackend:
         self.threads = threads
         self.cpu_share = float(threads)
         self._model = model.name
+        self._quant = quant
         self._cache = _Cache()
         self._tokens = 0
         self.hung = False
@@ -390,6 +413,17 @@ class FakeBackend:
             raise CreatureDied(self.status())
         if self._restored:  # the restored cache already holds the prompt
             self._restored = False
+            self.last_prefill = PrefillInfo("handover")
+            return 0
+        key = self._persona_key(messages)
+        store = self.persona_store
+        if store is not None and key is not None and key in store:
+            blocks = list(store[key])
+            tokens = sum(n for _, n in blocks)
+            seconds = restore_s(tokens)
+            await self._tick(seconds)
+            self._cache.blocks = blocks
+            self.last_prefill = PrefillInfo("restore", tokens, tokens * KV_BYTES_PER_TOKEN, seconds)
             return 0
         blocks, todo, _ = self._plan(messages)
         total = sum(n for _, n in blocks)
@@ -398,7 +432,19 @@ class FakeBackend:
         pp = self.costs.pp(self.step, self.threads, self.cpu_share) / self.faults.pp_factor
         await self._tick(todo / pp)
         self._cache.blocks = blocks
+        info = PrefillInfo("prefill", todo, seconds=todo / pp)
+        if store is not None and key is not None:
+            store[key] = list(blocks)
+            info.saved, info.file_bytes = True, total * KV_BYTES_PER_TOKEN
+        self.last_prefill = info
         return todo
+
+    def _persona_key(self, messages: list[Msg]) -> str | None:
+        """The persona cache's key: the model, quant and system prompt (system messages only)."""
+        if not messages or any(m.role != "system" for m in messages):
+            return None
+        text = "\x00".join(m.content for m in messages)
+        return f"{self._model}|{self._quant}|{self.ctx}|{text}"
 
     async def chat(
         self, messages: list[Msg], sampling: Sampling, max_tokens: int

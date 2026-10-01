@@ -128,6 +128,7 @@ MOMENTS = ("birth", "reload1", "reload2", "erosion_end")
 PERSONAS = ("persona", "persona_original", "persona_factual")
 
 RateSource = Literal["measured", "scaled", "estimate"]
+ChargeKind = Literal["load", "handover", "prefill", "restore", "save", "prompt", "generate", "echo"]
 
 
 # ---------------------------------------------------------------------------------------
@@ -149,6 +150,9 @@ class Rate:
 # for 85-89 MB, Qwen3 1.7B and Llama 3.2 3B).
 PI4_SLOT_FIXED_S = 0.1
 PI4_SLOT_BYTES_PER_S = 450e6
+# The persona cache (dread plan W4) keeps its slot file on the SD card: a restore first reads
+# it from there (about 40 MB/s on the Pi 4), a save writes it there.
+PI4_SD_BYTES_PER_S = 40e6
 
 
 class PiCosts:
@@ -226,6 +230,18 @@ class PiCosts:
         cache file of `file_bytes` in /dev/shm (spike S4b)."""
         seconds = PI4_SLOT_FIXED_S + file_bytes / PI4_SLOT_BYTES_PER_S
         return Rate(seconds, "measured")
+
+    def restore(self, file_bytes: int) -> Rate:
+        """Seconds a persona restore takes on the Pi: the slot file read from the SD card,
+        then restored through /dev/shm (S4b). Not measured on the Pi as a whole."""
+        seconds = PI4_SLOT_FIXED_S + file_bytes / PI4_SD_BYTES_PER_S
+        return Rate(seconds + file_bytes / PI4_SLOT_BYTES_PER_S, "estimate")
+
+    def save(self, file_bytes: int) -> Rate:
+        """Seconds the first persona save takes on the Pi: a slot save to /dev/shm (S4b),
+        then the file written to the SD card."""
+        seconds = PI4_SLOT_FIXED_S + file_bytes / PI4_SLOT_BYTES_PER_S
+        return Rate(seconds + file_bytes / PI4_SD_BYTES_PER_S, "estimate")
 
     @property
     def any_measured(self) -> bool:
@@ -333,7 +349,7 @@ class TokenCounter:
 class Charge:
     """One cost put on the life clock: what, when (life seconds), how much and at what rate."""
 
-    kind: Literal["load", "handover", "prefill", "prompt", "generate", "echo"]
+    kind: ChargeKind
     t: float
     tokens: int
     seconds: float
@@ -438,7 +454,7 @@ class PiClockBackend:
 
     def _charge(
         self,
-        kind: Literal["load", "handover", "prefill", "prompt", "generate", "echo"],
+        kind: ChargeKind,
         tokens: int,
         seconds: float,
         rate: Rate,
@@ -526,15 +542,29 @@ class PiClockBackend:
         self.share = share
 
     async def prefill(self, messages: list[Msg]) -> int:
-        """Read `messages` into the laptop cache; charge the tokens read at the Pi prompt rate."""
+        """Read `messages` into the laptop cache; charge the tokens read at the Pi prompt rate,
+        or, when the persona cache restored them, the Pi's restore of that file (and the save
+        after the first read)."""
         if not self.alive:
             raise CreatureDied(self.status())
         n = self.worker.call(self.inner.prefill(messages))
-        if self.charging:
-            rate = self.costs.pp(self.step, self.pp_threads, self.share)
-            seconds = n / rate.value
-            self._charge("prefill", n, seconds, rate, self._cached())
-            await self._spend(seconds)
+        if not self.charging:
+            return n
+        info = getattr(self.inner, "last_prefill", None)
+        size = int(getattr(info, "file_bytes", 0) or 0)
+        if getattr(info, "mode", None) == "restore":
+            rate = self.costs.restore(size)
+            self._charge("restore", int(getattr(info, "tokens", 0)), rate.value, rate)
+            await self._spend(rate.value)
+            return n
+        rate = self.costs.pp(self.step, self.pp_threads, self.share)
+        seconds = n / rate.value
+        self._charge("prefill", n, seconds, rate, self._cached())
+        await self._spend(seconds)
+        if getattr(info, "saved", False):
+            save = self.costs.save(size)
+            self._charge("save", 0, save.value, save)
+            await self._spend(save.value)
         return n
 
     def chat(

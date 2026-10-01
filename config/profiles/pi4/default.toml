@@ -13,15 +13,22 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 
 [reveal]
 mode = "stream"
-# fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 255           # at birth; 632 ms at the end
+# fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves. Refitted
+# for the birth without dead time (dread plan W4: the creature loads in the silence, the
+# persona is restored, the screen starts on the first sentence at 45 s; before, two and a
+# half minutes of reading and writing came before the first word). The shape whose every
+# slower pace also never starves (the fit's pick, 333 ms with gamma 0.5, has slower paces
+# that starve for seconds just before the death); 9 words die unshown at the measured costs.
+stream_letter_ms = 260           # at birth; 680 ms at the end
 stream_gamma = 0.75              # the slowing follows the hardware's compute, to this power
-stream_lead_s = 480              # ... as it will be 8 minutes on: the text runs behind
+stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15
 stream_jitter = 0.10
 stream_thought_pause_ms = 3000
 stream_max_thoughts = 2
 stream_max_letters = 900
+stream_birth = "sentence"        # the screen starts on the first sentence (dread plan W4)
+stream_birth_min_s = 45          # ... at 45 s of life at the earliest: a faster birth pace
 
 [[keyframe]]
 at = "0:00"

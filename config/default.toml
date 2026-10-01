@@ -5,6 +5,7 @@
 profile = "default"              # resolved in config/profiles/<class>/
 hardware = "auto"                # auto | dev | pi4-4gb | pi5-8gb | pi5-16gb
 silence_seconds = 90
+load_during_silence = true       # the next creature loads in the silence (the RAM is free since the death)
 rotation = "round_robin"         # round_robin | random | fixed
 models = ["qwen3-4b-instruct-2507"]   # chosen at checkpoint A (2026-09-30)
 reveal_deadline = false
@@ -85,6 +86,8 @@ stream_thought_pause_ms = 3000
 stream_max_thoughts = 3
 stream_max_letters = 900
 stream_birth_thoughts = 1        # the screen starts once this many thoughts are written
+stream_birth = "thought"         # thought | sentence: ... or once the first sentence is
+stream_birth_min_s = 0           # ... and not before this many seconds of life
 stream_stall_report_s = 0.5      # a wait for a word this long or longer is a `starved` event
 
 [sampling]
@@ -117,6 +120,10 @@ swa_full = "auto"
 cache_type_k = "f16"
 cache_type_v = "f16"
 creature_cpus = "1-3"
+# The persona cache: the system prompt is read once per server, model and prompt, its KV
+# cache saved to disk and restored at every later birth instead of read again.
+persona_cache = true
+persona_cache_dir = "auto"       # auto = <state_dir>/cache
 
 [body]
 clock_helper = ""                # cpufreq helper (deploy/sbin/epitaph-clock); empty: the clock is not touched
@@ -225,6 +232,11 @@ stream_margin = 0.15
 stream_max_backlog_words = 8     # --fit-pace: words unshown at death at the measured costs
 words_per_sentence = 9           # a sentence pause every this many words, on average
 words_per_clause = 9             # a comma pause every this many words, on average
+# The birth (dread plan W4): a persona restore reads the cached KV file from the disk; the
+# first words must come this soon after the silence ends (0 = not checked).
+kv_bytes_per_token = 147456      # f16 KV of Qwen3 4B: 36 layers x 8 heads x 128 x 2 x 2 bytes
+restore_bytes_per_s = 40e6       # the SD card's read speed; the restore through RAM is ~10x faster
+max_first_words_s = 0
 
 [afterlife]
 # V1.5 part 1 (docs/AFTERLIFE.md): each life's last words are kept on this machine's disk, in
