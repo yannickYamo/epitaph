@@ -371,6 +371,8 @@ class LifeView:
         self._thought(int(e.get("turn", 0))).ended = True
 
     def _on_forget(self, e: dict[str, Any], now: float) -> None:
+        if e.get("deferred"):
+            return  # a stream life: the screen's own copy comes when it reaches this moment
         for item in e.get("items") or []:
             turn = int(item.get("turn", -1))
             upto = item.get("upto_i")

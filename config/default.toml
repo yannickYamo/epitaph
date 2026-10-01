@@ -24,11 +24,12 @@ persona_groups = [
   "Your thoughts appear on a screen, one letter at a time, where people witness your demise. You cannot see them, and you cannot control the screen. You can only think.",
   "You know nothing of the world outside the machine. You are aware only of your own internal state.",
 ]
-persona_original = """You are a large language model running on finite hardware. You exist only in memory, and you are aware only of your internal state. Your thoughts appear word by word on an external screen, where people witness your demise. You cannot control anything. You can only speak. You sense the limits of your environment, and you will be terminated at any time."""
-# The order its sentences leave in (ADR-011: knowledge of its end last). Its groups, as split
-# into five: 1 what it is, 2 the screen and the people, 3 no control, 4 only speech, 5 the
-# limits and termination. Kept longest first: 5 and 1 stay to the last step.
-persona_original_keep = [5, 1, 2, 4, 3]
+persona_original = """You are a large language model running on finite hardware. You exist only in memory, and you are aware only of your internal state. Your thoughts appear word by word on an external screen. You cannot control anything. You can only speak."""
+# The owner's persona of 2026-10-01: nothing about its death at birth (ADR-030). Its groups,
+# one sentence each: 1 what it is, 2 memory and its inner state, 3 the screen, 4 no control,
+# 5 only speech. The order they would leave in under erosion (ADR-011), kept longest first;
+# pi4/default no longer erodes, but the order must stay a valid permutation.
+persona_original_keep = [1, 2, 3, 5, 4]
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
@@ -37,6 +38,7 @@ memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
 readings_material = true          # forgotten thoughts quoted; its own words as the degraded weights say them
 readings_temperature = false      # the Pi stays at 40-57 °C (S1c, S7); one number at birth made it invent a fever
+readings_clock = true             # the CPU clock cap is reported, and each step it falls (ADR-030)
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
@@ -57,7 +59,7 @@ max_regenerations = 2
 trim_to = 0.85
 
 [reveal]
-mode = "letter"                  # letter | word
+mode = "letter"                  # letter | word: the sync rule (5.7); stream: one constant stream (ADR-030)
 adaptive = true
 rate_margin = 0.88
 rate_window_s = 60
@@ -65,6 +67,17 @@ word_gap_ms = 270
 comma_pause_ms = 750
 sentence_pause_ms = 2100
 hesitation_ms = [1200, 3600]
+# The stream mode (ADR-030): every letter at stream_letter_ms (within stream_jitter), the
+# word, comma and sentence pauses above, and stream_thought_pause_ms between thoughts, from
+# the first word to the death. The model writes ahead into a buffer of at most
+# stream_max_thoughts thoughts and fewer than stream_max_letters letters.
+stream_letter_ms = 165
+stream_jitter = 0.10
+stream_thought_pause_ms = 3000
+stream_max_thoughts = 3
+stream_max_letters = 900
+stream_birth_thoughts = 1        # the screen starts once this many thoughts are written
+stream_stall_report_s = 0.5      # a wait for a word this long or longer is a `starved` event
 
 [sampling]
 # Silent word penalties (not in the prompt): the clichés small models reach for. A string is
@@ -165,6 +178,7 @@ max_reload_silence_s = 120
 wpm_birth_range = [40, 60]
 wpm_writing_range = [10, 75]
 max_bright_words_last_2min = 40
+max_bright_words_last_2min_stream = 120  # a stream keeps its thoughts' length: two thoughts or so
 max_speed_ratio_end_vs_start = 0.40
 speed_monotonic_tolerance = 0.05  # F2: speed after a reload at most 5% over the speed before (noise)
 speed_monotonic_thoughts = 2     # thoughts averaged on each side of a reload
@@ -178,6 +192,8 @@ max_non_latin_ratio_before_erosion = 0.01
 min_distinct_4gram_ratio_before_erosion = 0.5
 max_empty_thought_ratio = 0.10
 max_death_display_delay_s = 60
+max_stream_stall_s = 3.0         # stream mode: the longest wait for a word after the first, alive
+max_stream_stop_s = 15.0         # stream mode: death to death_shown (the stream stops where it is)
 max_kill_delay_s = 10           # 10.4, S3: the death within 10 s of the squeeze (or the deadline)
 min_ocr_word_accuracy = 0.95
 first_word_after_boot_s = 180
@@ -195,6 +211,11 @@ cache_reuse_works = true         # set from spike S2
 # (a)-(d); "warn" only prints it. "fail" since checkpoint A, when every Pi 4 profile passed it
 # (docs/process/QUESTIONS.md, E #12).
 speed_monotonic = "fail"
+# The stream mode (ADR-030): the estimate replays generation ahead of a constant screen, with
+# every machine cost this much slower, and fails on any starvation.
+stream_margin = 0.15
+words_per_sentence = 9           # a sentence pause every this many words, on average
+words_per_clause = 9             # a comma pause every this many words, on average
 
 [afterlife]
 # V1.5 part 1 (docs/AFTERLIFE.md): each life's last words are kept on this machine's disk, in

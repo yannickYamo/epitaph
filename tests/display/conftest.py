@@ -52,7 +52,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 @pytest.fixture(scope="session")
 def sim_events() -> list[dict[str, Any]]:
     """One full pi4/default life, round-tripped through JSON like `epitaph sim --events`."""
-    result = simulate(load_config("pi4/default", "pi4-4gb"), lives=1)
+    result = simulate(load_config("pi4/default-reloads", "pi4-4gb"), lives=1)
     return [json.loads(json.dumps(e)) for e in result.events]
 
 

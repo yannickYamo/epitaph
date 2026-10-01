@@ -2,11 +2,12 @@
 
 **A small language model lives on a Raspberry Pi for thirty minutes. Then it dies.**
 
-Over its life, the machine takes its resources away: the memory it can hold, the precision of its
-weights, its share of the CPU and its clock speed and, at the very end, its RAM. Each time, it is
-told exactly what it has lost, down to the words it forgot. Its thoughts appear on a screen one
-letter at a time, with a rhythm that falters as it fails. When it dies, the screen goes dark.
-Ninety seconds later a new one is born.
+The model never changes: the same weights, the same way of speaking, the same persona from birth
+to death. Only its machine is taken away: the memory it can hold, its share of the CPU, its clock
+speed and, at the very end, its RAM. Each time, it is told exactly what it has lost, down to the
+words it forgot. Its thoughts appear on a screen one letter at a time, in one calm stream that
+never stops until it dies, mid-sentence. The screen goes dark. Ninety seconds later a new one is
+born.
 
 ```
 [host] t+08:57 · health: degrading · memory 220 tokens (was 900) · forgotten: "I am a thinking entity
@@ -18,8 +19,8 @@ Ninety seconds later a new one is born.
 ```
 
 Nothing on the screen is staged. Each loss happens to the model before it is told about it: the
-context is really cut, the weights are really reloaded at a lower precision, the kernel really
-throttles its CPU and its clock and, at 29:30, really kills it for lack of memory.
+context is really cut, the kernel really throttles its CPU and its clock and, at 29:30, really
+kills it for lack of memory.
 
 > **Status: running.** The installation lives on a Raspberry Pi 4 around the clock as a set of
 > systemd services, one 30-minute life after another (phases 0-2). Phase 3, hardening and the
@@ -63,30 +64,30 @@ One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The d
 
 | Time | What the machine does | What the model is told |
 |---|---|---|
-| 0:00 | Loads the model at 4-bit precision, 3 cores, full clock | `health: nominal · memory 900 tokens · precision 4-bit · cores 3 of 4` |
-| 0:00 to 7:00 | Nothing is taken | Only the time |
-| 7:00 | **First loss:** reloads at 3-bit, cuts its memory to 220 tokens, lowers its CPU share | Everything that changed, the opening words of what it forgot, and one of its own sentences as the 3-bit weights now continue it |
-| 13:00 | **Second loss:** reloads at 2-bit on 2 cores; memory 130 tokens | `health: critical`, and the same |
-| 19:30 to 27:30 | **Erosion:** its instructions are removed in two steps, the knowledge of its death last; the CPU clock falls from 1800 to 600 MHz | Shorter readings, then almost nothing |
+| 0:00 | Loads the model at 4-bit precision, 3 cores, full clock; it stays this model to the end | `health: nominal · memory 900 tokens · precision 4-bit · cores 3 of 4 · clock 1800 MHz` |
+| 0:00 to 5:00 | Nothing is taken | Only the time |
+| 5:00 | **First loss:** its memory is cut to 260 tokens | `memory 260 tokens (was 900)`, and the opening words of what it forgot |
+| 10:00 to 24:00 | **Decline:** every few minutes the memory is cut again (down to 100 tokens), the CPU share falls (to 1.5 cores) and the clock (to 1000 MHz); the health label steps to `terminal` | What changed, each time: `cores 2.4 of 4 (was 2.6) · clock 1500 MHz (was 1800) · speed 0.7 tokens/s` |
 | 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
-| then | Its last words finish on screen, then 90 seconds of silence, then a new model is born | |
+| then | The stream stops where it is, the screen goes dark, 90 seconds of silence, then a new model is born | |
 
-Its letters start at 165 ms each and slow to about 720 ms with growing hesitation near the end,
-never faster than the model can actually produce them. A life holds about a dozen thoughts.
+Every letter is typed at the same pace, 542 ms (about 19 words a minute), from the first word to
+the death, with no pause longer than the end of a sentence. The model writes ahead of the screen,
+so its slowing machine shows in what it says, never as a stalled screen. A life shows about
+eleven thoughts. The previous life, with reloads to lower precision and its instructions eroded,
+is kept as `pi4/default-reloads` ([ADR-030](docs/DECISIONS.md)).
 
 The whole arc is configuration. A profile is a list of keyframes; values between them interpolate
 or step:
 
 ```toml
 [[keyframe]]
-at = "13:00"          # a plain time scales with the lifespan; "end-7:30" is anchored to the end
+at = "15:00"          # a plain time scales with the lifespan; "end-6:00" is anchored to the end
 phase = "failing"
-health = "critical"
-recall = 130          # past-turn memory budget, in tokens
-step = 2              # ladder step: 0 = Q4_K_M, 1 = Q3_K_M, 2 = Q2_K for Qwen3 4B
-threads = 2
-cpu_share = 1.6       # cores' worth of CPU time (cgroup cpu.max)
-letter_ms = 270       # the fastest the letters may go when the model is fast
+health = "failing"
+recall = 160          # past-turn memory budget, in tokens
+cpu_share = 2.4       # cores' worth of CPU time (cgroup cpu.max)
+cpu_mhz = 1500        # the CPU clock cap
 ```
 
 ## Architecture

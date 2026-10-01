@@ -50,8 +50,8 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `language` | `"en"` | Language pack in `config/lang/` |
 | `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
 | `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
-| `persona_original` | The owner's persona, after Latent Reflection | The installation's persona (ADR-023) |
-| `persona_original_keep` | `[5, 1, 2, 4, 3]` | The order its five sentence groups are kept, longest first: what it is and its termination stay to the last step, so it knows it will end until the end (ADR-011). The full text is unchanged |
+| `persona_original` | The owner's persona of 2026-10-01: a large language model on finite hardware, in memory, its words on a screen, speaking only; nothing about its death (ADR-030) | The installation's persona (ADR-023) |
+| `persona_original_keep` | `[1, 2, 3, 5, 4]` | The order its five sentences would be kept under erosion, longest first (ADR-011). `pi4/default` no longer erodes (ADR-030); the order must stay a permutation of the five |
 | `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
@@ -61,14 +61,15 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `readings_material` | `true` | Forgotten thoughts are quoted by their opening words, and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
 | `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023) |
+| `readings_clock` | `true` | The CPU clock cap is in the birth reading, and in every reading after it falls: `clock 1500 MHz (was 1800)` (ADR-030) |
 | `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
 | `bare_mode` | `"raw"` | How it speaks once persona and mechanics are gone: `chat`, or `raw` (a raw completion, no system text) |
 | `raw_prefix` | `"I"` | A raw thought starts with this word, so it stays in the first person |
 
 Optional keys read by the code, not set in the file: `readings_quiet_time` (default true: a
 quiet reading with no change still gives the time), `readings_cores_step` (0.2),
-`readings_speed_step` (0.2) and `readings_memory_step` (0.05), the smallest changes a reading
-reports.
+`readings_speed_step` (0.2), `readings_memory_step` (0.05) and `readings_clock_step` (50 MHz),
+the smallest changes a reading reports.
 
 ## `[output]`
 
@@ -83,17 +84,27 @@ reports.
 
 | Key | Default | What it does |
 |---|---|---|
-| `mode` | `"letter"` | *Reserved.* Letters are always typed one at a time |
-| `adaptive` | `true` | Letters follow the measured generation rate, never faster; off, they follow the profile's `letter_ms` alone |
+| `mode` | `"letter"` | `letter` (or `word`): each thought is typed as it is generated, and the next is requested once it is shown (the sync rule, BUILD_PLAN 5.7). `stream`: one constant stream from the first word to the death, the model writing ahead into a bounded buffer (ADR-030); `pi4/default` sets it |
+| `adaptive` | `true` | Letters follow the measured generation rate, never faster; off, they follow the profile's `letter_ms` alone (`letter` mode) |
 | `rate_margin` | `0.88` | Typing runs at this share of the generation rate, so letters neither burst nor starve |
 | `rate_window_s` | `60` | The generation rate is averaged over this many seconds |
 | `word_gap_ms` | `270` | Pause after a word |
 | `comma_pause_ms` | `750` | Pause after a comma or similar |
 | `sentence_pause_ms` | `2100` | Pause after a sentence |
 | `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
+| `stream_letter_ms` | `165` | `stream` mode: every letter's interval, the same from birth to death (`pi4/default`: 542, fitted with `epitaph estimate --fit-pace`) |
+| `stream_jitter` | `0.1` | `stream` mode: the fixed random spread of each letter, as a share of `stream_letter_ms` |
+| `stream_thought_pause_ms` | `3000` | `stream` mode: the pause between two thoughts |
+| `stream_max_thoughts` | `3` | `stream` mode: the model starts a new thought only while fewer generated thoughts than this wait to be finished on screen |
+| `stream_max_letters` | `900` | `stream` mode: ... and while fewer letters than this wait to be typed |
+| `stream_birth_thoughts` | `1` | `stream` mode: the thoughts written before the screen starts, the only wait the stream allows (it also starts once the buffer is full) |
+| `stream_stall_report_s` | `0.5` | `stream` mode: a wait of the screen for a word this long or longer is a `starved` event |
 
 Optional: `min_rate_sample_s` (3.0), the generation measured before the rate is trusted;
 `hesitation_inside_from` (0.1), the `hesitation` from which a pause may fall inside a word.
+
+A profile may set its own `[reveal]` table: it applies over this file and the hardware overlay,
+and the command line still wins. `pi4/default` sets `mode = "stream"` and the stream's pace there.
 
 ## `[sampling]`
 
@@ -214,6 +225,7 @@ here too.
 | `wpm_birth_range` | `[40, 60]` | Typing speed after birth, words per minute |
 | `wpm_writing_range` | `[10, 75]` | Typing speed over the life |
 | `max_bright_words_last_2min` | `40` | Words at full brightness in the last two minutes (flow layout) |
+| `max_bright_words_last_2min_stream` | `120` | The same for a `stream` life, whose thoughts keep their length to the end: about the thought on screen and the one before it (ADR-030) |
 | `max_speed_ratio_end_vs_start` | `0.4` | Tokens/s of the last five minutes over the first five |
 | `speed_monotonic_tolerance` | `0.05` | Speed after a reload may be this much over the speed before (noise) |
 | `speed_monotonic_thoughts` | `2` | Thoughts averaged on each side of a reload |
@@ -227,6 +239,8 @@ here too.
 | `min_distinct_4gram_ratio_before_erosion` | `0.5` | Distinct word 4-grams: repetition |
 | `max_empty_thought_ratio` | `0.1` | Thoughts with no words |
 | `max_death_display_delay_s` | `60` | From the death to `death_shown`; the pacer flushes the last words within 80% of it |
+| `max_stream_stall_s` | `3.0` | A `stream` life: the longest the screen may wait for a word after the first, before the death (`stream_starvation`) |
+| `max_stream_stop_s` | `15.0` | A `stream` life: from the death to `death_shown`, with no word after the death (`stream_stop`) |
 | `max_kill_delay_s` | `10` | From the death squeeze (or the deadline) to the death |
 | `min_ocr_word_accuracy` | `0.95` | *Reserved.* The screenshot check takes `--min-ocr` |
 | `first_word_after_boot_s` | `180` | *Reserved.* Power on to the first shown word, judged by the boot test (G3) |
@@ -245,6 +259,9 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `letters_per_word` | `4.7` | Letters per word |
 | `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
 | `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
+| `stream_margin` | `0.15` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate |
+| `words_per_sentence` | `9` | A sentence pause every this many words, on average (the stream's pace) |
+| `words_per_clause` | `9` | A comma pause every this many words, on average |
 
 ## `[afterlife]`
 
@@ -298,9 +315,10 @@ Estimated machine costs, used where `bench/` has no measured file for a model an
 ## Profiles
 
 `config/profiles/<class>/<name>.toml`. The Pi 4 profiles: `default` (the installation, 30
-minutes), `smoke-300`, `skeleton-1200`, `compressed-2700`, `unbounded` (the homage to Latent
-Reflection: never forgets, dies when its context is full) and `default-qwen3-1.7b` (the one-hour
-schedule of the faster model). [PROFILES.md](PROFILES.md) explains how each was fitted.
+minutes, one model, only the hardware shrinks, one constant stream: ADR-030), `default-reloads`
+(the 30-minute life before it, with reloads and erosion, kept for reference), `smoke-300`,
+`skeleton-1200`, `unbounded` (the homage to Latent Reflection: never forgets, dies when its
+context is full) and `default-qwen3-1.7b` (the one-hour schedule of the faster model). [PROFILES.md](PROFILES.md) explains how each was fitted.
 
 ### Top level of a profile
 
@@ -312,12 +330,15 @@ schedule of the faster model). [PROFILES.md](PROFILES.md) explains how each was 
 | `unbounded` | `false` | Never forget; the life ends when the context is full (`cause=full`) |
 | `ctx` | `backend.ctx` | Context window for this profile |
 | `verify_level` | `"full"` | How `verify-life` judges its lives: `smoke`, `skeleton` or `full` |
+| `fixed_mind` | `false` | The model never changes during a life (ADR-030): validation refuses a keyframe that changes `step`, `threads`, `persona_groups`, `mechanics`, `temperature`, `min_p` or `max_tokens` |
+| `stepped` | `[]` | Interpolated knobs this profile sets at their keyframe instead of easing them, such as `["recall", "cpu_share"]`: a memory cut at a moment |
 
 ### `[[keyframe]]`
 
 The first keyframe is at `"0:00"` and sets every field; later ones set what changes. Stepped
-fields change at the keyframe; interpolated ones move linearly to the next keyframe. A keyframe
-takes effect when the thought in flight ends.
+fields change at the keyframe; interpolated ones move linearly to the next keyframe (unless the
+profile lists them in `stepped`). The CPU share and clock take effect at their time; the rest
+when the next thought starts.
 
 | Key | Default | What it does |
 |---|---|---|
@@ -332,18 +353,19 @@ takes effect when the thought in flight ends.
 | `temperature` | Required | Sampling temperature |
 | `min_p` | Required | Sampling `min_p` |
 | `max_tokens` | Required | Longest thought, in tokens |
-| `pause_s` | Required | Least pause between thoughts |
+| `pause_s` | Required | Least pause between thoughts (`letter` mode; a stream uses `stream_thought_pause_ms`) |
 | `persona_groups` | Required (stepped) | Persona groups left; each removal is an erosion step, the knowledge of its death last |
 | `mechanics` | Required (stepped) | Whether the mechanics are still in the system prompt |
 | `readings` | Required (stepped) | Reading form: `full`, `short` or `minimal` |
-| `letter_ms` | Required | The fastest a letter may be typed, ms; slower when the model is slower |
-| `jitter` | Required | Random spread of each letter's interval, as a share of it |
-| `hesitation` | Required | Chance of a hesitation (`[reveal] hesitation_ms`) at each word, before it or, late in life, inside it |
+| `letter_ms` | Required | The fastest a letter may be typed, ms; slower when the model is slower (`letter` mode) |
+| `jitter` | Required | Random spread of each letter's interval, as a share of it (`letter` mode) |
+| `hesitation` | Required | Chance of a hesitation (`[reveal] hesitation_ms`) at each word, before it or, late in life, inside it (`letter` mode) |
 
 ### `[rules]`
 
 Thought-count minimums the cost model and `verify-life` enforce (BUILD_PLAN 5.3, ADR-024). The
-defaults are for a one-hour life; the 30-minute `pi4/default` sets 2, 1, 1, 3.
+defaults are for a one-hour life; `pi4/default-reloads` sets 2, 1, 1, 3; `pi4/default` (no reload,
+no erosion: only rule (a) counts) sets `between_health = 1`.
 
 | Key | Default | What it does |
 |---|---|---|

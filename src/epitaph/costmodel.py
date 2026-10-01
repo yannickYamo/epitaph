@@ -39,6 +39,7 @@ from __future__ import annotations
 import itertools
 import json
 import statistics
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,7 +49,7 @@ from epitaph.clock import Schedule
 from epitaph.config import REPO_ROOT, Config, profile_rules, reading_tokens, system_tokens
 from epitaph.mind.memory import approx_tokens
 from epitaph.mind.prompt import Persona
-from epitaph.types import RuleReport, RuleViolation
+from epitaph.types import RuleReport, RuleViolation, StreamEstimate
 
 # Save plus restore of the cache slot at a reload, with margin (spike S4b measured 0.3 s).
 HANDOVER_S = 1.0
@@ -231,7 +232,10 @@ def _system_tokens(cfg: Config) -> Callable[[int, bool], int]:
 
 def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> RuleReport:
     """Simulate one life; check the thought-count rule (a)-(d), the reload silence and the
-    speed decline (see the module notes)."""
+    speed decline (see the module notes). A stream profile (`[reveal] mode = "stream"`) is
+    replayed by `estimate_stream` instead."""
+    if str(cfg.get("reveal.mode", "letter")) == "stream":
+        return estimate_stream(cfg, costs, schedule)
     sch = schedule or Schedule(cfg.profile)
     est = cfg.section("estimate")
     reveal = cfg.section("reveal")
@@ -534,3 +538,290 @@ def format_report(report: RuleReport) -> str:
     lines += [f"  note: {n}" for n in report.notes]
     lines += [f"  rule ({v.rule}) at {v.at_s / 60:.1f} min: {v.detail}" for v in report.violations]
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------------------
+# the stream mode (ADR-030)
+
+
+@dataclass
+class _Shown:
+    """One estimated word on the stream: when it is generated and when it starts typing."""
+
+    avail: float
+    start: float
+    typed_end: float
+
+
+@dataclass
+class _StreamPace:
+    letter_s: float  # one letter
+    letters_per_word: float
+    word_pause_s: float  # the average pause after a word (word gap, clause, sentence)
+    thought_pause_s: float
+
+    @property
+    def word_s(self) -> float:
+        """A word's letters."""
+        return self.letters_per_word * self.letter_s
+
+    def wpm(self, words_per_thought: float) -> float:
+        """Words per minute of the stream, thought pauses included."""
+        w = max(1.0, words_per_thought)
+        span = w * (self.word_s + self.word_pause_s) - self.word_pause_s + self.thought_pause_s
+        return 60 * w / span
+
+
+def stream_pace(cfg: Config, letter_ms: float | None = None) -> _StreamPace:
+    """The stream's constant pace from `[reveal]` and the `[estimate]` text shape."""
+    rev = cfg.section("reveal")
+    est = cfg.section("estimate")
+    lms = float(letter_ms if letter_ms is not None else rev.get("stream_letter_ms", 165))
+    word_gap = float(rev.get("word_gap_ms", 270)) / 1000
+    comma = float(rev.get("comma_pause_ms", 750)) / 1000
+    sentence = float(rev.get("sentence_pause_ms", 2100)) / 1000
+    per_sentence = 1 / max(1.0, float(est.get("words_per_sentence", 9)))
+    per_clause = 1 / max(1.0, float(est.get("words_per_clause", 9)))
+    pause = word_gap * (1 - per_sentence - per_clause) + sentence * per_sentence
+    pause += comma * per_clause
+    return _StreamPace(
+        letter_s=lms / 1000,
+        letters_per_word=float(est.get("letters_per_word", 4.7)),
+        word_pause_s=pause,
+        thought_pause_s=float(rev.get("stream_thought_pause_ms", 3000)) / 1000,
+    )
+
+
+def estimate_stream(
+    cfg: Config,
+    costs: Costs,
+    schedule: Schedule | None = None,
+    *,
+    letter_ms: float | None = None,
+    margin: float | None = None,
+) -> RuleReport:
+    """Replay a stream life (ADR-030): generation written ahead of one constant screen.
+
+    The model starts each thought as soon as the previous one is generated, while the
+    buffer holds fewer than `stream_max_thoughts` thoughts and `stream_max_letters` letters;
+    its words come at the machine's rate under the schedule's recall, CPU share and clock
+    (every cost `margin` slower, `estimate.stream_margin` by default). The screen types
+    them at the constant pace. Any wait of the screen for a word after the first, before
+    the death, is starvation: a violation. The report keeps the buffer over time and the
+    backlog at death, and checks rule (a), the speed decline and the reload silences.
+    """
+    sch = schedule or Schedule(cfg.profile)
+    est = cfg.section("estimate")
+    rev = cfg.section("reveal")
+    slow = 1 + float(margin if margin is not None else est.get("stream_margin", 0.15))
+    pace = stream_pace(cfg, letter_ms)
+    fill = float(est.get("fill", 0.85))
+    letters_per_token = float(est.get("letters_per_token", 3.5))
+    trim_to = float(cfg.get("output.trim_to", 0.85))
+    threads_batch = int(cfg.get("backend.threads_batch", 0)) or None
+    max_thoughts = max(1, int(rev.get("stream_max_thoughts", 3)))
+    max_letters = max(1, int(rev.get("stream_max_letters", 900)))
+    material = bool(cfg.get("prompt.readings_material", False))
+    marker_tokens = _marker_tokens(cfg)
+    sys_tokens_of = _system_tokens(cfg)
+    end = sch.lifespan_s
+    if sch.death_s is not None and str(cfg.get("body.death_mode", "oom")) == "oom":
+        end = min(end, sch.death_s)
+
+    def reread(tokens: int) -> int:
+        return int(tokens * costs.reuse_residual) if costs.cache_reuse_works else tokens
+
+    report = RuleReport(profile=cfg.profile.name, lifespan_s=sch.lifespan_s)
+    k0 = sch.at(0)
+    step, threads = k0.step, k0.threads
+    groups, mechanics = k0.persona_groups, k0.mechanics
+    words: list[_Shown] = []
+    thoughts: list[tuple[int, int]] = []  # (first word index, last word index), shown ones
+    pending: list[list[float]] = []  # before the screen starts: each thought's word times
+    birth_thoughts = max(0, min(int(rev.get("stream_birth_thoughts", 1)), max_thoughts))
+    memory: deque[int] = deque()  # tokens per turn, as Memory keeps whole turns
+    marker = False
+    stalls: list[tuple[float, float]] = []
+    speeds: list[tuple[float, float]] = []
+    words_per_thought: list[float] = []
+    cursor: float | None = None  # when the screen is ready for the next word
+    typed_end: float | None = None
+
+    def thought_end(i: int) -> float:
+        return words[thoughts[i][1]].typed_end
+
+    def show(avail: list[float]) -> None:
+        """Put one thought's words on the screen at the constant pace."""
+        nonlocal cursor, typed_end
+        first = len(words)
+        for j, at in enumerate(avail):
+            if j == 0 and typed_end is not None:
+                cursor = typed_end + pace.thought_pause_s
+            start = at if cursor is None else max(cursor, at)
+            if cursor is not None and at > cursor + 1e-6 and cursor < end:
+                stalls.append((cursor, min(at, end) - cursor))
+            typed_end = start + pace.word_s
+            cursor = typed_end + pace.word_pause_s
+            words.append(_Shown(at, start, typed_end))
+        if len(words) > first:
+            thoughts.append((first, len(words) - 1))
+
+    def room_at(t0: float) -> float:
+        """The first moment from t0 when the buffer has room for another thought."""
+        if pending:  # the screen has not started: only what is written counts
+            return t0
+        times = sorted(
+            {t0}
+            | {w.start for w in words if w.start > t0}
+            | {thought_end(i) for i in range(len(thoughts)) if thought_end(i) > t0}
+        )
+        for t in times:
+            letters = sum(1 for w in words if w.avail <= t < w.start) * pace.letters_per_word
+            waiting = sum(1 for i in range(len(thoughts)) if thought_end(i) > t)
+            if letters < max_letters and waiting < max_thoughts:
+                return t
+        return times[-1]
+
+    # The system prompt is read once the clock runs (Life.birth), under the birth card.
+    t_gen = sys_tokens_of(groups, mechanics) / (
+        costs.pp(step, threads, k0.compute, threads_batch) / slow
+    )
+    born = birth_thoughts == 0
+    while t_gen < end:
+        t = room_at(t_gen)
+        if t >= end:
+            break
+        k = sch.at(t)
+        if (k.step, k.threads) != (step, threads):
+            # A stream profile keeps one model (fixed_mind); a reload is charged as a load
+            # and a full re-read, without the slot hand-over's discount.
+            t += costs.load(k.step) * slow
+            step, threads = k.step, k.threads
+            k = sch.at(t)
+        sys_tokens = sys_tokens_of(k.persona_groups, k.mechanics)
+        reading = reading_tokens(cfg, k.readings)
+        extra = 0
+        if (k.persona_groups, k.mechanics) != (groups, mechanics):
+            groups, mechanics = k.persona_groups, k.mechanics
+            extra += reread(sys_tokens + sum(memory))
+        if sum(memory) > k.recall:
+            target = int(k.recall * trim_to)
+            while memory and sum(memory) > target:
+                memory.popleft()
+            extra += reread(sys_tokens + sum(memory))
+            if material:
+                reading += QUOTE_TOKENS
+            if not marker:
+                marker = True
+                reading += marker_tokens
+        compute = k.compute
+        t += (reading + extra) / (costs.pp(step, threads, compute, threads_batch) / slow)
+        speeds.append((t, costs.tg_short(step, threads, compute)))
+        n_tokens = max(1, round(k.max_tokens * fill))
+        token_t: list[float] = []
+        for _ in range(n_tokens):
+            if t >= end:
+                break
+            t += slow / costs.tg(step, threads, sch.at(t).compute)
+            token_t.append(t)
+        memory.append(reading + len(token_t))
+        t_gen = t
+        if not token_t:
+            break
+        n_words = len(token_t) * letters_per_token / pace.letters_per_word
+        words_per_thought.append(n_words)
+        avail = [
+            token_t[min(len(token_t) - 1, int((j + 1) * len(token_t) / n_words + 0.5) - 1)]
+            for j in range(max(1, round(n_words)))
+        ]
+        avail = [a for a in avail if a < end]
+        if born:
+            show(avail)
+            continue
+        pending.append(avail)
+        letters = sum(len(p) for p in pending) * pace.letters_per_word
+        if len(pending) >= birth_thoughts or letters >= max_letters:
+            born = True
+            start = t_gen  # the screen starts once the birth thoughts are written
+            for p in pending:
+                show([max(a, start) for a in p])
+            pending.clear()
+    for p in pending:  # died before the screen started
+        show(p)
+
+    report.thought_times = [thought_end(i) for i in range(len(thoughts)) if thought_end(i) <= end]
+    backlog = [w for w in words if w.start >= end]
+    letters_waiting = [
+        (float(m), round(sum(1 for w in words if w.avail <= m < w.start) * pace.letters_per_word))
+        for m in range(0, int(end) + 1, 60)
+    ]
+    wpt = statistics.fmean(words_per_thought) if words_per_thought else 1.0
+    report.stream = StreamEstimate(
+        letter_ms=pace.letter_s * 1000,
+        wpm=pace.wpm(wpt),
+        margin=slow - 1,
+        buffer=letters_waiting,
+        stalls=[(a, s) for a, s in stalls if s > 1e-6],
+        backlog_letters=round(len(backlog) * pace.letters_per_word),
+        backlog_words=len(backlog),
+        backlog_s=len(backlog) * (pace.word_s + pace.word_pause_s),
+        max_buffer_letters=max((n for _, n in letters_waiting), default=0),
+    )
+    check_rules(report, sch, end)
+    _check_speed_decline(report, cfg, speeds, end)
+    stream = report.stream
+    if stream.stalls:
+        at, _ = stream.stalls[0]
+        report.violations.append(
+            RuleViolation(
+                "starve",
+                at,
+                f"the stream waits for words from {at / 60:.1f} min: {len(stream.stalls)} "
+                f"waits, {stream.starved_s:.0f} s in all (costs {stream.margin:.0%} slower)",
+            )
+        )
+    report.notes.append(stream_summary(stream))
+    report.notes.append(
+        f"{report.thoughts} thoughts shown; costs from {costs.source}"
+        + (" (estimated)" if costs.estimated else "")
+        + ("; cache reuse assumed" if costs.cache_reuse_works else "; no cache reuse")
+    )
+    return report
+
+
+def stream_summary(stream: StreamEstimate) -> str:
+    """One line: the pace, the buffer every five minutes, starvation and the backlog."""
+    every5 = ", ".join(f"{n}" for t, n in stream.buffer if int(t) % 300 == 0)
+    starve = (
+        "never starves"
+        if not stream.stalls
+        else f"starves from {stream.stalls[0][0] / 60:.1f} min ({stream.starved_s:.0f} s)"
+    )
+    return (
+        f"stream {stream.letter_ms:.0f} ms/letter, {stream.wpm:.1f} words/min; costs "
+        f"{stream.margin:.0%} slower: {starve}; letters waiting every 5 min: {every5} "
+        f"(max {stream.max_buffer_letters}); backlog at death {stream.backlog_words} words "
+        f"({stream.backlog_s:.0f} s of typing)"
+    )
+
+
+def fit_stream_pace(
+    cfg: Config, costs: Costs, lo_ms: float = 60.0, hi_ms: float = 2000.0
+) -> float | None:
+    """The fastest constant letter interval (ms, whole) at which the stream never starves
+    with the margin; None if even `hi_ms` starves."""
+
+    def starves(ms: float) -> bool:
+        rep = estimate_stream(cfg, costs, letter_ms=ms)
+        return rep.stream is None or bool(rep.stream.stalls)
+
+    if starves(hi_ms):
+        return None
+    lo, hi = int(lo_ms), int(hi_ms)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if starves(mid):
+            lo = mid + 1
+        else:
+            hi = mid
+    return float(hi)

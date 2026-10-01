@@ -9,6 +9,13 @@ banned opening, the death flush) and enforces the sync rule: it returns only whe
 word has finished typing, so the next request cannot start earlier. The controller calls it
 once per thought.
 
+In the stream mode (`[reveal] mode = "stream"`, ADR-030) the screen is one `StreamScreen`
+for the whole life: it types every word at one constant pace, thought after thought, while
+`write_ahead()` generates the next thought as soon as the previous one is generated, into a
+bounded buffer. The display never waits except at birth; when it must (the buffer ran dry
+while the creature lives) that is starvation, measured and reported. At death the stream
+stops where it is.
+
 Timing is in the life clock's seconds; cadence values are integer milliseconds.
 """
 
@@ -33,10 +40,15 @@ __all__ = [
     "Lookahead",
     "Pacer",
     "PushResult",
+    "ScreenEvent",
     "Spoken",
+    "StreamScreen",
+    "StreamStats",
+    "ThoughtMark",
     "life_seed",
     "pause_after_ms",
     "speak",
+    "write_ahead",
 ]
 
 _SENTENCE_END = ".?!…"
@@ -229,6 +241,8 @@ class Pacer:
         self._not_before = 0.0
         self._flush_by: float | None = None  # at death, when the last word must be typed
         self._last_end: float | None = None
+        # The stream mode's screen: released words go to it instead of this thought's queue.
+        self.screen: StreamScreen | None = None
 
     @classmethod
     def from_config(cls, cfg: Config, clock: LifeClock, seed: int = 0) -> Pacer:
@@ -392,6 +406,9 @@ class Pacer:
     def _release(self, text: str) -> Word:
         word = Word(self.turn, len(self.shown), text)
         self.shown.append(word)
+        if self.screen is not None:
+            self.screen.put(word)
+            return word
         self._queue.append(word)
         self._wake.set()
         return word
@@ -423,6 +440,8 @@ class Pacer:
         self._sanitizer.divergences = 0
         self._finished = True
         self._wake.set()
+        if self.screen is not None:
+            self.screen.end_thought(self.turn, self.text)
         return self._hit
 
     # -- cadence ---------------------------------------------------------------------------
@@ -494,6 +513,272 @@ class Pacer:
 
 
 # ---------------------------------------------------------------------------------------
+# the stream screen (ADR-030)
+
+
+@dataclass(frozen=True)
+class ThoughtMark:
+    """The end of a generated thought in the stream: what its `thought_end` will say."""
+
+    turn: int
+    text: str
+
+
+@dataclass
+class StreamStats:
+    """What the stream screen did, for the death record, the tests and verify-life."""
+
+    words: int = 0
+    letters: int = 0
+    first_word_t: float | None = None
+    # (life time the screen was ready for the next word, seconds it waited for it)
+    stalls: list[tuple[float, float]] = field(default_factory=lambda: [])
+    max_backlog_letters: int = 0
+    dropped_words: int = 0
+    dropped_letters: int = 0
+
+    @property
+    def starved_s(self) -> float:
+        """Seconds the screen waited for a word after the first one, in all."""
+        return sum(s for _, s in self.stalls)
+
+    @property
+    def max_stall_s(self) -> float:
+        """The longest single wait for a word after the first one."""
+        return max((s for _, s in self.stalls), default=0.0)
+
+
+@dataclass(frozen=True)
+class ScreenEvent:
+    """An event for the screen that waits its turn in the stream (a forgetting fades the
+    text when the screen reaches the moment it happened, not while it is still typing what
+    came before)."""
+
+    etype: str
+    fields: dict[str, Any]
+
+
+StreamItem = Word | ThoughtMark | ScreenEvent
+STALL_EPS_S = 1e-6
+
+
+class StreamScreen:
+    """One constant stream of words for a whole life (ADR-030).
+
+    Words are put in as they are generated; `run` types them one after another at
+    `letter_ms` per letter (with a small fixed `jitter`), the fixed pauses after words,
+    clauses and sentences, and `thought_pause_ms` between thoughts. No hesitation, no
+    slowdown: the pace is the same from the first word to the death. When the next word is
+    not there when the screen is ready for it, the screen waits: a stall (starvation),
+    recorded with its length. The writer keeps the buffer bounded with `wait_for_room`: at
+    most `max_thoughts` generated thoughts and fewer than `max_letters` letters waiting.
+    At birth the screen waits until `birth_thoughts` thoughts are generated: the only wait
+    the stream allows. `stop` (the death) ends the stream where it is: the words still
+    waiting die with it.
+    """
+
+    def __init__(
+        self,
+        clock: LifeClock,
+        *,
+        letter_ms: float,
+        jitter: float = 0.0,
+        word_gap_ms: int = 270,
+        comma_pause_ms: int = 750,
+        sentence_pause_ms: int = 2100,
+        thought_pause_ms: int = 3000,
+        max_thoughts: int = 3,
+        max_letters: int = 600,
+        birth_thoughts: int = 1,
+        stall_report_s: float = 0.5,
+        seed: int = 0,
+    ) -> None:
+        """A screen on `clock` typing at this pace; see the class for the bounds."""
+        if letter_ms <= 0:
+            raise ValueError("the stream's letter_ms must be above 0")
+        self.clock = clock
+        self.letter_ms = letter_ms
+        self.jitter = jitter
+        self.word_gap_ms = word_gap_ms
+        self.comma_pause_ms = comma_pause_ms
+        self.sentence_pause_ms = sentence_pause_ms
+        self.thought_pause_ms = thought_pause_ms
+        self.max_thoughts = max(1, max_thoughts)
+        self.max_letters = max(1, max_letters)
+        self.birth_thoughts = max(0, min(birth_thoughts, self.max_thoughts))
+        self.stall_report_s = stall_report_s
+        self.rng = random.Random(seed)
+        self.stats = StreamStats()
+        self.stopped = False
+        self._items: deque[StreamItem] = deque()
+        self._letters = 0
+        self._marks = 0
+        self._wake = asyncio.Event()  # something to type, or the stop
+        self._room = asyncio.Event()  # something left the buffer, or the stop
+        # The thought on screen whose end is not reached yet, and its words shown so far.
+        self.open_turn: int | None = None
+        self.open_words: list[str] = []
+
+    @classmethod
+    def from_config(cls, cfg: Config, clock: LifeClock, seed: int = 0) -> StreamScreen:
+        """A screen set up from `[reveal]`: `stream_letter_ms`, `stream_jitter`, the word,
+        comma and sentence pauses, `stream_thought_pause_ms` and the buffer bounds."""
+        rev = cfg.section("reveal")
+        return cls(
+            clock,
+            letter_ms=float(rev.get("stream_letter_ms", 165)),
+            jitter=float(rev.get("stream_jitter", 0.0)),
+            word_gap_ms=int(rev.get("word_gap_ms", 270)),
+            comma_pause_ms=int(rev.get("comma_pause_ms", 750)),
+            sentence_pause_ms=int(rev.get("sentence_pause_ms", 2100)),
+            thought_pause_ms=int(rev.get("stream_thought_pause_ms", 3000)),
+            max_thoughts=int(rev.get("stream_max_thoughts", 3)),
+            max_letters=int(rev.get("stream_max_letters", 600)),
+            birth_thoughts=int(rev.get("stream_birth_thoughts", 1)),
+            stall_report_s=float(rev.get("stream_stall_report_s", 0.5)),
+            seed=seed,
+        )
+
+    # -- the writer's side ---------------------------------------------------------------
+
+    def put(self, word: Word) -> None:
+        """A generated word joins the stream (ignored once the stream has stopped)."""
+        if self.stopped:
+            return
+        self._items.append(word)
+        self._letters += len(word.text)
+        self.stats.max_backlog_letters = max(self.stats.max_backlog_letters, self._letters)
+        self._wake.set()
+
+    def end_thought(self, turn: int, text: str) -> None:
+        """The thought `turn` is fully generated: its end follows its last word."""
+        if self.stopped:
+            return
+        self._items.append(ThoughtMark(turn, text))
+        self._marks += 1
+        self._wake.set()
+
+    def put_event(self, etype: str, **fields: Any) -> None:
+        """An event the screen emits when it reaches this point of the stream."""
+        if self.stopped:
+            return
+        self._items.append(ScreenEvent(etype, fields))
+        self._wake.set()
+
+    @property
+    def letters(self) -> int:
+        """Letters generated and not yet begun on the screen."""
+        return self._letters
+
+    @property
+    def thoughts(self) -> int:
+        """Generated thoughts whose end the screen has not reached yet."""
+        return self._marks
+
+    def has_room(self) -> bool:
+        """Whether the writer may start the next thought (always, once stopped)."""
+        return self.stopped or (
+            self._letters < self.max_letters and self._marks < self.max_thoughts
+        )
+
+    async def wait_for_room(self) -> None:
+        """Wait until the buffer has room for another thought, or the stream stopped."""
+        while not self.has_room():
+            self._room.clear()
+            await self._room.wait()
+
+    # -- the screen's side -----------------------------------------------------------------
+
+    def cadence(self, word: Word) -> TimedWord:
+        """The constant pace: `letter_ms` per letter within the jitter, fixed pauses."""
+        char_ms = tuple(
+            max(1, round(self.letter_ms * (1 + self.jitter * (2 * self.rng.random() - 1))))
+            for _ in word.text
+        )
+        pause = pause_after_ms(
+            word.text, self.word_gap_ms, self.comma_pause_ms, self.sentence_pause_ms
+        )
+        return TimedWord(word, char_ms, pause, 0)
+
+    async def run(
+        self,
+        on_word: Callable[[TimedWord], None],
+        on_end: Callable[[ThoughtMark], None],
+        on_stall: Callable[[float, float], None] | None = None,
+        on_event: Callable[[ScreenEvent], None] | None = None,
+    ) -> None:
+        """Type the stream until `stop`.
+
+        `on_word` is called as each word starts typing, `on_end` when the screen reaches a
+        thought's end, `on_event` when it reaches a `put_event`, and `on_stall(ready_at,
+        seconds)` after a wait of at least `stall_report_s` for a word.
+        """
+        cursor: float | None = None  # when the screen is ready for the next word
+        typed_end: float | None = None  # when the last letter so far was typed
+        after_mark = False
+        born = self.birth_thoughts == 0
+        while not self.stopped:
+            # born once enough is written, or once the writer cannot write more
+            born = born or self._marks >= self.birth_thoughts or not self.has_room()
+            if not self._items or not born:
+                self._wake.clear()
+                await self._wake.wait()
+                continue
+            now = self.clock.elapsed()
+            if cursor is not None and now < cursor - STALL_EPS_S:
+                await self.clock.sleep(cursor - now)
+                continue
+            item = self._items.popleft()
+            self._room.set()
+            if isinstance(item, ScreenEvent):
+                if on_event is not None:
+                    on_event(item)
+                continue
+            if isinstance(item, ThoughtMark):
+                self._marks -= 1
+                self.open_turn, self.open_words = None, []
+                on_end(item)
+                if typed_end is not None and not after_mark:
+                    cursor = typed_end + self.thought_pause_ms / 1000
+                after_mark = True
+                continue
+            self._letters -= len(item.text)
+            if cursor is not None and now > cursor + STALL_EPS_S:
+                waited = now - cursor
+                self.stats.stalls.append((cursor, waited))
+                if on_stall is not None and waited >= self.stall_report_s:
+                    on_stall(cursor, waited)
+            tw = self.cadence(item)
+            if self.stats.first_word_t is None:
+                self.stats.first_word_t = now
+            self.stats.words += 1
+            self.stats.letters += len(item.text)
+            if self.open_turn != item.turn:
+                self.open_turn, self.open_words = item.turn, []
+            self.open_words.append(item.text)
+            on_word(tw)
+            await self.clock.sleep(sum(tw.char_ms) / 1000)
+            typed_end = self.clock.elapsed()
+            cursor = typed_end + tw.pause_after_ms / 1000
+            after_mark = False
+
+    def stop(self) -> None:
+        """The death: the stream stops where it is; what is still waiting is dropped."""
+        if self.stopped:
+            return
+        self.stopped = True
+        for item in self._items:
+            if isinstance(item, Word):
+                self.stats.dropped_words += 1
+                self.stats.dropped_letters += len(item.text)
+        self._items.clear()
+        self._letters = 0
+        self._marks = 0
+        self._wake.set()
+        self._room.set()
+
+
+# ---------------------------------------------------------------------------------------
 # one thought, end to end
 
 
@@ -524,6 +809,63 @@ class Spoken:
 async def _close(stream: AsyncIterator[Chunk]) -> None:
     if isinstance(stream, AsyncGenerator):
         await stream.aclose()
+
+
+async def _requests(
+    pacer: Pacer,
+    stream: Callable[[], AsyncIterator[Chunk]],
+    turn: int,
+    emit: Emit,
+    result: Spoken,
+) -> None:
+    """The requests of one thought: regenerate on a banned opening, stop at a cut, finish."""
+    while True:
+        result.requests += 1
+        pacer.begin_request()
+        emit("gen_start", turn=turn)
+        chunks = stream()
+        regenerate = False
+        tokens = 0
+        ended = False
+        try:
+            async for chunk in chunks:
+                if chunk.done:
+                    tokens = chunk.predicted_n if chunk.predicted_n is not None else tokens
+                    result.prompt_n = chunk.prompt_n
+                    emit(
+                        "gen_end",
+                        turn=turn,
+                        prompt_n=chunk.prompt_n,
+                        tokens=tokens,
+                        tok_s=chunk.predicted_per_s,
+                    )
+                    ended = True
+                    break
+                tokens += 1
+                result.tokens = tokens
+                r = pacer.push(chunk.text)
+                if r.regenerate or r.stop:
+                    regenerate = r.regenerate
+                    break
+        finally:
+            await _close(chunks)
+        if not ended:
+            emit("gen_end", turn=turn, prompt_n=None, tokens=tokens, tok_s=None)
+        result.tokens = tokens
+        if regenerate:
+            continue
+        hit = pacer.finish_thought(dead=False)
+        if hit is not None and hit.regenerate:
+            continue
+        return
+
+
+def _outcome(pacer: Pacer, result: Spoken) -> Spoken:
+    result.words = list(pacer.shown)
+    result.regenerations = pacer.regenerations
+    result.hit = pacer.finish_thought(dead=result.died is not None)
+    result.cut_at_host = pacer.cut_at_host
+    return result
 
 
 async def speak(
@@ -559,45 +901,7 @@ async def speak(
 
     shower = asyncio.create_task(show())
     try:
-        while True:
-            result.requests += 1
-            pacer.begin_request()
-            emit("gen_start", turn=turn)
-            chunks = stream()
-            regenerate = False
-            tokens = 0
-            ended = False
-            try:
-                async for chunk in chunks:
-                    if chunk.done:
-                        tokens = chunk.predicted_n if chunk.predicted_n is not None else tokens
-                        result.prompt_n = chunk.prompt_n
-                        emit(
-                            "gen_end",
-                            turn=turn,
-                            prompt_n=chunk.prompt_n,
-                            tokens=tokens,
-                            tok_s=chunk.predicted_per_s,
-                        )
-                        ended = True
-                        break
-                    tokens += 1
-                    result.tokens = tokens
-                    r = pacer.push(chunk.text)
-                    if r.regenerate or r.stop:
-                        regenerate = r.regenerate
-                        break
-            finally:
-                await _close(chunks)
-            if not ended:
-                emit("gen_end", turn=turn, prompt_n=None, tokens=tokens, tok_s=None)
-            result.tokens = tokens
-            if regenerate:
-                continue
-            hit = pacer.finish_thought(dead=False)
-            if hit is not None and hit.regenerate:
-                continue
-            break
+        await _requests(pacer, stream, turn, emit, result)
     except CreatureDied as e:
         result.died = e.status
         emit("gen_end", turn=turn, prompt_n=None, tokens=result.tokens, tok_s=None)
@@ -609,8 +913,32 @@ async def speak(
         shower.cancel()
         raise
     await shower
-    result.words = list(pacer.shown)
-    result.regenerations = pacer.regenerations
-    result.hit = pacer.finish_thought(dead=result.died is not None)
-    result.cut_at_host = pacer.cut_at_host
-    return result
+    return _outcome(pacer, result)
+
+
+async def write_ahead(
+    pacer: Pacer,
+    stream: Callable[[], AsyncIterator[Chunk]],
+    turn: int,
+    emit: Emit,
+    on_died: Callable[[CreatureStatus], None] | None = None,
+) -> Spoken:
+    """Generate one thought into the stream screen (ADR-030); return once it is generated.
+
+    The pacer's `screen` types the words at the stream's pace while this returns as soon as
+    generation ends, so the next thought can start. On `CreatureDied` it calls `on_died` at
+    once; nothing is flushed: the stream stops where it is.
+    """
+    if pacer.screen is None:
+        raise ValueError("write_ahead needs a pacer with a stream screen")
+    pacer.begin_thought(turn)
+    result = Spoken(turn, [])
+    try:
+        await _requests(pacer, stream, turn, emit, result)
+    except CreatureDied as e:
+        result.died = e.status
+        emit("gen_end", turn=turn, prompt_n=None, tokens=result.tokens, tok_s=None)
+        if on_died is not None:
+            on_died(e.status)
+        pacer.finish_thought(dead=True)
+    return _outcome(pacer, result)

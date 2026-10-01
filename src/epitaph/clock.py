@@ -240,6 +240,7 @@ class Schedule:
         self.death_s: float | None = (
             p.death.resolve(p.nominal_s, p.lifespan_s) if p.death is not None else None
         )
+        self.stepped = frozenset(p.stepped)
 
     @classmethod
     def from_profile(cls, cfg: Config, lifespan_s: float | None = None) -> Schedule:
@@ -258,7 +259,8 @@ class Schedule:
     def at(self, t_s: float) -> Knobs:
         """The knobs at t seconds after birth.
 
-        Stepped fields hold the last keyframe's value; interpolated fields move linearly.
+        Stepped fields hold the last keyframe's value; interpolated fields move linearly,
+        except those the profile lists in `stepped`, which are set at their keyframe.
         """
         i = max(0, bisect_right(self.times, t_s) - 1)
         cur = self.values[i]
@@ -277,7 +279,7 @@ class Schedule:
 
         def lerp(name: str) -> float:
             a = float(cur[name])
-            if nxt is None or (name in HOLD_UNTIL_RELOAD and reload_next):
+            if nxt is None or name in self.stepped or (name in HOLD_UNTIL_RELOAD and reload_next):
                 return a
             return a + (float(nxt[name]) - a) * frac
 

@@ -25,6 +25,7 @@ EPS = 1e-6
 
 PROFILES = [
     ("pi4/default", "pi4-4gb"),
+    ("pi4/default-reloads", "pi4-4gb"),
     ("pi4/default-qwen3-1.7b", "pi4-4gb"),
     ("pi4/smoke-300", "pi4-4gb"),
     ("pi4/skeleton-1200", "pi4-4gb"),
@@ -91,8 +92,9 @@ def test_boundaries_at_every_keyframe(name: str, life: float | None, s: Schedule
         reload = (kf.values["step"], kf.values["threads"]) != (prev["step"], prev["threads"])
         for f in INTERPOLATED:
             got = float(getattr(before, f))
-            if reload and f in HOLD_UNTIL_RELOAD:
-                # recall and CPU share are cut at a reload, never eased into it
+            if (reload and f in HOLD_UNTIL_RELOAD) or f in s.stepped:
+                # recall and CPU share are cut at a reload, never eased into it, and a
+                # profile's `stepped` knobs are set at their keyframe (ADR-030)
                 assert got == pytest.approx(float(prev[f]), abs=0.51), (name, life, i, f)
             else:
                 assert got == pytest.approx(float(kf.values[f]), abs=0.51), (name, life, i, f)

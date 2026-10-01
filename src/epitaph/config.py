@@ -66,6 +66,25 @@ def profile_rules(settings: Mapping[str, Any]) -> dict[str, int]:
 
 KNOB_FIELDS = STEPPED + INTERPOLATED + tuple(OPTIONAL_DEFAULTS)
 READINGS_FORMS = ("full", "short", "minimal")
+# How the screen is paced ([reveal] mode): "letter" types each thought once it is generated
+# and requests the next only after it is shown (the sync rule, BUILD_PLAN 5.7); "word" is the
+# same rhythm shown word by word; "stream" types one constant stream while the model writes
+# ahead into a bounded buffer (ADR-030).
+REVEAL_MODES = ("letter", "word", "stream")
+# Tables a profile may set over the base configuration and the hardware overlay (command-line
+# overrides still win): the screen's pace belongs to the life's shape (ADR-030).
+PROFILE_SECTIONS = ("reveal",)
+# What a profile with `fixed_mind = true` may not change during a life (ADR-030): the model,
+# its threads, its persona and its sampling. Only the hardware shrinks.
+FIXED_MIND_FIELDS = (
+    "step",
+    "threads",
+    "persona_groups",
+    "mechanics",
+    "temperature",
+    "min_p",
+    "max_tokens",
+)
 HEALTH_LABELS = ("nominal", "stable", "degrading", "failing", "critical", "terminal")
 
 
@@ -192,6 +211,25 @@ class Profile:
     def unbounded(self) -> bool:
         """True for the homage profile that never forgets and dies when memory is full."""
         return bool(self.settings.get("unbounded", False))
+
+    @property
+    def stepped(self) -> tuple[str, ...]:
+        """Interpolated knobs this profile sets at a moment instead of easing them (a memory
+        cut, a CPU-share step), from its top-level `stepped` list."""
+        raw: object = self.settings.get("stepped", [])
+        if not isinstance(raw, list):
+            raise ConfigError("profile 'stepped' must be a list of knob names")
+        names = tuple(str(x) for x in cast("list[object]", raw))
+        unknown = sorted(set(names) - set(INTERPOLATED))
+        if unknown:
+            raise ConfigError(f"profile 'stepped' names knobs that do not interpolate: {unknown}")
+        return names
+
+    @property
+    def fixed_mind(self) -> bool:
+        """True when the model never changes during a life: no reload, no erosion, constant
+        sampling (ADR-030); validation holds the keyframes to it."""
+        return bool(self.settings.get("fixed_mind", False))
 
     @property
     def verify_level(self) -> str:
@@ -361,6 +399,12 @@ def load_config(
         data = deep_merge(data, overrides)
 
     prof = load_profile(profile or str(data["life"].get("profile", "default")), hw_class)
+    for name in PROFILE_SECTIONS:
+        table = prof.settings.get(name)
+        if isinstance(table, dict):
+            data = deep_merge(data, {name: cast("dict[str, Any]", table)})
+    if overrides:
+        data = deep_merge(data, overrides)  # the command line wins over the profile too
     if lifespan_s is not None:
         prof = prof.with_lifespan(lifespan_s)
     models, tag = load_models(hw_class)
@@ -422,6 +466,30 @@ def validate_config(cfg: Config) -> None:
         profile_rules(p.settings)
     except ConfigError as e:
         problems.append(str(e))
+    try:
+        _ = p.stepped
+    except ConfigError as e:
+        problems.append(str(e))
+    mode = cfg.get("reveal.mode", "letter")
+    if mode not in REVEAL_MODES:
+        problems.append(f"reveal.mode must be one of {REVEAL_MODES}, not {mode!r}")
+    if mode == "stream":
+        rev = cfg.section("reveal")
+        if not float(rev.get("stream_letter_ms", 0)) > 0:
+            problems.append("reveal.mode = 'stream' needs reveal.stream_letter_ms above 0")
+        if not 0 <= float(rev.get("stream_jitter", 0.0)) < 1:
+            problems.append("reveal.stream_jitter must be at least 0 and below 1")
+        if int(rev.get("stream_max_thoughts", 1)) < 1 or int(rev.get("stream_max_letters", 1)) < 1:
+            problems.append("reveal.stream_max_thoughts and stream_max_letters must be at least 1")
+    if p.fixed_mind:
+        first = p.keyframes[0].values
+        for kf in p.keyframes[1:]:
+            moved = [f for f in FIXED_MIND_FIELDS if kf.values[f] != first[f]]
+            if moved:
+                problems.append(
+                    f"keyframe {_fmt(kf.at)}: fixed_mind profile changes {moved} "
+                    "(only the hardware may change)"
+                )
     network = cfg.get("body.creature_network", "blocked")
     if network not in CREATURE_NETWORK:
         # Anything but "blocked" used to leave the network open: a typo must not (ADR-005).

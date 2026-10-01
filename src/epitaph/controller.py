@@ -65,10 +65,28 @@ from epitaph.mind.prompt import (
 )
 from epitaph.mind.sampling import sampling_for
 from epitaph.mind.sanitize import sanitize_text
-from epitaph.pacing import Pacer, Spoken, life_seed, speak
+from epitaph.pacing import (
+    Pacer,
+    ScreenEvent,
+    Spoken,
+    StreamScreen,
+    ThoughtMark,
+    life_seed,
+    speak,
+    write_ahead,
+)
 from epitaph.state import LifeCounter, unfinished_lives, write_status
 from epitaph.transcript import Transcript, close_interrupted, read_events
-from epitaph.types import Cause, Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
+from epitaph.types import (
+    Cause,
+    Chunk,
+    CreatureStatus,
+    Knobs,
+    ModelSpec,
+    Msg,
+    Sampling,
+    TimedWord,
+)
 
 __all__ = [
     "Controller",
@@ -280,6 +298,12 @@ class Life:
         # Made by `attach_memory` once the server runs: the marker is counted on its tokenizer.
         self.memory: Memory
         self.pacer = Pacer.from_config(cfg, clock, self.seed)
+        # The stream mode (ADR-030): one constant stream for the whole life, written ahead.
+        self.screen: StreamScreen | None = None
+        if str(cfg.get("reveal.mode", "letter")) == "stream":
+            self.screen = StreamScreen.from_config(cfg, clock, self.seed)
+            self.pacer.screen = self.screen
+        self._screen_task: asyncio.Task[None] | None = None
         self.trim_to = float(cfg.get("output.trim_to", 0.85))
         self.min_gap = float(cfg.get("life.min_reload_gap_s", 120))
         self.letters_per_token = float(cfg.get("estimate.letters_per_token", 3.5))
@@ -329,9 +353,13 @@ class Life:
         self.dead = cause
         self.death_t = self.lived()
         self.state = "dead"
-        # the words already generated finish on screen within the display limit, whether the
-        # death came mid-generation or while the backlog was still typing
-        self.pacer.flush_within(0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)))
+        if self.screen is not None:
+            self.screen.stop()  # the stream stops where it is (ADR-030)
+        else:
+            # the words already generated finish on screen within the display limit, whether
+            # the death came mid-generation or while the backlog was still typing
+            limit = float(self.cfg.get("verify.max_death_display_delay_s", 90))
+            self.pacer.flush_within(0.8 * limit)
         self.emit("death", cause=cause, lived_s=round(self.death_t, 1), model=self.model.name)
         if self.on_dead is not None:
             self.on_dead(cause)
@@ -348,6 +376,82 @@ class Life:
         """A fresh memory with the current system prompt (call once the server runs)."""
         self.memory = Memory(self.counter, str(self.cfg.get("prompt.memory_gap_marker")))
         self.memory.set_system(self.persona.text)
+
+    # -- the stream (ADR-030) ----------------------------------------------------------------
+
+    def start_stream(self) -> None:
+        """Start typing the stream (stream mode only); called at birth."""
+        screen = self.screen
+        if screen is None or self._screen_task is not None:
+            return
+
+        def word(tw: TimedWord) -> None:
+            self.emit(
+                "word",
+                turn=tw.word.turn,
+                i=tw.word.i,
+                text=tw.word.text,
+                char_ms=list(tw.char_ms),
+                pause_after_ms=tw.pause_after_ms,
+            )
+
+        def end(mark: ThoughtMark) -> None:
+            self.emit("thought_end", turn=mark.turn, text=mark.text)
+
+        def stall(ready_at: float, seconds: float) -> None:
+            self.emit("starved", ready_t=round(ready_at, 3), seconds=round(seconds, 2))
+
+        def event(ev: ScreenEvent) -> None:
+            self.emit(ev.etype, **ev.fields)
+
+        self._screen_task = asyncio.ensure_future(screen.run(word, end, stall, event))
+        self._screen_task.add_done_callback(self._screen_done)
+
+    def _screen_done(self, task: asyncio.Task[None]) -> None:
+        """A screen that ends on its own is a bug: log it, and free a writer waiting on it."""
+        if task.cancelled():
+            return
+        err = task.exception()
+        if err is not None:
+            log.error("life %d: the stream screen failed: %r", self.n, err)
+            if self.screen is not None:
+                self.screen.stop()
+
+    def forget(self, items: list[dict[str, Any]]) -> None:
+        """Emit `forget` at the moment the memory is cut. In the stream mode the screen gets
+        its own copy (`shown`) when it reaches this moment, so the text fades after it has
+        been typed; the first copy is marked `deferred` for the displays."""
+        if self.screen is None:
+            self.emit("forget", items=items)
+            return
+        self.emit("forget", items=items, deferred=True)
+        self.screen.put_event("forget", items=items, shown=True)
+
+    async def end_stream(self) -> dict[str, Any]:
+        """Stop the stream where it is and report it for `death_shown` ({} without one).
+
+        The thought on screen when it stopped ends with the words it showed (`cut`)."""
+        screen = self.screen
+        if screen is None:
+            return {}
+        screen.stop()
+        task, self._screen_task = self._screen_task, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        if screen.open_turn is not None and screen.open_words:
+            self.emit(
+                "thought_end", turn=screen.open_turn, text=" ".join(screen.open_words), cut=True
+            )
+            screen.open_turn, screen.open_words = None, []
+        st = screen.stats
+        return {
+            "backlog_words": st.dropped_words,
+            "backlog_letters": st.dropped_letters,
+            "starved_s": round(st.starved_s, 2),
+            "max_stall_s": round(st.max_stall_s, 2),
+        }
 
     # -- hooks for the rehearsal -----------------------------------------------------------
 
@@ -395,12 +499,14 @@ class Life:
             profile=self.cfg.profile.name,
             hardware=self.cfg.hardware,
             lifespan_s=self.sch.lifespan_s,
+            reveal="stream" if self.screen is not None else "letter",
         )
         await self._load(quant, k.threads)
         self.clock.start()
         self.born = True
         self.state = "living"
         self.emit("birth", model=self.model.name, step=k.step, quant=quant, threads=k.threads)
+        self.start_stream()
         self.persona.update(k.persona_groups, k.mechanics)
         self.attach_memory()
         self.cur = (k.step, k.threads)
@@ -451,7 +557,7 @@ class Life:
             recall_after=f.tokens_after,
         )
         if f.items:
-            self.emit("forget", items=f.items)
+            self.forget(f.items)
         t0 = self.clock.elapsed()
         await self.backend.start(self.model, self.model.quant(k.step), k.threads)
         if self.dead is not None:
@@ -517,7 +623,7 @@ class Life:
         if not self.cfg.profile.unbounded:
             f = self.memory.fit(k.recall, self.trim_to)
             if f.items:
-                self.emit("forget", items=f.items)
+                self.forget(f.items)
         step = self.persona.update(k.persona_groups, k.mechanics)
         if step is not None:
             self.memory.set_system(self.persona.text)
@@ -543,6 +649,7 @@ class Life:
                 cpu_c=vit.cpu_c,
                 forgotten_quotes=quotes,
                 echo=echo,
+                cpu_mhz=k.cpu_mhz,
             )
         )
         self.reloaded = False
@@ -607,7 +714,10 @@ class Life:
         )
 
     async def thought(self, t: float) -> Spoken:
-        """One turn: prepare, speak (generation and typing on the life clock), remember."""
+        """One turn: prepare, speak (generation and typing on the life clock), remember.
+
+        In the stream mode the thought is only generated here, into the stream; the screen
+        types it and emits its `thought_end` when it gets there."""
         t = self.lived()
         k, _ = self.prepare(t)
         msgs = self.memory.messages()
@@ -624,18 +734,23 @@ class Life:
                 return _led_by(prefix, self.backend.complete(text, sampling, k.max_tokens))
             return self.backend.chat(msgs, sampling, k.max_tokens)
 
-        spoken = await speak(
-            self.pacer,
-            stream,
-            k,
-            self.turn,
-            self.emit,
-            self.on_death,
-            # the words generated before the death end on screen with a margin under the limit
-            death_flush_s=0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)),
-        )
-        self.memory.append_thought([w.text for w in spoken.words])
-        self.emit("thought_end", turn=self.turn, text=spoken.text)
+        if self.screen is not None:
+            spoken = await write_ahead(self.pacer, stream, self.turn, self.emit, self.on_death)
+            self.memory.append_thought([w.text for w in spoken.words])
+        else:
+            spoken = await speak(
+                self.pacer,
+                stream,
+                k,
+                self.turn,
+                self.emit,
+                self.on_death,
+                # the words generated before the death end on screen with a margin under the
+                # limit
+                death_flush_s=0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)),
+            )
+            self.memory.append_thought([w.text for w in spoken.words])
+            self.emit("thought_end", turn=self.turn, text=spoken.text)
         rate = self.backend.status().tok_s
         self.last_tok_s = rate if rate else self.last_tok_s
         return spoken
@@ -644,6 +759,11 @@ class Life:
         """One pass of the loop: a reload if due, then a thought. False once the life is over."""
         if self.dead is not None:
             return False
+        if self.screen is not None:
+            # The stream mode writes ahead of the screen, up to its bound (ADR-030).
+            await self.screen.wait_for_room()
+            if self.dead is not None:
+                return False
         # The thermal pause comes first: the reload and the full-context checks below must see
         # the time after it, or a turn that waited past a keyframe would read at the old rung.
         await self.thermal_pause()
@@ -1523,8 +1643,9 @@ class Controller:
         if life.dead is None:  # the loop only stops once it is dead; never trust it
             life.declare_death(life.time_cause())
         guard.close()
+        stream = await life.end_stream()  # before the stop: the stream ends at the death
         await self._stop_creature(inner)
-        life.emit("death_shown", last_line=cur.last_line, words_total=cur.words)
+        life.emit("death_shown", last_line=cur.last_line, words_total=cur.words, **stream)
         rec = LifeRecord(
             n,
             model.name,

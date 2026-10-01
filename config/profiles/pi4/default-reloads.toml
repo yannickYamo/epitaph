@@ -1,0 +1,115 @@
+# Kept for reference (ADR-030): the installation's 30-minute life until 2026-10-01, with two
+# reloads, sampling decay, erosion and the echo. pi4/default now keeps one model for the
+# whole life and only takes the hardware away.
+#
+# The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (owner decision,
+# 2026-09-30). Both reloads stay; erosion takes the persona in two steps, the knowledge of its
+# death last, with the terminal label. The CPU clock falls from 1800 to 600 MHz once erosion
+# starts (spike S7: speed is linear in the clock).
+lifespan = "30:00"
+death = "end-0:30"
+
+[[keyframe]]
+at = "0:00"
+phase = "birth"
+health = "nominal"
+recall = 900
+step = 0
+threads = 3
+cpu_share = 3.0
+temperature = 0.70
+min_p = 0.08
+max_tokens = 70
+pause_s = 3
+persona_groups = 5
+mechanics = true
+readings = "full"
+letter_ms = 165
+jitter = 0.10
+hesitation = 0.0
+
+[[keyframe]]
+at = "5:00"
+phase = "prime"
+temperature = 0.75
+
+[[keyframe]]
+at = "7:00"
+phase = "first loss"
+health = "degrading"
+recall = 220
+step = 1
+threads = 3
+cpu_share = 2.6
+temperature = 0.85
+min_p = 0.06
+max_tokens = 60
+pause_s = 4
+letter_ms = 180
+jitter = 0.15
+hesitation = 0.02
+
+[[keyframe]]
+at = "13:00"
+phase = "failing"
+health = "critical"
+recall = 130
+step = 2
+threads = 2
+cpu_share = 1.6
+cpu_mhz = 1800
+temperature = 1.10
+min_p = 0.04
+max_tokens = 45
+pause_s = 6
+readings = "short"
+letter_ms = 270
+jitter = 0.25
+hesitation = 0.08
+
+[[keyframe]]
+at = "end-10:30"
+phase = "eroding"
+recall = 110
+cpu_mhz = 1400
+temperature = 1.25
+max_tokens = 30
+pause_s = 7
+persona_groups = 2
+
+[[keyframe]]
+at = "end-7:30"
+phase = "end"
+health = "terminal"
+recall = 60
+cpu_mhz = 700
+temperature = 1.45
+min_p = 0.02
+max_tokens = 18
+pause_s = 10
+persona_groups = 0
+mechanics = false
+readings = "minimal"
+letter_ms = 420
+jitter = 0.35
+hesitation = 0.16
+
+[[keyframe]]
+at = "end-2:30"
+recall = 48
+cpu_mhz = 600
+temperature = 1.55
+max_tokens = 12
+pause_s = 12
+letter_ms = 600
+jitter = 0.40
+hesitation = 0.20
+
+# Thought-count minimums for a 30-minute life (the one-hour defaults are 3/2/1/4). Two reloads
+# cost about two minutes each whatever the lifespan, so this life keeps every loss answered by at
+# least one thought rather than dropping a reload.
+[rules]
+between_health = 2
+after_reload = 1
+per_erosion_step = 1
+after_erosion_start = 3

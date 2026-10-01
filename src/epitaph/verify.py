@@ -89,6 +89,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "wpm_birth_range": [45, 180],
     "wpm_writing_range": [8, 220],
     "max_bright_words_last_2min": 40,
+    "max_bright_words_last_2min_stream": 120,  # ADR-030: thoughts keep their length
     "max_speed_ratio_end_vs_start": 0.40,
     "speed_monotonic_tolerance": 0.05,  # review 2, F2: noise allowed before a rise fails
     "speed_monotonic_thoughts": 2,  # thoughts averaged on each side of a reload
@@ -102,6 +103,9 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "min_distinct_4gram_ratio_before_erosion": 0.5,
     "max_empty_thought_ratio": 0.10,
     "max_death_display_delay_s": 90,
+    "max_stream_stall_s": 3.0,  # ADR-030: the stream's longest wait for a word, alive
+    "max_stream_stop_s": 15.0,  # ADR-030: death to death_shown in a stream life
+    "stream_pace_tolerance_ms": 1,  # rounding of char_ms around the jitter band
     "duration_tolerance_s": 60,  # 10.3: lifespan +- 60 s
     "recall_tolerance": 0.10,  # 10.3: recall + 10%
     "sync_tolerance_s": 0.5,  # typing replay vs gen_start (rounding of char_ms)
@@ -584,7 +588,7 @@ def _changes(events: list[Event], cpu_drop: float = 0.25) -> list[Change]:
     after_reload = False
     for e in events:
         et = e["type"]
-        if et == "forget" and e.get("items"):
+        if et == "forget" and e.get("items") and not e.get("shown"):
             out.append(Change("memory", e["_idx"], _t(e), f"{len(e['items'])} items"))
         elif et == "reload":
             out.append(Change("reload", e["_idx"], _t(e), f"{e.get('from')} -> {e.get('to')}"))
@@ -927,7 +931,10 @@ class Verifier:
             (basic, self.check_words_shown),
             (basic or lived, self.check_recall_budget),
             (True, self.check_banned_shown),
-            (level != "screen", self.check_sync_rule),
+            (level != "screen" and not self.stream, self.check_sync_rule),
+            (level != "screen" and self.stream, self.check_stream_pace),
+            (level != "screen" and self.stream, self.check_stream_starvation),
+            (basic and self.stream, self.check_stream_stop),
             (basic, self.check_death_display),
             (basic, self.check_next_birth),
             (basic, self.check_error_events),
@@ -984,6 +991,15 @@ class Verifier:
         }
 
     # -- facts ----------------------------------------------------------------------------
+
+    @property
+    def stream(self) -> bool:
+        """Whether the life was typed as one constant stream (ADR-030): its `birth_loading`
+        says so, else the configuration does."""
+        e = self.life.first("birth_loading")
+        if e is not None and e.get("reveal"):
+            return str(e["reveal"]) == "stream"
+        return str(self.cfg.get("reveal.mode", "letter")) == "stream"
 
     @property
     def cause(self) -> str | None:
@@ -1163,6 +1179,93 @@ class Verifier:
                     f"{prev.turn}'s last word was typed at {prev.shown_end:.1f}s"
                 )
         return [Check("sync_rule", _pf(not bad), len(bad), 0, "; ".join(bad[:5]))]
+
+    # -- the stream (ADR-030) -----------------------------------------------------------------
+
+    def _stream_words(self) -> list[Event]:
+        """The words typed before the death, in order."""
+        death = self.life.death_t if self.life.death is not None else float("inf")
+        return [e for e in self.life.of("word") if _t(e) <= death + 1e-6]
+
+    def check_stream_pace(self) -> list[Check]:
+        """Every letter from the first word to the death at the stream's one pace: within
+        `stream_letter_ms` x (1 +- `stream_jitter`), no hesitation, and the fixed pause after
+        each word (word gap, clause or sentence)."""
+        rev = self.cfg.section("reveal")
+        letter = float(rev.get("stream_letter_ms", 165))
+        jitter = float(rev.get("stream_jitter", 0.0))
+        tol = float(self.th["stream_pace_tolerance_ms"])
+        lo, hi = letter * (1 - jitter) - tol, letter * (1 + jitter) + tol
+        pauses = {
+            int(rev.get("word_gap_ms", 270)),
+            int(rev.get("comma_pause_ms", 750)),
+            int(rev.get("sentence_pause_ms", 2100)),
+        }
+        bad: list[str] = []
+        words = self._stream_words()
+        for e in words:
+            chars = [float(x) for x in e.get("char_ms", [])]
+            off = [c for c in chars if not lo <= c <= hi]
+            if off or int(e.get("hesitate_before_ms", 0) or 0):
+                bad.append(f"turn {e.get('turn')} {e.get('text')!r}: {off[:3]} ms")
+            elif int(e.get("pause_after_ms", 0)) not in pauses:
+                bad.append(f"turn {e.get('turn')} {e.get('text')!r}: pause {e['pause_after_ms']}")
+        detail = "; ".join(bad[:5]) or (f"{len(words)} words" if words else "no word was typed")
+        return [
+            Check(
+                "stream_pace",
+                _pf(bool(words) and not bad),
+                len(bad),
+                [round(lo, 1), round(hi, 1)],
+                detail,
+            )
+        ]
+
+    def stream_stalls(self) -> list[tuple[float, float]]:
+        """(life time the screen was ready, seconds it waited) for each word after the first
+        that came later than the stream's pace allows, before the death."""
+        thought_pause = float(self.cfg.get("reveal.stream_thought_pause_ms", 3000)) / 1000
+        out: list[tuple[float, float]] = []
+        for a, b in itertools.pairwise(self._stream_words()):
+            typed = _t(a) + sum(int(x) for x in a.get("char_ms", [])) / 1000
+            if b.get("turn") != a.get("turn"):
+                ready = typed + thought_pause
+            else:
+                ready = typed + int(a.get("pause_after_ms", 0)) / 1000
+            if _t(b) > ready + 0.05:  # event times are rounded to the millisecond
+                out.append((ready, _t(b) - ready))
+        return out
+
+    def check_stream_starvation(self) -> list[Check]:
+        """The display never waits after the first word (ADR-030): no wait for a word longer
+        than `max_stream_stall_s` before the death; every wait is counted in the detail."""
+        limit = float(self.th["max_stream_stall_s"])
+        stalls = self.stream_stalls()
+        worst = max((s for _, s in stalls), default=0.0)
+        long = [(t, s) for t, s in stalls if s > limit]
+        detail = f"{len(stalls)} waits, {sum(s for _, s in stalls):.1f} s in all"
+        if long:
+            detail += f"; first over the limit at {long[0][0] / 60:.1f} min ({long[0][1]:.0f} s)"
+        return [Check("stream_starvation", _pf(not long), _r(worst, 2), limit, detail)]
+
+    def check_stream_stop(self) -> list[Check]:
+        """At death the stream stops where it is: no word after the death, and the death
+        screen within `max_stream_stop_s`."""
+        death, shown = self.life.death, self.life.first("death_shown")
+        limit = float(self.th["max_stream_stop_s"])
+        if death is None or shown is None:
+            return [Check("stream_stop", "fail", None, limit, "death or death_shown missing")]
+        after = [e for e in self.life.events[int(death["_idx"]) :] if e["type"] == "word"]
+        delay = _t(shown) - _t(death)
+        backlog = shown.get("backlog_words")
+        detail = f"{len(after)} words after the death"
+        if backlog is not None:
+            detail += f"; {backlog} words died unshown"
+        return [
+            Check(
+                "stream_stop", _pf(not after and 0 <= delay <= limit), _r(delay, 1), limit, detail
+            )
+        ]
 
     def check_death_display(self) -> list[Check]:
         """The death screen appeared within `max_death_display_delay_s` of the death."""
@@ -1447,8 +1550,11 @@ class Verifier:
         """At most `max_bright_words_last_2min` words at full brightness at once near the end.
 
         Only the flow layout is checked (the last 120 s of the life); pending without a probe.
+        A stream life keeps its thoughts' length to the end (ADR-030), so the thought on
+        screen and the one before it are bright: `max_bright_words_last_2min_stream`.
         """
-        limit = int(self.th["max_bright_words_last_2min"])
+        key = "max_bright_words_last_2min_stream" if self.stream else "max_bright_words_last_2min"
+        limit = int(self.th[key])
         if self.cfg.profile.unbounded:
             # an unbounded life never forgets: nothing fades, by design (BUILD_PLAN 5.3)
             return [Check("bright_words_last_2min", "skip", limit=limit, detail="unbounded")]

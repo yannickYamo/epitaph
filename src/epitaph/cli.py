@@ -211,13 +211,33 @@ def _on_stop_signal(ctl: Any, main: asyncio.Task[Any]) -> None:
 
 
 def cmd_estimate(args: argparse.Namespace) -> int:
-    """`epitaph estimate`: print the cost model's report; exit 1 if a thought-count rule fails."""
-    from epitaph.costmodel import estimate, format_report, load_costs
+    """`epitaph estimate`: print the cost model's report; exit 1 if a thought-count rule fails
+    (or, for a stream profile, if the stream starves). With --fit-pace, a stream profile's
+    fastest constant pace is printed first and the report is made at it."""
+    from epitaph.costmodel import (
+        estimate,
+        estimate_stream,
+        fit_stream_pace,
+        format_report,
+        load_costs,
+    )
 
     cfg = _load(args)
     costs = load_costs(cfg, bench_dir=Path(args.bench) if args.bench else None)
     if args.no_cache_reuse:
         costs.cache_reuse_works = False
+    if getattr(args, "fit_pace", False):
+        if str(cfg.get("reveal.mode", "letter")) != "stream":
+            print('--fit-pace needs a stream profile ([reveal] mode = "stream")', file=sys.stderr)
+            return 2
+        ms = fit_stream_pace(cfg, costs)
+        if ms is None:
+            print("no constant pace up to 2000 ms per letter keeps the stream fed")
+            return 1
+        print(f"fastest pace that never starves: stream_letter_ms = {ms:.0f}")
+        report = estimate_stream(cfg, costs, letter_ms=ms)
+        print(format_report(report))
+        return 0 if report.ok else 1
     report = estimate(cfg, costs)
     print(format_report(report))
     return 0 if report.ok else 1
@@ -339,6 +359,11 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
     p.add_argument("--no-cache-reuse", action="store_true")
     p.add_argument("--bench", help="directory of measured cost files (default: bench/)")
+    p.add_argument(
+        "--fit-pace",
+        action="store_true",
+        help="stream profiles: print the fastest constant letter interval that never starves",
+    )
     p.set_defaults(fn=cmd_estimate)
 
     p = sub.add_parser("run", help="run lives with the real controller")

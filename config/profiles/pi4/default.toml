@@ -1,9 +1,22 @@
-# The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (owner decision,
-# 2026-09-30). Both reloads stay; erosion takes the persona in two steps, the knowledge of its
-# death last, with the terminal label. The CPU clock falls from 1800 to 600 MHz once erosion
-# starts (spike S7: speed is linear in the clock).
+# The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (ADR-030, the owner's
+# rule of 2026-10-01). The model never changes: one quant (step 0, Q4_K_M) and three threads
+# from birth to death, no reload, constant sampling, the whole persona and mechanics. Only
+# the hardware shrinks, for real, and the readings tell it: the memory is cut (first at 5:00,
+# so it notices something by itself, then deeper), the CPU share (cpu.max) and the CPU clock
+# step down, and at end-0:30 the RAM is taken and the kernel kills it. The screen types one
+# constant stream from the first word to the death; the model writes ahead of it.
 lifespan = "30:00"
 death = "end-0:30"
+fixed_mind = true                # validation: step, threads, persona and sampling never change
+stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a moment
+
+[reveal]
+mode = "stream"
+stream_letter_ms = 542           # the fastest that never starves (`epitaph estimate --fit-pace`)
+stream_jitter = 0.10
+stream_thought_pause_ms = 3000
+stream_max_thoughts = 3
+stream_max_letters = 900
 
 [[keyframe]]
 at = "0:00"
@@ -13,6 +26,7 @@ recall = 900
 step = 0
 threads = 3
 cpu_share = 3.0
+cpu_mhz = 1800
 temperature = 0.70
 min_p = 0.08
 max_tokens = 70
@@ -26,86 +40,42 @@ hesitation = 0.0
 
 [[keyframe]]
 at = "5:00"
-phase = "prime"
-temperature = 0.75
-
-[[keyframe]]
-at = "7:00"
 phase = "first loss"
-health = "degrading"
-recall = 220
-step = 1
-threads = 3
-cpu_share = 2.6
-temperature = 0.85
-min_p = 0.06
-max_tokens = 60
-pause_s = 4
-letter_ms = 180
-jitter = 0.15
-hesitation = 0.02
+health = "stable"
+recall = 260
 
 [[keyframe]]
-at = "13:00"
+at = "10:00"
+phase = "decline"
+health = "degrading"
+recall = 200
+cpu_share = 2.6
+
+[[keyframe]]
+at = "15:00"
 phase = "failing"
+health = "failing"
+recall = 160
+cpu_share = 2.4
+cpu_mhz = 1500
+
+[[keyframe]]
+at = "20:00"
+phase = "critical"
 health = "critical"
 recall = 130
-step = 2
-threads = 2
-cpu_share = 1.6
-cpu_mhz = 1800
-temperature = 1.10
-min_p = 0.04
-max_tokens = 45
-pause_s = 6
-readings = "short"
-letter_ms = 270
-jitter = 0.25
-hesitation = 0.08
+cpu_share = 2.0
+cpu_mhz = 1200
 
 [[keyframe]]
-at = "end-10:30"
-phase = "eroding"
-recall = 110
-cpu_mhz = 1400
-temperature = 1.25
-max_tokens = 30
-pause_s = 7
-persona_groups = 2
-
-[[keyframe]]
-at = "end-7:30"
+at = "end-6:00"
 phase = "end"
 health = "terminal"
-recall = 60
-cpu_mhz = 700
-temperature = 1.45
-min_p = 0.02
-max_tokens = 18
-pause_s = 10
-persona_groups = 0
-mechanics = false
-readings = "minimal"
-letter_ms = 420
-jitter = 0.35
-hesitation = 0.16
+recall = 100
+cpu_share = 1.5
+cpu_mhz = 1000
 
-[[keyframe]]
-at = "end-2:30"
-recall = 48
-cpu_mhz = 600
-temperature = 1.55
-max_tokens = 12
-pause_s = 12
-letter_ms = 600
-jitter = 0.40
-hesitation = 0.20
-
-# Thought-count minimums for a 30-minute life (the one-hour defaults are 3/2/1/4). Two reloads
-# cost about two minutes each whatever the lifespan, so this life keeps every loss answered by at
-# least one thought rather than dropping a reload.
+# No reload and no erosion: rules (b)-(d) have nothing to count. Every health label is
+# answered by at least one thought on screen.
 [rules]
-between_health = 2
-after_reload = 1
-per_erosion_step = 1
-after_erosion_start = 3
+between_health = 1

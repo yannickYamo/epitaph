@@ -62,6 +62,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "forgotten_many": "forgotten: {n} earlier thoughts",
         "precision": "precision {precision}{was}",
         "cores": "cores {cores} of {total}{was}",
+        "clock": "clock {mhz} MHz{was}",
         "speed": "speed {speed} tokens/s",
         "temp": "cpu {temp}°C",
     },
@@ -72,6 +73,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "forgotten_many": "forgot {n}",
         "precision": "{precision}{was}",
         "cores": "cores {cores} of {total}{was}",
+        "clock": "{mhz} MHz{was}",
         "speed": "{speed}/s",
         "temp": "{temp}°C",
     },
@@ -303,6 +305,7 @@ class ReadingInput:
     # last reading, and one earlier sentence as the new weights reproduce it after a reload.
     forgotten_quotes: tuple[str, ...] = ()
     echo: str | None = None
+    cpu_mhz: float | None = None  # the CPU clock cap (ADR-025); None: not reported
 
 
 class Reader:
@@ -318,6 +321,8 @@ class Reader:
     - precision: when the ladder step changed.
     - cores: when the effective cores moved by at least `cores_step` since last announced
       (or at a reload), so a slow CPU-share slope is reported every step, not every reading.
+    - clock: when the CPU clock cap moved by at least `clock_step` MHz since last announced
+      (`clock` on; ADR-030: the model is told every loss of its hardware).
     - speed (no "was"): shown first once measured, then only when it moved more than
       `speed_step` (20%) from the speed last shown.
     """
@@ -333,6 +338,8 @@ class Reader:
         quiet_time: bool = True,
         material: bool = False,
         temperature: bool = True,
+        clock: bool = True,
+        clock_step: float = 50.0,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
 
@@ -350,6 +357,9 @@ class Reader:
         self.quiet_time = quiet_time
         self.material = material
         self.temperature = temperature
+        self.clock = clock
+        self.clock_step = clock_step
+        self._mhz: float | None = None
         self._health: str | None = None
         self.cores_step = cores_step
         self.speed_step = speed_step
@@ -373,6 +383,8 @@ class Reader:
             quiet_time=bool(p.get("readings_quiet_time", True)),
             material=bool(p.get("readings_material", False)),
             temperature=bool(p.get("readings_temperature", True)),
+            clock=bool(p.get("readings_clock", True)),
+            clock_step=float(p.get("readings_clock_step", 50)),
         )
 
     def reading(self, x: ReadingInput) -> str:
@@ -391,6 +403,7 @@ class Reader:
         bits_was = self._bits if self._bits is not None and self._bits != bits else None
         self._bits = bits
         cores_was = self._decide_cores(x)
+        clock_was = self._decide_clock(x)
         speed = self._decide_speed(x.tok_s)
         health_changed = self._health is not None and self._health != health
         self._health = health
@@ -423,6 +436,7 @@ class Reader:
                 speed,
                 bits_text,
                 was,
+                clock_was,
             )
             if not changes and not self.quiet_time:
                 return prefix  # nothing changed: a bare mark, nothing to report
@@ -452,6 +466,13 @@ class Reader:
                 was=was(None if cores_was is None else _fmt_num(cores_was)),
             )
         )
+        if self.clock and x.cpu_mhz is not None:
+            parts.append(
+                lang.form(f, "clock").format(
+                    mhz=_fmt_num(x.cpu_mhz),
+                    was=was(None if clock_was is None else _fmt_num(clock_was)),
+                )
+            )
         if speed is not None:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if x.cpu_c is not None and self.temperature:
@@ -469,6 +490,7 @@ class Reader:
         speed: float | None,
         bits_text: Callable[[str], str],
         was: Callable[[str | None], str],
+        clock_was: float | None = None,
     ) -> list[str]:
         """The fields of a quiet reading: only what changed since the last reading."""
         lang = self.lang
@@ -499,7 +521,12 @@ class Reader:
                     cores=_fmt_num(x.cores), total=x.cores_total, was=was(_fmt_num(cores_was))
                 )
             )
-        if speed is not None and (bits_was is not None or cores_was is not None):
+        if clock_was is not None and x.cpu_mhz is not None:
+            out.append(
+                lang.form(f, "clock").format(mhz=_fmt_num(x.cpu_mhz), was=was(_fmt_num(clock_was)))
+            )
+        changed = bits_was is not None or cores_was is not None or clock_was is not None
+        if speed is not None and changed:
             out.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if self.material and x.echo:
             out.append(lang.r("echo").format(echo=x.echo))
@@ -524,6 +551,17 @@ class Reader:
             x.reloaded and _fmt_num(x.cores) != _fmt_num(self._cores)
         ):
             old, self._cores = self._cores, x.cores
+            return old
+        return None
+
+    def _decide_clock(self, x: ReadingInput) -> float | None:
+        if not self.clock or x.cpu_mhz is None:
+            return None
+        if self._mhz is None:
+            self._mhz = x.cpu_mhz
+            return None
+        if abs(x.cpu_mhz - self._mhz) >= self.clock_step - 1e-9:
+            old, self._mhz = self._mhz, x.cpu_mhz
             return old
         return None
 

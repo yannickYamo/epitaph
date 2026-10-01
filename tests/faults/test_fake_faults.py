@@ -31,7 +31,7 @@ from epitaph.events import Event
 from epitaph.sim import SimBody, make_controller
 from epitaph.types import Cause, ProgressCounters
 
-DEFAULT = "pi4/default"
+DEFAULT = "pi4/default-reloads"
 
 # 10.4 row -> the test in this file that injects it on the fakes.
 ROWS: dict[str, str] = {
@@ -280,10 +280,10 @@ def test_deadline_during_a_reload() -> None:
 
 def test_death_with_a_full_pacing_queue() -> None:
     """The deadline falls while a whole thought waits to be typed (generation ten times faster
-    than typing, a 4:30 smoke life): the 20-odd words it really generated are typed at pace
+    than typing, a 4:10 smoke life): the 20-odd words it really generated are typed at pace
     after the death, then death_shown (5.8). The installation's own late thoughts hold about
     eight words, so a short deadline life fills the queue instead."""
-    cfg = load_config("pi4/smoke-300", "pi4-4gb", lifespan_s=270)
+    cfg = load_config("pi4/smoke-300", "pi4-4gb", lifespan_s=250)
     ev = run(cfg, backend_cls=with_faults(tg_factor=0.1))
     death, shown = of(ev, "death")[0], of(ev, "death_shown")[0]
     assert death["cause"] == "deadline"

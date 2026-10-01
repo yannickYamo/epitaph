@@ -16,7 +16,7 @@ ORDER_START = ["birth_loading", "birth", "vitals", "thought_start", "gen_start"]
 @pytest.mark.parametrize(
     "name,cause",
     [
-        ("pi4/default", "oom"),
+        ("pi4/default-reloads", "oom"),
         ("pi4/skeleton-1200", "deadline"),
         ("pi4/smoke-300", "deadline"),
         ("pi4/unbounded", "full"),
@@ -39,7 +39,7 @@ def test_each_pi5_profile_dies_the_right_way(name: str, cause: str, hardware: st
 
 
 def test_event_order_and_lifecycle() -> None:
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")
     r = simulate(cfg, lives=2)
     first = [e["type"] for e in r.events if e["life"] == 1]
     assert first[:5] == ORDER_START
@@ -55,7 +55,7 @@ def test_event_order_and_lifecycle() -> None:
 
 def test_sync_rule_in_sim() -> None:
     """No gen_start before the previous thought ended (BUILD_PLAN 5.7 step 7)."""
-    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     open_turn = None
     for e in r.events:
         if e["type"] == "gen_start":
@@ -66,7 +66,7 @@ def test_sync_rule_in_sim() -> None:
 
 
 def test_reload_reports_the_memory_cut() -> None:
-    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     reloads = [e for e in r.events if e["type"] == "reload"]
     assert all(e["recall_after"] <= e["recall_before"] for e in reloads)
 
@@ -92,13 +92,13 @@ def test_deterministic() -> None:
 def test_event_conventions() -> None:
     """Contract decisions E2, E3, D2, D6 and E4: `t` on every event (0 before birth),
     `birth_loading` names what the life runs with, and `gen_end` carries its timings."""
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")
     r = simulate(cfg, lives=2)
     assert all("t" in e for e in r.events)
     for life in (1, 2):
         loading = next(e for e in r.events if e["life"] == life and e["type"] == "birth_loading")
         assert loading["t"] == 0.0
-        assert loading["profile"] == "pi4/default"
+        assert loading["profile"] == "pi4/default-reloads"
         assert loading["hardware"] == "pi4-4gb"
         assert loading["lifespan_s"] == cfg.profile.lifespan_s
     ends = [e for e in r.events if e["type"] == "gen_end"]
@@ -110,7 +110,7 @@ def test_event_conventions() -> None:
 
 def test_every_memory_cut_emits_forget_the_reload_included() -> None:
     """Decision D5: the display fades what the reload cut, like any other loss."""
-    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     types = [e["type"] for e in r.events]
     for i, e in enumerate(r.events):
         if e["type"] == "reload":
@@ -120,7 +120,7 @@ def test_every_memory_cut_emits_forget_the_reload_included() -> None:
 
 def test_readings_come_from_the_mind() -> None:
     """The simulator writes the real readings, marker included (mind.prompt.Reader)."""
-    r = simulate(load_config("pi4/default", "pi4-4gb"))
+    r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
     # The first reading comes after the system prompt was read at birth (ADR-013).
     assert re.match(r"\[host\] t\+0\d:\d\d · boot complete · health: nominal", readings[0])
