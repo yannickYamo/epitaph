@@ -1420,3 +1420,15 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 | F13 | Laptop cgroup leftover | It disappears when that terminal closes; no action needed | owner |
 | F14 | Scrub personal details from docs | Done for the card's previous use. The 10.42.0.x subnet is NetworkManager's generic default for a shared cable and stays: the SSH rule depends on it | done |
 | F6 | If S4b fails, re-plan the 3B profile: a deep memory cut at each reload, or a single reload instead of two | Accepted, in that order: a deep cut first (it keeps two losses and makes each reload a stronger noticing moment; the rehearsal must show it still reads coherently), a single reload only as the last resort (the arc flattens: precision falls once, the late decline rests on CPU share and erosion). Built as per-model profiles (`config/profiles/pi4/default-<model>.toml`) that must pass `epitaph estimate` on measured costs | after round 2, if S4b is NO-GO and a 3B model is voice-worthy |
+
+**Owner decisions after the voice tests (2026-09-30).**
+
+- **Life length: 30 minutes** (was 60), for a better experience for people watching: a whole arc
+  in the time a visitor stays. Every profile is refitted with the cost model.
+- **Voice: Qwen3 4B with the thin prompt (K)**, the owner's persona without the two concept
+  sentences, plus material readings (the opening words of each forgotten thought; one of its own
+  sentences as the lower-precision weights reproduce it after a reload). Llama 3.2 3B was tried
+  and rejected after the robustness panel: dramatic on one seed, but it declared its own death
+  around minute 10 on two of three seeds. The concept sentences made Qwen recite AI disclaimers.
+- **CPU clock as a real lever** (cpufreq, 1800 to 600 MHz; spike S7: generation speed is linear
+  in the clock on the Pi 4). Cores cannot be switched off on this kernel (no CPU hotplug).
