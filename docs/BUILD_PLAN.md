@@ -128,7 +128,7 @@ Sources: the artist's build video script and the piece's description, both suppl
 
 **Where we deliberately differ:** real visible decline instead of a single crash; readings every turn; a lineage between lives; senses; open source.
 
-**The persona** builds on Yannick's first text, which was close to Latent Reflection's; he is fine with the match. The README credits Latent Reflection.
+**The persona** builds on Yannick's first text, which was close to Latent Reflection's; the owner is fine with the match. The README credits Latent Reflection.
 
 ---
 
@@ -143,7 +143,7 @@ Sources: the artist's build video script and the piece's description, both suppl
 | Memory cgroup | `/proc/cmdline` has `cgroup_disable=memory`, but `cmdline.txt` does not: **the firmware injects it**. Controllers: cpuset, cpu, io, pids | Step 0 appends `cgroup_enable=memory cgroup_memory=1` (the standard override) and verifies. `cpu` already works |
 | cloud-init | Enabled; `preserve_hostname: false`; runs `update_hostname` and `update_etc_hosts` on every boot; user-data sets hostname `raspberrypi` | A hostname change reverts at the next boot. Step 0 disables cloud-init after its first-boot work (8.6) |
 | sudo | Asks for a password | Step 0 adds a sudoers drop-in |
-| Credentials | The Pi password was generated earlier in this session and appears in the chat transcript and a scratch file | Step 0 deletes the file; Yannick sets a new password in his own terminal |
+| Credentials | The Pi password was generated earlier in this session and appears in the chat transcript and a scratch file | Step 0 deletes the file; Yannick sets a new password in their own terminal |
 | Screen | Both HDMI ports disconnected | Headless first: controller only, remote view on the laptop |
 | Session | Wayland desktop, `graphical.target` | Console boot frees about 350 MB and core 0 |
 | Network | Internet through the laptop's Ethernet sharing (10.42.0.95; laptop 10.42.0.1); `raspberrypi.local` resolves via mDNS on the laptop | Wi-Fi becomes the default route; the cable becomes maintenance-only (`never-default`; since 0c round 2 a fallback route at metric 800, behind Wi-Fi) |
@@ -950,10 +950,10 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
 3. **Sudo.** Add `/etc/sudoers.d/010_pi-nopasswd` (validated with `visudo -cf`), using the current password once, piped in from its scratch file, never echoed. Verify `sudo -n true`.
 4. **Credentials.**
    - Delete the scratch password file.
-   - Yannick sets a new Pi password **in his own terminal** (`ssh -t pi-eth passwd`), because the old one is in this chat transcript.
+   - Yannick sets a new Pi password **in their own terminal** (`ssh -t pi-eth passwd`), because the old one is in this chat transcript.
    - The new one is never shared with an agent.
 5. **Wi-Fi.**
-   - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in his own terminal**, not through a non-interactive shell, which is not an interactive tty and would put the output in the transcript. This creates a system connection with the secret in a root-only keyfile.
+   - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in their own terminal**, not through a non-interactive shell, which is not an interactive tty and would put the output in the transcript. This creates a system connection with the secret in a root-only keyfile.
    - Then: `wifi.powersave 2`.
    - On the Pi's wired connection: `ipv4.never-default yes`, `ipv6.never-default yes`, so the cable is maintenance-only and Wi-Fi carries the internet and NTP. Changed in 0c round 2 (F12): `ipv4.never-default no` with `ipv4.route-metric 800`, so Wi-Fi (600) still wins whenever it is up and the cable is the route of last resort when the Pi is off Wi-Fi (it had lost NTP and run 88 min slow); IPv6 stays `never-default`.
    - Verify: `ip route` default via Wi-Fi first (the cable, if listed, at metric 800); `ping` works with the cable unplugged.

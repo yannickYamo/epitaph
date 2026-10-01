@@ -6,7 +6,7 @@
 - Protocol version 1.
 
 ## Checkpoint A (2026-09-30)
-- The owner chose **Qwen3 4B Instruct 2507**, his original persona and chat mode, after reading
+- The owner chose **Qwen3 4B Instruct 2507**, the owner's original persona and chat mode, after reading
   rehearsed lives of eight models (docs/CHECKPOINT_A.md).
 - The 4B runs on the Pi 4 on its own schedule with the memory carried across reloads: 29 thoughts
   in the rehearsed hour, reload silences 101 s and 116 s.

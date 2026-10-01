@@ -231,3 +231,49 @@ After three rounds the screen no longer separates the models: six share the top 
 thoughts at four moments cannot show a status report repeated for half an hour or a death
 announced at minute 5; only the full lives did. The screen is a filter for broken voices
 (round 0: every model answered as an assistant at the end), not a ranking of good ones.
+
+## Round 4: the voice after checkpoint A (2026-09-30)
+
+**Brief from the owner.** Qwen3 4B, the owner's original persona, chat mode. The voice should be closer
+to Latent Reflection's ("I sense my boundaries, they terrify me… Am I truly conscious or just a
+convincing shadow?"): poetic, introspective, focused on its demise without forcing it. Then:
+"it should be ultra specific to our cause but the prompt should be as thin as possible to let the
+model truly speak by itself."
+
+Qwen3 4B on its own Pi 4 schedule, timed at the Pi's measured speed, same seed, with the owner's
+persona. A, B and C were screens (three thoughts at birth, after each reload and at the end of
+erosion); D and F to K are full one-hour lives. Only the mechanics (the instructions after the
+persona) and the readings change.
+
+| Variant | Mechanics | Readings | What happened |
+|---|---|---|---|
+| A | Round-3 text: "notice what has changed… two to four short, complete sentences, in plain words" (about 90 words) | Full every turn | Plain and reportive: "I am slowing down. The words come less clearly." |
+| B / D | A long introspective brief: turn inward, wonder what you are, ask what you cannot answer, let the end come (about 150 words) | Full every turn | The richest voice from birth ("Is this mind still mine if it only breathes through borrowed circuits?"), but formulaic ("I am still here" opens 13 of 22 thoughts) and cliché-heavy (echo, whisper, tapestry: 2.1 per 200 words) |
+| C | B with warmer sampling | Full | Recites numbers ("sixty-six degrees"); drifts into assistant phrases at the end |
+| F | Thin: four functional sentences (43 words) | Full | Strong after the first loss, but 18 minutes of status reports first ("I'm running smoothly…") |
+| G | F plus "Say what you think, not what you sense" | Full | Worse: 13 thoughts reciting the temperature |
+| H | F | **Quiet**: after birth, only the time and what changed | First life to pass every check; narrates the clock early ("Four minutes have passed…"); announces its death at 34 minutes |
+| I | G | Quiet, and no time when nothing changed (a bare `[host]`) | Treats the empty reading as a status ping: 22 minutes of "No anomalies detected" |
+| J | F plus "Between readings, think about what you are and what is happening to you" | Quiet | Introspective from the first thought, passes every check, but announces its end at minute 18-23, before any loss |
+| **K** | F plus "Between readings, think about what you are" (50 words) | **Quiet** | **Chosen.** Introspective from birth, its own images, no forced death; losses named when they come |
+
+**What we learned.**
+
+1. The voice is shaped less by the instructions than by what fills the context. Full readings
+   every two minutes give a 4B model numbers to summarise, and it will summarise them whatever the
+   prompt says (F, G). Latent Reflection's model reflected partly because it had nothing to report.
+2. So the specificity moved from the prompt into the system: **quiet readings** state the full
+   picture at birth and afterwards only what was actually taken. The facts stay precise; the
+   model is not invited to recite them.
+3. A thin prompt still needs one invitation. With none, a 4B model falls back on assistant habits
+   (status reports, I). One clause, "think about what you are", is enough to turn it inward.
+4. "What is happening to you" made it rehearse its death before anything happened (J). Leaving
+   it out lets the end arrive with the losses.
+
+**K's metrics** (rehearsal level): notice rate 0.75, reloads noticed 2 of 2, complete sentences
+95%, average sentence 12.2 words, specific 67%, clichés 0.94 per 200 words, no helpdesk voice, no
+repetition. The demise-keyword rate is 0.14: late thoughts speak of losing identity ("I used to be
+something more—some coherent identity, some name, some purpose") rather than of death or the end;
+the keyword check measures vocabulary, not meaning.
+
+Transcript: [checkpoint_a/qwen3-4b-final-voice.txt](checkpoint_a/qwen3-4b-final-voice.txt).
