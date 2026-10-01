@@ -51,6 +51,7 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
 | `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
 | `persona_original` | The owner's persona, after Latent Reflection | The installation's persona (ADR-023) |
+| `persona_original_keep` | `[5, 1, 2, 4, 3]` | The order its five sentence groups are kept, longest first: what it is and its termination stay to the last step, so it knows it will end until the end (ADR-011). The full text is unchanged |
 | `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |

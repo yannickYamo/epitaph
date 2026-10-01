@@ -10,7 +10,7 @@
 | Storage | 2017 SanDisk 64 GB (SP64G); p1 512 MB vfat, p2 59 GB ext4; about 49 GB free |
 | cgroups | v2, controllers `cpuset cpu io memory pids` (memory enabled via cmdline; firmware injects `cgroup_disable=memory`) |
 | RAM | 3.7 GiB total; about 3.59 GB available at idle on console boot |
-| Watchdog | bcm2835, `RuntimeWatchdogSec=1m` (OS default) |
+| Watchdog | bcm2835 (`wdctl`: "Broadcom BCM2835 Watchdog timer"), armed by systemd with a 60 s timeout (`RuntimeWatchdogSec=1m`, the OS default) and pinged (time left counting down, 2026-10-01). The 15 s limit in BUILD_PLAN 3.1 was wrong for this kernel. A forced-reset test waits for a fresh SD backup |
 | Clock | NTP over Wi-Fi (no RTC) |
 | sudo | Passwordless for `pi` (`/etc/sudoers.d/010_pi-nopasswd`) |
 | Password | `pi` password locked until Yannick sets one |

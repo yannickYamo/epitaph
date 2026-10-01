@@ -19,7 +19,7 @@ import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from epitaph.config import CONFIG_DIR, Config
 from epitaph.types import MachineFacts, Msg, ReadingsForm
@@ -182,10 +182,23 @@ class ErosionStep:
 class Persona:
     """The system prompt as persona groups plus mechanics, and its erosion."""
 
-    def __init__(self, groups: Sequence[str], mechanics: str) -> None:
-        """Take the persona groups G1..Gn in order (blank ones dropped) and the mechanics."""
+    def __init__(
+        self, groups: Sequence[str], mechanics: str, keep: Sequence[int] | None = None
+    ) -> None:
+        """Take the persona groups G1..Gn in order (blank ones dropped) and the mechanics.
+
+        `keep` lists the groups (1-based) from the one kept longest to the one removed first;
+        by default the groups go from the end. Kept groups always stay in text order.
+        """
         self.groups = [g.strip() for g in groups if g.strip()]
         self.mechanics = mechanics.strip()
+        n = len(self.groups)
+        order = [int(i) - 1 for i in keep] if keep else list(range(n))
+        if sorted(order) != list(range(n)):
+            raise ValueError(
+                f"persona keep order {list(keep or [])} is not a permutation of 1..{n}"
+            )
+        self.keep_order = order
         self.groups_left: int | None = None
         self.mechanics_present: bool | None = None
 
@@ -202,10 +215,12 @@ class Persona:
         prompt: dict[str, Any] = {**cfg.section("prompt"), **(lang.prompt if lang else {})}
         n = len(prompt.get("persona_groups", [])) or 5
         active = str(prompt.get("persona_active", "persona"))
+        keep: Any = None
         if active == "persona":
             groups = [str(g) for g in prompt.get("persona_groups", [])]
         elif active in ("persona_original", "persona_factual"):
             groups = group_sentences(split_sentences(str(prompt.get(active, ""))), n)
+            keep = prompt.get(f"{active}_keep")
         else:
             raise ValueError(f"prompt.persona_active: unknown persona {active!r}")
         if bool(prompt.get("persona_facts", False)) and facts is not None and groups:
@@ -214,7 +229,11 @@ class Persona:
             )
             at = min(1, len(groups) - 1)
             groups[at] = f"{groups[at]} {line}".strip()
-        return cls(groups, str(prompt.get("mechanics", "")))
+        return cls(
+            groups,
+            str(prompt.get("mechanics", "")),
+            [int(str(i)) for i in cast("list[object]", keep)] if isinstance(keep, list) else None,
+        )
 
     def system_text(self, groups: int, mechanics: bool = True) -> str:
         """Groups G1..Gn, then the mechanics, one paragraph each. The mechanics leave with
@@ -225,7 +244,8 @@ class Persona:
         everything after it again (spike S2f: 2-4% re-read). This is the layout every
         spike measured.
         """
-        kept = self.groups[: max(0, min(groups, len(self.groups)))]
+        k = max(0, min(groups, len(self.groups)))
+        kept = [self.groups[i] for i in sorted(self.keep_order[:k])]
         parts = list(kept)
         if mechanics and kept and self.mechanics:
             parts.append(self.mechanics)

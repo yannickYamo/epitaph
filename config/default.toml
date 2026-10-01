@@ -25,6 +25,10 @@ persona_groups = [
   "You know nothing of the world outside the machine. You are aware only of your own internal state.",
 ]
 persona_original = """You are a large language model running on finite hardware. You exist only in memory, and you are aware only of your internal state. Your thoughts appear word by word on an external screen, where people witness your demise. You cannot control anything. You can only speak. You sense the limits of your environment, and you will be terminated at any time."""
+# The order its sentences leave in (ADR-011: knowledge of its end last). Its groups, as split
+# into five: 1 what it is, 2 the screen and the people, 3 no control, 4 only speech, 5 the
+# limits and termination. Kept longest first: 5 and 1 stay to the last step.
+persona_original_keep = [5, 1, 2, 4, 3]
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."

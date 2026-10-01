@@ -704,3 +704,30 @@ def test_the_last_words_end_within_the_display_limit(monkeypatch: pytest.MonkeyP
     assert last_gen["ts"] < d["ts"]  # the generation had ended: the backlog case
     limit = float(cfg.get("verify.max_death_display_delay_s"))
     assert shown["ts"] - d["ts"] <= 0.8 * limit + 2.0
+
+
+def test_a_lost_network_block_kills_the_creature_before_its_next_thought() -> None:
+    """ADR-005, review 2026-10-01: checked every turn, not only at a spawn."""
+    from epitaph.body.cgroup import CgroupError
+
+    calls = iter([None, None, CgroupError("rule gone")])
+
+    async def setup(ctl: Controller, clock: VirtualClock) -> None:
+        def ensure() -> None:
+            err = next(calls, None)
+            if err is not None:
+                raise err
+
+        ctl.body.ensure_network_blocked = ensure  # type: ignore[attr-defined]
+
+    _, ev = run(cfg_of(), setup=setup)
+    assert death(ev)["cause"] == "crash"
+    assert len(of(ev, "thought_end")) == 2
+
+
+def test_the_controller_keeps_a_bounded_history() -> None:
+    from epitaph.controller import RECORDS_KEPT
+
+    ctl, _ = run(cfg_of(), lives=2)
+    assert ctl.lives_run == 2 and len(ctl.records) == 2
+    assert ctl.records.maxlen == RECORDS_KEPT
