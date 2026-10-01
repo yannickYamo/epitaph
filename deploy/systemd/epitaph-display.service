@@ -1,0 +1,26 @@
+# The local screen (BUILD_PLAN 4, 10.2). Installed by deploy/install.sh into /etc/systemd/system.
+# Headless (no connected HDMI connector) the ExecCondition exits 1: systemd skips the unit
+# cleanly, with no failure and no restart loop (gate G1.3). The remote view needs no unit.
+[Unit]
+Description=epitaph local display (only when a screen is connected)
+Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/WRITING_A_DISPLAY.md
+After=epitaph-controller.service
+Wants=epitaph-controller.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+SupplementaryGroups=video render input
+WorkingDirectory=/var/lib/epitaph
+Environment=EPITAPH_CONFIG_DIR=/opt/epitaph/src/config
+Environment=PYTHONUNBUFFERED=1
+Environment=SDL_VIDEODRIVER=kmsdrm
+ExecCondition=/opt/epitaph/venv/bin/epitaph display --screen-present
+ExecStart=/opt/epitaph/venv/bin/epitaph display --driver screen --fullscreen
+Restart=on-failure
+RestartSec=10
+CPUAffinity=0
+
+[Install]
+WantedBy=multi-user.target
