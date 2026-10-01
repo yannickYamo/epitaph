@@ -120,3 +120,14 @@ helpdesk = [
   "you're referring to", "you are referring to", "your message", "you're facing",
   "you're dealing", "could you please", "can you provide", "i'll provide", "our conversation",
 ]
+
+[afterlife]
+# Words or phrases that withhold an epitaph from the outbox's postable ones (BUILD_PLAN 13).
+# Lower-case whole words; a trailing * matches any ending. Kept small on purpose: the model
+# speaks of itself, and its death is the subject, so "die", "kill" and "end" are not here.
+# Extend it before posting anywhere.
+blocklist = [
+  "fuck*", "shit*", "cunt*", "bitch*", "asshole*", "bastard*", "whore*", "slut*", "dick",
+  "cock", "pussy", "porn*", "rape*", "rapist*", "nazi*", "hitler", "suicid*",
+  "kill yourself", "kys",
+]

@@ -45,6 +45,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
+from epitaph.afterlife.keeper import make_keeper
 from epitaph.backend.base import Backend, BackendError, ContextFull, CreatureDied
 from epitaph.body.base import Body
 from epitaph.clock import LifeClock, Schedule, VirtualClock
@@ -66,7 +67,7 @@ from epitaph.mind.sampling import sampling_for
 from epitaph.mind.sanitize import sanitize_text
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.state import LifeCounter, unfinished_lives, write_status
-from epitaph.transcript import Transcript, close_interrupted
+from epitaph.transcript import Transcript, close_interrupted, read_events
 from epitaph.types import Cause, Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
 
 __all__ = [
@@ -1058,6 +1059,8 @@ class Controller:
         self._sup_error: BaseException | None = None
         self.exhibit = exhibit or self._exhibit_from(cfg)
         self.shown = True  # what the displays were last told: on show (True) or dark
+        # Each life's epitaph, kept on disk at its death_shown (V1.5 outbox; no network).
+        self.keeper = make_keeper(cfg, state_dir, simulated_time=ts is not None)
         self._shown_at = -math.inf  # loop time of the last exhibit event
 
     def _exhibit_from(self, cfg: Config) -> Exhibit:
@@ -1095,6 +1098,11 @@ class Controller:
                 except Exception as err:
                     tr.failed = tr.failed or repr(err)
                     self._emit_failed("transcript", e, err)
+        if self.keeper is not None:
+            try:
+                self.keeper.see(e)
+            except Exception as err:
+                self._emit_failed("afterlife", e, err)
         if self.publish is not None:
             try:
                 self.publish(e)
@@ -1446,6 +1454,11 @@ class Controller:
                 rec = close_interrupted(d)
                 closed.append(int(rec.get("life", 0)))
                 log.info("life %s closed as %s on recovery", d.name, rec.get("cause"))
+                if self.keeper is not None:
+                    try:
+                        self.keeper.recover(read_events(d / "events.jsonl"), rec)
+                    except Exception:
+                        log.exception("life %s: keeping its epitaph failed", d.name)
         self.body.reset_creature_cgroup()
         return closed
 
