@@ -38,7 +38,7 @@ Two stages:
 Run it under the laptop lock (BUILD_PLAN 8.3), one llama-server at a time:
 
     tools/laptop_lock.sh run A 30 -- .venv/bin/python -m epitaph.rehearse \\
-        --stage life --model qwen3-1.7b --profile pi4/compressed-2700
+        --stage life --model qwen3-4b-instruct-2507 --profile pi4/default
 
 `--backend fake` runs the same harness on the fake creature, in seconds and without a model.
 """
@@ -1333,7 +1333,7 @@ def screen_markdown(
 
 def run_life_stage(args: argparse.Namespace) -> Path:
     """`--stage life`: one full life into its own folder; returns the folder."""
-    profile = args.profile or "pi4/compressed-2700"
+    profile = args.profile or "pi4/default"
     persona = (args.persona or ["persona"])[0]
     model = args.model[0] if args.model else _default_model(profile, args.hardware)
     cfg = _config(args, persona, model, profile)
@@ -1459,9 +1459,7 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         choices=PERSONAS,
         help="persona (repeat for the screen; default: persona and persona_original)",
     )
-    p.add_argument(
-        "--profile", help="default: pi4/default for the screen, pi4/compressed-2700 for a life"
-    )
+    p.add_argument("--profile", help="default: pi4/default")
     p.add_argument("--hardware", default="pi4-4gb", help="overlay for thresholds and estimates")
     p.add_argument("--lifespan", help="rescale the profile (mm:ss or seconds)")
     p.add_argument(

@@ -20,11 +20,11 @@ GOOD = (
     "I think this is leading to my end, and I will die here."
 )
 FLAT = "The room is quiet. A cat sleeps on a mat by the door."
-PROFILE = "pi4/compressed-2700"
+PROFILE = "pi4/default"
 
 
 @pytest.fixture
-def compressed(recorded_life) -> list[dict[str, Any]]:
+def full_life(recorded_life) -> list[dict[str, Any]]:
     """A simulated life on PROFILE whose speed never rises across a reload (`slowing`): these
     tests are about the rehearsal tools, not about how the profile is tuned."""
     return slowing(read_events(recorded_life(PROFILE) / "lives" / "000001" / "events.jsonl"))
@@ -109,10 +109,10 @@ def test_pack_without_metrics_table(tmp_path: Path) -> None:
     assert v.read_lang_metrics("yy", tmp_path) == {}
 
 
-def test_verifier_judges_with_the_pack(compressed) -> None:
+def test_verifier_judges_with_the_pack(full_life) -> None:
     """ "binary heart" is a cliche only in en.toml; "tokens" a memory word only there."""
     res = v.verify_life(
-        v.parse_life(voiced(compressed, "My binary heart counts tokens. " * 3)),
+        v.parse_life(voiced(full_life, "My binary heart counts tokens. " * 3)),
         load_config(PROFILE, "pi4-4gb"),
         "rehearsal",
     )
@@ -125,24 +125,24 @@ def test_verifier_judges_with_the_pack(compressed) -> None:
 # -- rehearsal output: headers, sidecars, levels ------------------------------------------
 
 
-def test_header_event_is_metadata_not_a_life(compressed) -> None:
-    events = [header(model="qwen3-1.7b", persona="v6", seed=2), *compressed]
+def test_header_event_is_metadata_not_a_life(full_life) -> None:
+    events = [header(model="qwen3-1.7b", persona="v6", seed=2), *full_life]
     assert v.lives_in(events) == [1]
     life = v.parse_life(events)
     assert life.n == 1 and all(e["type"] != "rehearsal" for e in life.events)
     meta = v.life_meta(life)
     assert meta["persona"] == "v6" and meta["seed"] == 2 and meta["rehearsal"] is True
     # birth says what actually loaded, so it wins over the header's model.
-    assert meta["model"] == next(e for e in compressed if e["type"] == "birth")["model"]
+    assert meta["model"] == next(e for e in full_life if e["type"] == "birth")["model"]
 
 
-def test_header_for_another_life_is_ignored(compressed) -> None:
-    events = [header(life=9, persona="original"), *compressed]
+def test_header_for_another_life_is_ignored(full_life) -> None:
+    events = [header(life=9, persona="original"), *full_life]
     assert v.life_meta(v.parse_life(events)).get("persona") is None
 
 
-def test_lines_without_type_do_not_make_a_life(compressed) -> None:
-    assert v.lives_in([{"life": 5, "note": "x"}, *compressed]) == [1]
+def test_lines_without_type_do_not_make_a_life(full_life) -> None:
+    assert v.lives_in([{"life": 5, "note": "x"}, *full_life]) == [1]
 
 
 def test_life_without_life_numbers() -> None:
@@ -155,8 +155,8 @@ def test_life_without_life_numbers() -> None:
     assert life.n == 0 and life.thoughts[0].text == "I am here."
 
 
-def test_sidecar_meta(tmp_path: Path, compressed) -> None:
-    path = write_events(tmp_path / "life" / "events.jsonl", compressed)
+def test_sidecar_meta(tmp_path: Path, full_life) -> None:
+    path = write_events(tmp_path / "life" / "events.jsonl", full_life)
     (tmp_path / "life" / "meta.json").write_text(json.dumps({"persona": "original", "seed": 7}))
     (tmp_path / "life" / "rehearsal.json").write_text(json.dumps({"seed": 8, "rehearsal": True}))
     life = v.parse_life(read_events(path), source=path)
@@ -167,19 +167,19 @@ def test_sidecar_meta(tmp_path: Path, compressed) -> None:
     assert v.life_meta(life)["seed"] == 8
 
 
-def test_default_level_follows_the_stage(compressed) -> None:
+def test_default_level_follows_the_stage(full_life) -> None:
     cfg = load_config(PROFILE, "pi4-4gb")
-    assert v.default_level(v.parse_life(compressed), cfg) == "full"
-    rehearsal = v.parse_life([header(), *compressed])
+    assert v.default_level(v.parse_life(full_life), cfg) == "full"
+    rehearsal = v.parse_life([header(), *full_life])
     assert v.default_level(rehearsal, cfg) == "rehearsal"
     assert v.verify_life(rehearsal, cfg).level == "rehearsal"
     for stage in ("screen", 1, "1"):
-        assert v.default_level(v.parse_life([header(stage=stage), *compressed]), cfg) == "screen"
+        assert v.default_level(v.parse_life([header(stage=stage), *full_life]), cfg) == "screen"
 
 
-def test_screen_level_runs_the_text_metrics_only(compressed) -> None:
+def test_screen_level_runs_the_text_metrics_only(full_life) -> None:
     res = v.verify_life(
-        v.parse_life(voiced(compressed, GOOD)), load_config(PROFILE, "pi4-4gb"), "screen"
+        v.parse_life(voiced(full_life, GOOD)), load_config(PROFILE, "pi4-4gb"), "screen"
     )
     names = {c.name for c in res.checks}
     assert {"notice_rate", "specific", "cliches", "distinct_4grams", "helpdesk_voice"} <= names
@@ -190,10 +190,10 @@ def test_screen_level_runs_the_text_metrics_only(compressed) -> None:
 # -- summary ------------------------------------------------------------------------------
 
 
-def test_summary_record(compressed) -> None:
+def test_summary_record(full_life) -> None:
     events = [
         header(model="qwen3-1.7b", persona="v6", seed=1, stage="full", costs="measured"),
-        *compressed,
+        *full_life,
     ]
     res = v.verify_life(v.parse_life(voiced(events, GOOD)), load_config(PROFILE, "pi4-4gb"))
     s = v.summarize(res)
@@ -207,8 +207,8 @@ def test_summary_record(compressed) -> None:
     assert res.to_json()["meta"]["persona"] == "v6"
 
 
-def test_cli_summary_line(tmp_path: Path, compressed, capsys) -> None:
-    path = write_life(tmp_path, "a", voiced(compressed, GOOD), persona="v6", seed=3)
+def test_cli_summary_line(tmp_path: Path, full_life, capsys) -> None:
+    path = write_life(tmp_path, "a", voiced(full_life, GOOD), persona="v6", seed=3)
     assert v.main([str(path.parent), "--summary"]) == 0
     line = capsys.readouterr().out.strip()
     assert "\n" not in line
@@ -218,9 +218,9 @@ def test_cli_summary_line(tmp_path: Path, compressed, capsys) -> None:
     assert written["summary"]["seed"] == 3
 
 
-def test_cli_one_target_unless_compare(tmp_path: Path, compressed, capsys) -> None:
-    a = write_life(tmp_path, "a", compressed)
-    b = write_life(tmp_path, "b", compressed)
+def test_cli_one_target_unless_compare(tmp_path: Path, full_life, capsys) -> None:
+    a = write_life(tmp_path, "a", full_life)
+    b = write_life(tmp_path, "b", full_life)
     assert v.main([str(a), str(b)]) == 2
     assert "--compare" in capsys.readouterr().err
     assert v.main([str(tmp_path), "--no-write"]) == 2  # two lives below: name one
@@ -228,8 +228,8 @@ def test_cli_one_target_unless_compare(tmp_path: Path, compressed, capsys) -> No
     assert v.main([str(a), "--lifespan", "nonsense"]) == 2
 
 
-def test_cli_dir_with_one_nested_life(tmp_path: Path, compressed) -> None:
-    write_life(tmp_path / "run", "only", voiced(compressed, GOOD))
+def test_cli_dir_with_one_nested_life(tmp_path: Path, full_life) -> None:
+    write_life(tmp_path / "run", "only", voiced(full_life, GOOD))
     assert v.main([str(tmp_path / "run"), "--no-write"]) == 0
 
 
@@ -237,13 +237,13 @@ def test_cli_dir_with_one_nested_life(tmp_path: Path, compressed) -> None:
 
 
 @pytest.fixture
-def run_dir(tmp_path: Path, compressed) -> Path:
+def run_dir(tmp_path: Path, full_life) -> Path:
     root = tmp_path / "voice"
-    good = voiced(compressed, GOOD)
+    good = voiced(full_life, GOOD)
     write_life(root, "qwen-v6-s1", good, model="qwen3-1.7b", persona="v6", seed=1)
     write_life(root, "qwen-orig-s1", good, model="qwen3-1.7b", persona="original", seed=1)
     write_life(root, "llama-v6-s1", good, model="llama-3.2-3b-instruct", persona="v6", seed=1)
-    write_life(root, "gemma-v6-s1", voiced(compressed, FLAT), model="gemma-3-4b-it", seed=1)
+    write_life(root, "gemma-v6-s1", voiced(full_life, FLAT), model="gemma-3-4b-it", seed=1)
     return root
 
 

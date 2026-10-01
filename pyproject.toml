@@ -79,6 +79,7 @@ strict = [
   "src/epitaph/state.py",
   "src/epitaph/events.py",
   "src/epitaph/controller.py",
+  "src/epitaph/exhibit.py",
   "src/epitaph/costmodel.py",
   "src/epitaph/verify.py",
 ]

@@ -120,12 +120,12 @@ git clone https://github.com/yannickYamo/epitaph && cd epitaph
 make venv                                  # Python 3.11+
 make check                                 # lint, types, ~600 tests, a simulated life, the cost model
 
-# Simulate a whole 45-minute life in under a second, then watch it replayed 20x faster:
-.venv/bin/epitaph sim --profile pi4/compressed-2700 --hardware pi4-4gb --events > life.jsonl
+# Simulate a whole 30-minute life in under a second, then watch it replayed 20x faster:
+.venv/bin/epitaph sim --profile pi4/default --hardware pi4-4gb --events > life.jsonl
 .venv/bin/epitaph replay life.jsonl --speed 20 --driver terminal     # or --driver screen
 
 # Check it the way a real life is checked:
-.venv/bin/epitaph verify-life life.jsonl --profile pi4/compressed-2700 --hardware pi4-4gb
+.venv/bin/epitaph verify-life life.jsonl --profile pi4/default --hardware pi4-4gb
 
 # Will a schedule give the model enough thoughts to notice each loss?
 .venv/bin/epitaph estimate --profile pi4/default --hardware pi4-4gb

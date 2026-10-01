@@ -144,8 +144,12 @@ idle_step_seconds = 4            # idle: the mark moves to a new place this ofte
 screenshot_on = ["birth", "reload_done", "death_shown"]
 
 [exhibit]
+# Exhibition hours (BUILD_PLAN 5.10), local time, "HH:MM-HH:MM"; a closing before the opening
+# runs past midnight ("20:00-02:00"); "" = always on. Applied only while the system clock is
+# NTP-synchronized (the Pi has no clock of its own); unsynced, the piece stays on with a warning.
 hours = ""
-outside = "unseen"               # unseen | pause
+outside = "unseen"               # unseen: lives go on, screen dark | pause: the current life
+                                 # finishes, then no birth until the opening
 
 [verify]
 # Voice metrics that only advise on a real life (level full): keyword proxies, while the owner's

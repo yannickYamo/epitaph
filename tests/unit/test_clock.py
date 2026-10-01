@@ -28,11 +28,9 @@ PROFILES = [
     ("pi4/default-qwen3-1.7b", "pi4-4gb"),
     ("pi4/smoke-300", "pi4-4gb"),
     ("pi4/skeleton-1200", "pi4-4gb"),
-    ("pi4/compressed-2700", "pi4-4gb"),
     ("pi4/unbounded", "pi4-4gb"),
     ("pi5/default", "pi5-8gb"),
     ("pi5/skeleton-600", "pi5-8gb"),
-    ("pi5/compressed-600", "pi5-8gb"),
     ("pi5/unbounded", "pi5-8gb"),
     ("sim", "pi4-4gb"),
 ]
