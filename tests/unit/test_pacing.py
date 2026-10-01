@@ -524,3 +524,25 @@ def test_the_death_flush_fits_its_budget() -> None:
 
     assert typing_time(None) > 40.0  # the late rhythm alone would overrun
     assert typing_time(20.0) <= 20.0 + 1e-6
+
+
+def test_a_slow_rate_never_types_slower_than_the_ceiling() -> None:
+    """At 2-bit a digit run comes a token a letter; the interval stops at max_letter_ms."""
+
+    async def main(clock: VirtualClock) -> float:
+        p = pacer(clock, max_letter_ms=1200.0)
+        p.set_rate_estimate(0.2)  # letters per second: 5 s a letter if followed
+        return p.letter_interval_ms(knobs(letter_ms=600.0))
+
+    assert run_virtual(main) == 1200.0
+
+
+def test_the_earliest_flush_deadline_wins() -> None:
+    async def main(clock: VirtualClock) -> float | None:
+        p = pacer(clock)
+        p.begin_thought(1)
+        p.flush_within(30.0)
+        p.flush_within(60.0)
+        return p._flush_by  # pyright: ignore[reportPrivateUsage]
+
+    assert run_virtual(main) == 30.0

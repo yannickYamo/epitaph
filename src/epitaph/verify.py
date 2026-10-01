@@ -271,7 +271,8 @@ def word_lists(cfg: Config, config_dir: Path | None = None) -> WordLists:
     )
 
 
-_MARKUP = re.compile(r"(\*\*|__|`|^#{1,6}\w*$|^[-*•]$|^\d+[.)]$|</?[a-z_|]+>|<\|)", re.I)
+# A list marker is one or two digits ("1.", "12)"); a long number ending a sentence is a word.
+_MARKUP = re.compile(r"(\*\*|__|`|^#{1,6}\w*$|^[-*•]$|^\d{1,2}[.)]$|</?[a-z_|]+>|<\|)", re.I)
 _THINK = re.compile(r"</?think>|<\|[^>]*\|>", re.I)
 _SENTENCE_END = re.compile(r"[.?!…][\"')\]]*$")
 

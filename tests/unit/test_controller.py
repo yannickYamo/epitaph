@@ -681,3 +681,26 @@ def test_the_thermal_pause_comes_before_the_reload_check() -> None:
     last = max(i for i, e in enumerate(ev) if e["type"] == "thermal")
     after = next(e for e in ev[last + 1 :] if e["type"] in ("reload", "thought_start"))
     assert after["type"] == "reload" and after["t"] >= first_reload
+
+
+def test_the_last_words_end_within_the_display_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lives 000022 and 000024 on the Pi showed their last words 91 s after the death: the
+    kill came while the backlog was typing, and only a death mid-generation was fitted."""
+    from dataclasses import replace as dc_replace
+
+    from epitaph.pacing import Pacer
+
+    slow = Pacer.cadence
+
+    def twenty_times_slower(self: Pacer, word: Any, knobs: Any) -> Any:
+        tw = slow(self, word, knobs)
+        return dc_replace(tw, char_ms=tuple(c * 20 for c in tw.char_ms))
+
+    monkeypatch.setattr(Pacer, "cadence", twenty_times_slower)
+    cfg = cfg_of()  # smoke-300: a deadline death, here while a long backlog is typing
+    _, ev = run(cfg)
+    d, shown = death(ev), of(ev, "death_shown")[0]
+    last_gen = [e for e in ev if e["type"] == "gen_end"][-1]
+    assert last_gen["ts"] < d["ts"]  # the generation had ended: the backlog case
+    limit = float(cfg.get("verify.max_death_display_delay_s"))
+    assert shown["ts"] - d["ts"] <= 0.8 * limit + 2.0
