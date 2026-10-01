@@ -23,6 +23,9 @@ cpu_period_us = 100000
 # ADR-025: the CPU clock cap goes through this root-owned helper (deploy/sbin/epitaph-clock,
 # installed by deploy/install.sh with a sudoers drop-in for the service user). Empty = untouched.
 clock_helper = "/usr/local/sbin/epitaph-clock"
+# ADR-005: the creature's network is refused by an nftables rule on its cgroup, loaded through
+# this root-owned helper (deploy/sbin/epitaph-netblock, installed by deploy/install.sh).
+netblock_helper = "/usr/local/sbin/epitaph-netblock"
 
 [verify]
 max_reload_silence_s = 180

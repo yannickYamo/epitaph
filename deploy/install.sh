@@ -16,6 +16,10 @@
 #   /usr/local/sbin/epitaph-clock           the CPU clock helper (root, 0755; ADR-025)
 #   /etc/sudoers.d/020_epitaph-clock        the service user may run exactly that helper
 #                                           (0440, checked with visudo -cf)
+#   /usr/local/sbin/epitaph-netblock        the creature's network block (root, 0755; ADR-005):
+#                                           an nftables rule per creature cgroup, loaded by
+#                                           the body at every controller start
+#   /etc/sudoers.d/021_epitaph-netblock     the service user may run exactly that helper
 #   /etc/systemd/system/epitaph-{controller,display}.service
 #   /var/lib/epitaph                        state dir (models in models/), owned by the user
 # and checks, without changing them: cgroup v2 with memory, cpu and io; the hardware watchdog
@@ -45,8 +49,8 @@ USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 PREFIX=/opt/epitaph
 VENV="$PREFIX/venv"
 STATE=/var/lib/epitaph
-HELPER=/usr/local/sbin/epitaph-clock
-SUDOERS=/etc/sudoers.d/020_epitaph-clock
+# helper name -> sudoers drop-in number (deploy/sbin/<name>, deploy/sudoers/<name>)
+HELPERS=(epitaph-clock:020 epitaph-netblock:021)
 UNIT_DIR=/etc/systemd/system
 UNITS=(epitaph-controller.service epitaph-display.service)
 EXTRAS="${EPITAPH_EXTRAS:-display}"
@@ -95,21 +99,25 @@ elif [ "$MODE" = check ]; then
   would "$VENV"
 else
   [ -x "$VENV/bin/python" ] || as_user python3 -m venv "$VENV"
-  spec="$SRC"; [ -n "$EXTRAS" ] && spec="$SRC[$EXTRAS]"
+  spec="$SRC"; [ -n "$EXTRAS" ] && spec="${SRC}[$EXTRAS]"
   as_user "$VENV/bin/pip" install --quiet --disable-pip-version-check --editable "$spec"
   printf '%s\n' "$want_stamp" | as_user tee "$STAMP" >/dev/null
   change "$VENV (pip install -e '$spec')"
 fi
 
-# --- the clock helper and its sudoers rule (ADR-025) ---------------------------------------
-install_file "$SRC/deploy/sbin/epitaph-clock" "$HELPER" 0755 root:root || true
-
-sed "s/@USER@/$USER_NAME/g" "$SRC/deploy/sudoers/epitaph-clock" > "$TMP/sudoers"
-if ! visudo -cqf "$TMP/sudoers"; then
-  fail "sudoers drop-in does not parse (visudo -cf); not installed"
-else
-  install_file "$TMP/sudoers" "$SUDOERS" 0440 root:root || true
-fi
+# --- the privileged helpers and their sudoers rules (ADR-025, ADR-005) ----------------------
+for entry in "${HELPERS[@]}"; do
+  name="${entry%%:*}"; num="${entry##*:}"
+  install_file "$SRC/deploy/sbin/$name" "/usr/local/sbin/$name" 0755 root:root || true
+  sed "s/@USER@/$USER_NAME/g" "$SRC/deploy/sudoers/$name" > "$TMP/sudoers-$name"
+  if ! visudo -cqf "$TMP/sudoers-$name"; then
+    fail "sudoers drop-in for $name does not parse (visudo -cf); not installed"
+  else
+    install_file "$TMP/sudoers-$name" "/etc/sudoers.d/${num}_$name" 0440 root:root || true
+  fi
+done
+if command -v nft >/dev/null 2>&1; then ok "nft ($(nft --version 2>/dev/null))"
+else fail "nft missing (apt install nftables): the creature's network cannot be blocked"; fi
 
 # --- systemd units ---------------------------------------------------------------------------
 for u in "${UNITS[@]}"; do

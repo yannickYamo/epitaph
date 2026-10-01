@@ -321,6 +321,10 @@ def test_make_body_on_laptop(fs: Path, tmp_path: Path) -> None:
 def test_make_body_on_pi(fs: Path, tmp_path: Path) -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     cfg.data["body"]["cgroups"] = "auto"
+    # the Pi overlay blocks the creature's network through the helper, absent here: refused
+    with pytest.raises(CgroupError, match="network"):
+        make_body(cfg, fs, tmp_path / "self_cgroup")
+    cfg.data["body"]["netblock_helper"] = ""
     assert isinstance(make_body(cfg, fs, tmp_path / "self_cgroup"), CgroupBody)
     (tmp_path / "self_cgroup").write_text("0::/nowhere\n")
     with pytest.raises(CgroupError):
