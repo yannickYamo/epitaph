@@ -359,3 +359,14 @@ def test_cli_life_number_uses_config_state_dir(monkeypatch, tmp_path: Path, caps
     monkeypatch.setenv("HOME", str(tmp_path))
     assert v.main(["7", "--hardware", "dev", "--no-write"]) == 2
     assert "000007" in capsys.readouterr().err
+
+
+def test_voice_proxies_advise_on_a_real_life_and_fail_in_rehearsal(compressed) -> None:
+    """ADR-028: demise, clichés and sentence metrics never fail a real life, only inform."""
+    flat = retext(compressed, lambda t, s: "The room is quiet. A cat sleeps on a mat by the door.")
+    full = verify(flat, "pi4/compressed-2700", "full")
+    assert full.by_name("demise_rate").status == "advisory"
+    assert "demise_rate" in full.to_json()["advisory"]
+    assert full.by_name("helpdesk_voice").status != "advisory"  # machine faults stay hard
+    rehearsal = verify(flat, "pi4/compressed-2700", "rehearsal")
+    assert rehearsal.by_name("demise_rate").status == "fail"

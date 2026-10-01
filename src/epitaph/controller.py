@@ -911,6 +911,7 @@ class _Current:
     words: int = 0
     last_line: str = ""
     history: list[str] = field(default_factory=lambda: [])
+    applied_kf: int = -1  # the keyframe whose machine knobs the supervisor last applied
 
 
 class Controller:
@@ -1258,6 +1259,7 @@ class Controller:
                 self.kill(Cause.DEADLINE)
                 return wait
             wait = life.sch.lifespan_s - t
+            wait = min(wait, self._apply_on_time(cur, t))
             if life.oom_at is not None and not self.squeezed:
                 if t >= life.oom_at - EPS:
                     self.squeeze(life)
@@ -1270,6 +1272,19 @@ class Controller:
                 return math.inf
             wait = min(wait, HANG_TICK_S)
         return wait
+
+    def _apply_on_time(self, cur: _Current, t: float) -> float:
+        """Apply a keyframe's machine knobs (CPU share, clock) when it comes, not at the next
+        thought: a loss happens at its time even mid-thought. Returns the seconds to the next
+        keyframe. The first keyframe is left to the life's own prepare()."""
+        sch = cur.life.sch
+        i = sch.keyframe_index(t)
+        if i != cur.applied_kf and not self.squeezed:
+            if cur.applied_kf >= 0:
+                self.body.apply(replace(sch.at(t), death_squeeze=False))
+            cur.applied_kf = i
+        nxt = sch.times[i + 1] if i + 1 < len(sch.times) else math.inf
+        return max(nxt - t, 0.05)  # a floor: a sliver of float time must not stall the loop
 
     def squeeze(self, life: Life) -> None:
         """Take the creature's RAM at `end-0:30` (the death squeeze), whatever it is doing."""
