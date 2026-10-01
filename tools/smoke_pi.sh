@@ -163,17 +163,23 @@ fi
 # --- 3. the lives, as a detached unit --------------------------------------------------------
 RC_FILE="$TMPD/$UNIT.rc"
 # shellcheck disable=SC2086  # EPITAPH_RUN_ARGS is a word list on purpose
-remote_script start "$UNIT" "$RUN_USER" "$RC_FILE" "$EPI" run --profile "$PROFILE" \
+if remote_script start "$UNIT" "$RUN_USER" "$RC_FILE" "$EPI" run --profile "$PROFILE" \
   --lives "$LIVES" ${EPITAPH_RUN_ARGS:-} <<'SH'
 unit="$1"; user="$2"; rc_file="$3"; shift 3
 group="$(id -gn "$user")"; home="$(getent passwd "$user" | cut -d: -f6)"
 rm -f "$rc_file"
-# The exit code goes to a file: a finished transient unit is unloaded, and with it its result.
+# As the installed unit runs it (BUILD_PLAN 4): a delegated cgroup for the creature, the
+# controller on core 0. The exit code goes to a file: a finished transient unit is unloaded,
+# and with it its result.
 sudo -n systemd-run --unit="$unit" --uid="$user" --gid="$group" --setenv=HOME="$home" \
-  --property=KillMode=control-group --collect \
+  --property=Delegate=yes --property=CPUAffinity=0 --property=KillMode=control-group --collect \
   /bin/sh -c '"$@"; echo $? > "$0"' "$rc_file" "$@"
 SH
-log "started $UNIT"
+then
+  log "started $UNIT"
+else
+  log "FAIL: could not start $UNIT (passwordless sudo and systemd-run on the Pi?)"; exit 1
+fi
 
 start_s=$SECONDS
 ssh_fail=0
