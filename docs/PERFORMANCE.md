@@ -53,6 +53,37 @@ A reload is the life's largest loss, but each second of it is a blank screen.
 | System prompt read during the birth card (ADR-013) | **67-73 s** |
 | Qwen3 1.7B (Q8_0), without prefill | 81 s |
 
+### No dead time at birth (dread plan W4)
+
+Between two lives the screen was dark for the 90 s silence, then for the load, the reading
+of the persona and the whole first thought: about four minutes. Now the silence is the only
+dark time. Qwen3 4B on the Pi 4, `pi4/default`, at the measured costs:
+
+| From the end of the silence | Before | Now |
+|---|---|---|
+| Model load (64 s) | after the silence | **inside the silence**, as soon as the death has freed the RAM (`[life] load_during_silence`) |
+| System prompt (240 tokens) | read: 95 s | **restored** from the persona cache: about 1 s (35 MB from the SD card, spike S4b for the restore) |
+| The screen starts | when the first thought is written | on its **first sentence**, at 45 s of life at the earliest (`[reveal] stream_birth`, `stream_birth_min_s`) |
+| First words | about 230 s | **45 s** |
+
+The life clock still starts at the birth; the persona restore and the first reading are part
+of the life, as the read was. The first life after a boot or after any change of model,
+quant, context, persona or mechanics reads its persona once and saves it for the next ones
+(`[backend] persona_cache`; the key hashes all of them, and any failure falls back to the
+read).
+
+The old birth's two and a half minutes of writing before the first word were the stream's
+head start. Without it the stream needed a new curve: 260 ms a letter at birth (33 words a
+minute, as before), slowing with the hardware ten minutes ahead (`stream_gamma` 0.75,
+`stream_lead_s` 600), 680 ms at the end. The cost model replays it with every cost 15% slower:
+it never starves, and no slower birth pace of that shape starves either. The 45 s floor is a
+dial between the first words and the pace: with no floor (31 s, 36 s with the margin) the same
+shape needs 264 ms and leaves more words unshown at the death; the shape the fit picks by
+itself (333 ms, `stream_gamma` 0.5) has slower paces that starve just before the death, and
+starved there in one of six simulated lives. `epitaph estimate` prints the birth line and
+fails a stream profile whose first words come later than `[estimate] max_first_words_s` (45 s
+on the Pi 4).
+
 ### The cost of forgetting
 
 Every edit to the start of the conversation can force the model to re-read everything after it.

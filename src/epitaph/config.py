@@ -513,6 +513,8 @@ def validate_config(cfg: Config) -> None:
             problems.append("reveal.stream_max_slowdown_per_min must be at least 0")
         if int(rev.get("stream_max_thoughts", 1)) < 1 or int(rev.get("stream_max_letters", 1)) < 1:
             problems.append("reveal.stream_max_thoughts and stream_max_letters must be at least 1")
+        if str(rev.get("stream_birth", "thought")) not in ("thought", "sentence"):
+            problems.append("reveal.stream_birth must be 'thought' or 'sentence'")
     if p.fixed_mind:
         first = p.keyframes[0].values
         for kf in p.keyframes[1:]:

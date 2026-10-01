@@ -197,10 +197,12 @@ def test_manual_new_life_ends_this_one_and_starts_the_next_now() -> None:
     ctl, ev = run(cfg, lives=2, setup=setup)
     assert asked == [{"ok": True, "ending": 1}]
     assert [r.cause for r in ctl.records] == ["manual", "deadline"]
-    # the silence is cut short and the next life runs with the asked lifespan, once
+    # the silence is cut short and the next life runs with the asked lifespan, once: its
+    # creature loads at once (in the silence, for the asked life) and is born when loaded
     loading = of(ev, "birth_loading", 2)[0]
-    assert loading["lifespan_s"] == 240.0
-    assert loading["ts"] - of(ev, "death_shown", 1)[0]["ts"] < 1.0
+    assert loading["lifespan_s"] == 240.0 and loading["preloaded"] is True
+    born = of(ev, "birth", 2)[0]
+    assert born["ts"] - of(ev, "death_shown", 1)[0]["ts"] < loading["load_s"] + 1.0
     assert death(ev, 2)["lived_s"] == pytest.approx(240.0)
 
 

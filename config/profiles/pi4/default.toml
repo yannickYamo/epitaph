@@ -23,7 +23,7 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 [reveal]
 mode = "stream"
 # fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 255           # at birth; 721 ms at the end
+stream_letter_ms = 318           # at birth; 899 ms at the end
 stream_gamma = 0.75              # the slowing follows the hardware's compute, to this power
 stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15
@@ -31,6 +31,8 @@ stream_jitter = 0.10
 stream_thought_pause_ms = 3000
 stream_max_thoughts = 2
 stream_max_letters = 900
+stream_birth = "sentence"        # the screen starts on the first sentence (dread plan W4)
+stream_birth_min_s = 45          # ... at 45 s of life at the earliest: a faster birth pace
 
 # I. Existence: it is, and it thinks. Nothing is taken.
 [[keyframe]]

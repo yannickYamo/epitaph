@@ -33,7 +33,8 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 |---|---|---|
 | `profile` | `"default"` | The life schedule, resolved in `config/profiles/<class>/`. A name with a slash (`pi4/default`) names the class too; on a laptop (`dev`) pass `--profile pi4/default` |
 | `hardware` | `"auto"` | Hardware overlay: `auto`, `dev`, `pi4-4gb`, `pi5-8gb`, `pi5-16gb` |
-| `silence_seconds` | `90` | Darkness between `death_shown` and the next load |
+| `silence_seconds` | `90` | Darkness between `death_shown` and the next birth (the vigil) |
+| `load_during_silence` | `true` | The next creature loads in the silence, as soon as the death has freed the RAM; the birth then starts at once, or when the load is done if it outlasts the silence. Off: the birth loads it after the silence |
 | `rotation` | `"round_robin"` | How each life picks from `models`: `round_robin`, `random` (seeded), `fixed` (the first) |
 | `models` | `["qwen3-4b-instruct-2507"]` | The models that live here, by their name in `config/models.toml` (chosen at checkpoint A) |
 | `reveal_deadline` | `false` | *Reserved.* Tell the model when it will die |
@@ -105,6 +106,8 @@ the smallest changes a reading reports.
 | `stream_max_thoughts` | `3` | `stream` mode: the model starts a new thought only while fewer generated thoughts than this wait to be finished on screen |
 | `stream_max_letters` | `900` | `stream` mode: ... and while fewer letters than this wait to be typed |
 | `stream_birth_thoughts` | `1` | `stream` mode: the thoughts written before the screen starts, the only wait the stream allows (it also starts once the buffer is full) |
+| `stream_birth` | `"thought"` | `stream` mode: `thought` starts the screen once `stream_birth_thoughts` thoughts are written; `sentence` once the first sentence of the first thought is (the cost model checks the rest keeps up). `pi4/default`: `sentence` |
+| `stream_birth_min_s` | `0` | `stream` mode: ... and not before this many seconds of life: a head start that buys a faster birth pace. `pi4/default`: 45 |
 | `stream_stall_report_s` | `0.5` | `stream` mode: a wait of the screen for a word this long or longer is a `starved` event |
 
 Optional: `min_rate_sample_s` (3.0), the generation measured before the rate is trusted;
@@ -162,8 +165,11 @@ actions (ADR-031). The readings name each loss that really happened, and nothing
 | `cache_type_v` | `"f16"` | KV cache type for values |
 | `creature_cpus` | `"1-3"` | The cores the creature may use; core 0 is the controller's. Empty: no pinning |
 
+| `persona_cache` | `true` | The system prompt is read once per server, model, quant, context and prompt; its KV cache is saved to disk and restored at every later birth instead of read again (a fraction of a second against 100 s on the Pi 4). Any change makes a new key; any failure falls back to reading it |
+| `persona_cache_dir` | `"auto"` | Where the persona cache keeps its files: `auto` is `<state_dir>/cache` |
+
 Optional: `slot_timeout_s` (30), `slot_save_path` (`/dev/shm/epitaph-slots`), for the cache
-carried across a reload. `reload_handover` is set by the overlays (below).
+carried across a reload and the persona cache's restores. `reload_handover` is set by the overlays (below).
 
 ## `[body]`
 
@@ -305,6 +311,9 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `stream_margin` | `0.3` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate (0.15 starved on the real model, ADR-031) |
 | `words_per_sentence` | `9` | A sentence pause every this many words, on average (the stream's pace) |
 | `words_per_clause` | `9` | A comma pause every this many words, on average |
+| `kv_bytes_per_token` | `147456` | Size of the KV cache per token (f16, Qwen3 4B), for the persona restore's time |
+| `restore_bytes_per_s` | `40e6` | The disk's read speed for a persona restore (the SD card); the restore through RAM adds spike S4b's cost |
+| `max_first_words_s` | `0` | A `stream` profile fails if its first words come later than this after the silence ends (0: not checked). The Pi 4 overlay sets 45 |
 
 ## `[afterlife]`
 
