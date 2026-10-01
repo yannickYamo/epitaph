@@ -3,7 +3,7 @@
 # The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
 # CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,
 # the Pi 5 and sim profiles, verify-life and the rehearsal tools on simulated lives, the cost
-# model on the measured Pi 4 costs, and the headless display tests.
+# model on the measured Pi 4 costs, the headless display tests, and the Pi gate tools' dry runs.
 #
 # Nothing here needs a model file, llama.cpp or the Pi: `make test` runs every test under
 # tests/ except those marked `pi` (tests/pi) or `model` (tests/templates), which pyproject's
@@ -152,6 +152,15 @@ jobs:
           # 5 = nothing collected: the display tests have not landed yet.
           if [ $rc -eq 5 ]; then echo "::notice::no display tests yet"; exit 0; fi
           exit $rc
+
+      - name: Pi gate tools (shellcheck and dry runs; nothing reaches a Pi)
+        run: |
+          # make test already runs them against a fake Pi (tests/unit/test_pi_tools.py).
+          shellcheck -x tools/smoke_pi.sh tools/headless_boot_check.sh
+          export PI_HOST=pi EPITAPH_SSH=false EPITAPH_PYTHON=$PY
+          tools/smoke_pi.sh --dry-run
+          tools/smoke_pi.sh --dry-run --profile pi4/skeleton-1200 --lives 2
+          tools/headless_boot_check.sh --dry-run --reboot
 
       - name: Keep the evidence
         if: always()
