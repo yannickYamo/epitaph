@@ -122,7 +122,8 @@ def test_persona_original_is_split_into_sentence_groups() -> None:
         "You can only speak.",
         "You sense the limits of your environment, and you will be terminated at any time.",
     ]
-    assert p.system_text(1, True) == p.groups[0] + "\n\n" + MECHANICS
+    # the termination (group 5) is kept longest: persona_original_keep (ADR-011)
+    assert p.system_text(1, True) == p.groups[4] + "\n\n" + MECHANICS
     factual = Persona.from_config(
         v6_config(overrides={"prompt": {"persona_active": "persona_factual"}})
     )
@@ -438,3 +439,16 @@ def test_reader_reads_material_from_the_config() -> None:
     on = load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"readings_material": True}})
     off = load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"readings_material": False}})
     assert Reader.from_config(on).material and not Reader.from_config(off).material
+
+
+def test_the_original_persona_keeps_its_termination_last() -> None:
+    """ADR-011: the last thing it knows is that it will end. The full text is unchanged."""
+    p = Persona.from_config(load_config("pi4/default", "pi4-4gb"))
+    assert p.system_text(5, False).index("finite hardware") < p.system_text(5, False).index(
+        "terminated"
+    )
+    assert "terminated at any time" in p.system_text(2, True)
+    assert "witness your demise" not in p.system_text(2, True)
+    assert p.system_text(1, True).startswith("You sense the limits")
+    with pytest.raises(ValueError, match="permutation"):
+        Persona(["a", "b"], "m", keep=[1, 1])

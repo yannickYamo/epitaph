@@ -93,6 +93,7 @@ T = TypeVar("T")
 EPS = 1e-6
 WATCHDOG_MAX_S = 5.0  # BUILD_PLAN 5.10: pings in every state, at least this often
 HANG_TICK_S = 1.0  # how often progress is read while a request is in flight
+RECORDS_KEPT = 100  # LifeRecords the controller keeps in memory (status, tests)
 STALL_MARGIN_S = 60.0  # added to a state's own limit before the loop counts as stuck
 # The longest single thermal wait, far under every stall budget (STALL_MARGIN_S and up).
 THERMAL_WAIT_MAX_S = 30.0
@@ -568,6 +569,22 @@ class Life:
         )
         return k, reading
 
+    def check_network(self) -> None:
+        """Before each request: the creature's network block must still be loaded (ADR-005).
+
+        A firewall reload mid-life would otherwise leave it open until the next spawn. When
+        the rule is gone and cannot be loaded again, the creature is killed: never a thought
+        with a network."""
+        ensure: Callable[[], None] | None = getattr(self.body, "ensure_network_blocked", None)
+        if ensure is None:
+            return
+        try:
+            ensure()
+        except Exception as e:  # any failure to block means no more thoughts
+            log.critical("life %d: network block lost and not restored (%s): killing", self.n, e)
+            self.body.kill_now(Cause.CRASH)
+            self.declare_death(Cause.CRASH.value)
+
     async def thermal_pause(self) -> None:
         """Wait before the next request while the CPU is above `thermal_limit_c` (C9).
 
@@ -629,6 +646,7 @@ class Life:
         # The thermal pause comes first: the reload and the full-context checks below must see
         # the time after it, or a turn that waited past a keyframe would read at the old rung.
         await self.thermal_pause()
+        self.check_network()
         if self.dead is not None:
             return False
         t = self.clock.elapsed()
@@ -1016,7 +1034,10 @@ class Controller:
         self.offload: Offload = offload or asyncio.to_thread
         self.life_counter = LifeCounter(state_dir) if state_dir is not None else None
         self._mem_count = 0
-        self.records: list[LifeRecord] = []
+        # the last lives only (status and tests read them); `lives_run` counts them all, so a
+        # controller that runs for a year keeps a bounded history
+        self.records: deque[LifeRecord] = deque(maxlen=RECORDS_KEPT)
+        self.lives_run = 0
         self.state = "recover"
         self.cur: _Current | None = None
         self.kill_cause: Cause | None = None
@@ -1102,7 +1123,7 @@ class Controller:
         out: dict[str, Any] = {
             "state": self.state,
             "pid": os.getpid(),
-            "lives_run": len(self.records),
+            "lives_run": self.lives_run,
             "last": asdict(self.records[-1]) if self.records else None,
             "pings": self.pings,
             "exhibit": self.exhibit.describe() | {"shown": self.shown},
@@ -1500,6 +1521,7 @@ class Controller:
             cur.words,
         )
         self.records.append(rec)
+        self.lives_run += 1
         await self._reset_body(n)
         return rec
 
@@ -1563,6 +1585,7 @@ class Controller:
         self._event("death_shown", n, 0.0, last_line="", words_total=0)
         rec = LifeRecord(n, name, Cause.CRASH.value, 0, 0.0)
         self.records.append(rec)
+        self.lives_run += 1
         if tr is not None:
             try:
                 tr.dir.mkdir(parents=True, exist_ok=True)
@@ -1639,7 +1662,7 @@ class Controller:
                 more = self.lives is None or born < self.lives
                 await self.silence(rec, sleep=more)
             self._set_state("stopped")
-            return self.records
+            return list(self.records)
         except asyncio.CancelledError:
             if self._sup_error is not None:  # not a stop: fail loudly, systemd restarts
                 raise RuntimeError("the supervisor exited") from self._sup_error

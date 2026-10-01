@@ -128,6 +128,11 @@ Three rules shaped every decision below.
 
 ### ADR-011: The persona erodes in five steps, knowledge of death last
 
+*Amended 2026-10-01: the owner's original persona, split in text order, put "you will be
+terminated at any time" in the group removed first, so the installation lost its knowledge of
+its end first. `persona_original_keep` now removes its groups in the order this record
+intends, without changing a word of the text.*
+
 - **Decision.** The persona is five sentence groups removed from the end: the outside world, the
   screen and its watchers, what is being taken, the machine, and last "you are a small language
   model, and you will die inside this machine", together with the instructions.
@@ -360,6 +365,12 @@ Three rules shaped every decision below.
   fading and losing itself rather than of death (PROMPT_LOG round 4), and its late thoughts
   are cut short by design; a blind panel and the owner have judged it (ADR-026). A gate on a
   real life should fail on what the machine got wrong, not on a word count.
+- **What keyword noticing can prove.** On ten real lives the memory keywords already matched
+  31 of the 42 thoughts written before any loss: the voice talks of memory and fading from
+  birth. A keyword check catches a voice deaf to its losses; it cannot show that a thought
+  answers one. Words added from a real life ("fragments", after life 000026) are kept only
+  when they match nothing before a loss (0 of 42); "remain" and "slip" matched 9 and were
+  dropped.
 - **Amended after life 000019.** The notice rate joined the list: a keyword proxy too (that
   life spoke of fragments and fading after every loss but never of its "health", and scored
   0.40). Whether it notices the reloads, the life's largest losses, stays a hard check.
