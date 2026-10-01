@@ -168,6 +168,7 @@ max_non_latin_ratio_before_erosion = 0.01
 min_distinct_4gram_ratio_before_erosion = 0.5
 max_empty_thought_ratio = 0.10
 max_death_display_delay_s = 60
+max_kill_delay_s = 10           # 10.4, S3: the death within 10 s of the squeeze (or the deadline)
 min_ocr_word_accuracy = 0.95
 first_word_after_boot_s = 180
 
