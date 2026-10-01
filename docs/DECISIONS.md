@@ -237,6 +237,8 @@ Three rules shaped every decision below.
 
 ### ADR-022: One schedule per model
 
+*Its one-hour figures are superseded by ADR-024; the principle stands.*
+
 - **Context.** The best voice, Qwen3 4B, writes about one token a second on the Pi 4. On a schedule
   fitted to a faster model it got 17 thoughts in the hour and reload silences of over seven
   minutes.
@@ -271,3 +273,39 @@ Three rules shaped every decision below.
   chosen one introspective from the first thought ("I am not a machine, though I run within one"),
   notices both reloads, 95% complete sentences, 0.94 clichés per 200 words.
 - **Trade-off.** Less control over what it says. That is the point.
+
+### ADR-024: A 30-minute life, with thought minimums set per profile
+
+- **Context.** The owner found an hour too long for people watching. On the Pi 4, Qwen3 4B gets
+  about 12 thoughts in 30 minutes; the fixed costs (two reloads of about two minutes each, a
+  full re-read at each erosion step) do not shrink with the lifespan.
+- **Decision.** The installation lives 30 minutes. Both reloads stay (7:00 and 13:00). Erosion
+  takes the persona in two steps instead of five, the second together with the terminal label.
+  The thought-count rule keeps its four checks, but each profile sets its own minimums in a
+  `[rules]` table; the one-hour defaults stay 3/2/1/4, the 30-minute life uses 2/1/1/3.
+- **Why.** Dropping a reload would remove the strongest moment of the life, the first reading
+  after it. Keeping both, every loss is still answered by at least one thought and every health
+  label by two. Each erosion step makes the whole context re-read (the system prompt changes at
+  the front), about three minutes late in life, so five steps would leave losses unanswered.
+- **Evidence.** `epitaph estimate`: 12 thoughts, reload silences 144 s and 156 s, every rule met;
+  rehearsed lives in [PROMPT_LOG.md](PROMPT_LOG.md), round 5. The cost model now also charges
+  what material readings add (ADR-026), after rehearsals showed it 1-2 minutes optimistic late
+  in life.
+- **Trade-off.** Fewer, slower thoughts at the end: one every two to three minutes, typed slowly.
+  The lower minimums are a weaker guarantee than the hour's; they are explicit per profile and
+  checked like the others.
+
+### ADR-025: The CPU clock is a decay knob; cores are not
+
+- **Context.** The owner asked for more real levers on the machine. The persona says its
+  processors are taken from it.
+- **Decision.** A keyframe may set `cpu_mhz` (the cpufreq cap, 600-1800 MHz), interpolated like
+  the CPU share. Generation and prompt speed scale with both (`Knobs.compute`). The 30-minute
+  life keeps the full clock until erosion, then lowers it to 800 MHz.
+- **Why.** It is a second, independent physical loss that needs no restart, and it is measurable.
+  Switching cores off would be more literal, but CPU hotplug is not available on the Pi 4 kernel.
+- **Evidence.** Spike S7 ([SPIKE.md](SPIKE.md)): speed is linear in the clock within 3% for
+  generation and prompt processing, at 4-bit and 2-bit; no throttling; 40-47 °C throughout.
+- **Trade-off.** On the Pi the controller needs a small privileged helper to write
+  `scaling_max_freq`, and must restore the full clock at every death and at boot.
+

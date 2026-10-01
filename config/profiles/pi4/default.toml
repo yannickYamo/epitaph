@@ -64,7 +64,7 @@ jitter = 0.25
 hesitation = 0.08
 
 [[keyframe]]
-at = "end-11:00"
+at = "end-10:30"
 phase = "eroding"
 recall = 110
 cpu_mhz = 1400
