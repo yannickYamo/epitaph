@@ -63,9 +63,11 @@ sentence_pause_ms = 2100
 hesitation_ms = [1200, 3600]
 
 [sampling]
-# Silent word penalties (not in the prompt): the clichés small models reach for.
+# Silent word penalties (not in the prompt): the clichés small models reach for. A string is
+# biased token by token, so a word Qwen3 splits is named by its first piece only (" tape" for
+# " tapestry", " ephem" for " ephemeral"); the rest ("stry", "eral") would hit other words.
 logit_bias = [
-  [" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0],
+  [" digital", -6.0], [" tape", -10.0], [" realm", -5.0], [" ephem", -3.0],
   [" whisper", -3.0], [" echoes", -3.0],
   [" still", -4.0],                # "I am still here" opened most thoughts
 ]

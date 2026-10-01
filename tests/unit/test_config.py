@@ -9,6 +9,7 @@ from epitaph.config import (
     load_config,
     parse_duration,
     parse_time,
+    validate_config,
 )
 
 PI4 = ["pi4/default", "pi4/smoke-300", "pi4/skeleton-1200", "pi4/compressed-2700", "pi4/unbounded"]
@@ -78,3 +79,23 @@ def test_model_ladder_per_class() -> None:
     m = cfg.model("qwen3-4b-instruct-2507")
     assert m.ladder[0] == "Q4_K_M"  # a 4B Q6_K does not fit in 4 GB
     assert m.quant(5) == "Q2_K"
+
+
+def test_material_readings_need_quiet_readings() -> None:
+    with pytest.raises(ConfigError, match="readings_material needs"):
+        load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"readings_quiet": False}})
+
+
+@pytest.mark.parametrize("mhz", [0, 500, 2000])
+def test_cpu_clock_outside_the_pi_range_is_rejected(mhz: int) -> None:
+    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg.profile.keyframes[-1].values["cpu_mhz"] = mhz
+    with pytest.raises(ConfigError, match="cpu_mhz must be 600-1800"):
+        validate_config(cfg)
+
+
+def test_bad_rules_fail_at_load() -> None:
+    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg.profile.settings["rules"] = {"after_reload": 0}
+    with pytest.raises(ConfigError, match="after_reload"):
+        validate_config(cfg)

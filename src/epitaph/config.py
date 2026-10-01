@@ -12,9 +12,10 @@ import itertools
 import os
 import re
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from epitaph.types import ModelSpec
 
@@ -33,8 +34,36 @@ INTERPOLATED = (
     "jitter",
     "hesitation",
 )
-# Optional interpolated knobs: a profile may omit them; the first keyframe gets the default.
+# Optional stepped knobs: a profile may omit them; the first keyframe gets the default.
 OPTIONAL_DEFAULTS: dict[str, float] = {"cpu_mhz": 1800.0}
+CPU_MHZ_RANGE = (600.0, 1800.0)  # the Pi 4's cpufreq range (spike S7)
+# Thought-count minimums (BUILD_PLAN 5.3), set for a one-hour life; a profile's [rules] table
+# may lower them (ADR-024).
+RULE_DEFAULTS: dict[str, int] = {
+    "between_health": 3,
+    "after_reload": 2,
+    "per_erosion_step": 1,
+    "after_erosion_start": 4,
+}
+
+
+def profile_rules(settings: Mapping[str, Any]) -> dict[str, int]:
+    """The thought-count minimums of a profile: its [rules] table over RULE_DEFAULTS."""
+    raw: object = settings.get("rules", {})
+    if not isinstance(raw, dict):
+        raise ConfigError("profile [rules] must be a table")
+    table = cast("dict[str, object]", raw)
+    unknown = sorted(set(table) - set(RULE_DEFAULTS))
+    if unknown:
+        raise ConfigError(f"unknown profile rules: {unknown}")
+    out = dict(RULE_DEFAULTS)
+    for k, v in table.items():
+        if not isinstance(v, int) or isinstance(v, bool) or v < 1:
+            raise ConfigError(f"profile rule {k} must be a whole number of at least 1, not {v!r}")
+        out[k] = v
+    return out
+
+
 KNOB_FIELDS = STEPPED + INTERPOLATED + tuple(OPTIONAL_DEFAULTS)
 READINGS_FORMS = ("full", "short", "minimal")
 HEALTH_LABELS = ("nominal", "stable", "degrading", "failing", "critical", "terminal")
@@ -386,6 +415,13 @@ def validate_config(cfg: Config) -> None:
         if m not in cfg.models:
             problems.append(f"life.models lists {m!r}, which is not in models.toml")
 
+    try:
+        profile_rules(p.settings)
+    except ConfigError as e:
+        problems.append(str(e))
+    if cfg.get("prompt.readings_material", False) and not cfg.get("prompt.readings_quiet", False):
+        problems.append("prompt.readings_material needs prompt.readings_quiet (quotes ride on it)")
+
     ctx = cfg.ctx
     for kf, t in zip(p.keyframes, times, strict=True):
         v = kf.values
@@ -402,6 +438,9 @@ def validate_config(cfg: Config) -> None:
             problems.append(f"{where}: threads must be 1-3 (core 0 belongs to the controller)")
         if not 0 < float(v["cpu_share"]) <= int(v["threads"]):
             problems.append(f"{where}: cpu_share must be above 0 and at most threads")
+        lo, hi = CPU_MHZ_RANGE
+        if not lo <= float(v["cpu_mhz"]) <= hi:
+            problems.append(f"{where}: cpu_mhz must be {lo:.0f}-{hi:.0f}")
         if not 0 <= int(v["persona_groups"]) <= groups_total:
             problems.append(f"{where}: persona_groups must be 0-{groups_total}")
         if p.unbounded:

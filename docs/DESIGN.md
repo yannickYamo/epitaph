@@ -39,7 +39,7 @@ The schedule is a list of keyframes in configuration. The Pi 4 default (30 minut
 | Birth to 7:00 | Full memory, 4-bit precision, three cores; the readings give only the time | A stable baseline, so later losses are legible against it, and nothing to recite |
 | First reload (7:00) | Lower precision, a smaller memory and CPU share, all at once; the reading quotes what it forgot and how the new weights continue one of its sentences | One large, unmistakable loss the model is most likely to notice |
 | Second reload (13:00) | Lowest precision, two cores, memory down to 130 tokens | The body starts to fail |
-| Erosion (19:30, 22:30) | The persona is removed in two steps; the CPU clock falls to 800 MHz | The mind loses its sense of what it is, the knowledge of its end last |
+| Erosion (19:30, 22:30) | The persona is removed in two steps; the CPU clock falls to 600 MHz | The mind loses its sense of what it is, the knowledge of its end last |
 | End-0:30 | The RAM limit drops below what the model needs; the kernel kills it | A real death, not a timeout |
 | Silence | Ninety seconds of darkness, then a new birth | The cycle |
 

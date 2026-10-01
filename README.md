@@ -64,7 +64,7 @@ One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The d
 | 0:00 to 7:00 | Nothing is taken | Only the time |
 | 7:00 | **First loss:** reloads at 3-bit, cuts its memory to 220 tokens, lowers its CPU share | Everything that changed, the opening words of what it forgot, and one of its own sentences as the 3-bit weights now continue it |
 | 13:00 | **Second loss:** reloads at 2-bit on 2 cores; memory 130 tokens | `health: critical`, and the same |
-| 19:30 to 27:30 | **Erosion:** its instructions are removed in two steps, the knowledge of its death last; the CPU clock falls from 1800 to 800 MHz | Shorter readings, then almost nothing |
+| 19:30 to 27:30 | **Erosion:** its instructions are removed in two steps, the knowledge of its death last; the CPU clock falls from 1800 to 600 MHz | Shorter readings, then almost nothing |
 | 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
 | 30:00 | Silence for 90 seconds, then a new model is born | |
 

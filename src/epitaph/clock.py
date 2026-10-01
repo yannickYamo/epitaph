@@ -22,7 +22,7 @@ from bisect import bisect_right
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, TypeVar
 
-from epitaph.config import INTERPOLATED, OPTIONAL_DEFAULTS, Config, Profile
+from epitaph.config import INTERPOLATED, Config, Profile
 from epitaph.types import Health, Knobs
 
 T = TypeVar("T")
@@ -281,7 +281,7 @@ class Schedule:
                 return a
             return a + (float(nxt[name]) - a) * frac
 
-        interp = {name: lerp(name) for name in (*INTERPOLATED, *OPTIONAL_DEFAULTS)}
+        interp = {name: lerp(name) for name in INTERPOLATED}
         return Knobs(
             t=t_s,
             phase=str(cur["phase"]),
@@ -300,7 +300,7 @@ class Schedule:
             letter_ms=round(interp["letter_ms"], 2),
             jitter=round(interp["jitter"], 4),
             hesitation=round(interp["hesitation"], 4),
-            cpu_mhz=round(interp["cpu_mhz"], 1),
+            cpu_mhz=float(cur["cpu_mhz"]),  # a clock cap is set at a moment, not eased
             death_squeeze=self.death_s is not None and t_s >= self.death_s,
         )
 

@@ -195,3 +195,43 @@ on its branch this round) would remove most of the re-read and give this margin 
 estimates, which are not comparable with a measured step 0, so the F2 check means nothing for
 them until the 3-4B ladders are measured (part A, this round). The profiles are per hardware
 class, not per model; after checkpoint A they are rebased on the chosen models (F1, F9).
+
+## The 30-minute life (2026-09-30)
+
+The owner shortened the life to 30 minutes (ADR-024). `pi4/default` is now Qwen3 4B on a
+30-minute schedule; the one-hour Qwen3 1.7B schedule is kept as `pi4/default-qwen3-1.7b`.
+
+| t | Phase, health | Recall | Step | Threads | CPU share | Clock MHz | Max tokens | Persona groups |
+|---|---|---|---|---|---|---|---|---|
+| 0:00 | birth, nominal | 900 | 0 (Q4_K_M) | 3 | 3.0 | 1800 | 70 | 5 |
+| 7:00 | first loss, degrading | 220 | 1 (Q3_K_M) | 3 | 2.6 | 1800 | 60 | 5 |
+| 13:00 | failing, critical | 130 | 2 (Q2_K) | 2 | 1.6 | 1800 | 45 | 5 |
+| end-10:30 | eroding | 110 | 2 | 2 | 1.6 | 1400 | 30 | 2 |
+| end-7:30 | end, terminal | 60 | 2 | 2 | 1.6 | 900 | 18 | 0, no mechanics |
+| end-2:30 | | 48 | 2 | 2 | 1.6 | 600 | 12 | 0 |
+| end-0:30 | death (RAM taken) | | | | | | | |
+
+Why it looks like this:
+
+- **Both reloads stay**, and the thought-count minimums are set in the profile's `[rules]` table
+  (2 between health labels, 1 after each reload, 1 per erosion step, 3 after erosion starts).
+  The one-hour minimums (3/2/1/4) cannot hold two reloads in 30 minutes.
+- **Recall after the reloads is low (220, 130)**, because in a short life the memory has barely
+  filled by the first reload; a higher value would cut nothing.
+- **Two erosion steps**, the second with the terminal label: each step re-reads the whole context
+  (about three minutes at the end), so five steps would leave losses unanswered.
+- **The clock falls only once erosion starts**, in steps (a cap is set at a moment), so the
+  reloads' silences stay short and the last five minutes run under 40% of the first five.
+- A keyframe takes effect when the thought in flight ends, which late in life can be two
+  minutes after its time; erosion starts at 19:30 so the first thought after reload 2 can end.
+
+```
+profile pi4/default: 12 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.35 (limit < 0.40): 1.26 -> 0.44 tokens/s
+  note: speed across reloads (tokens/s): 1.03 -> 0.91 at 7.4 min; 0.91 -> 0.70 at 13.6 min
+  note: 12 thoughts; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed; generation eases to 78% over 20 min
+  note: reload silences 144s, 152s
+```
+
+`compressed-2700` (now longer than the installation) and `skeleton-1200` carry the same
+minimums until they are retired or refitted in phase 1.

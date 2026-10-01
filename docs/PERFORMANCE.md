@@ -122,7 +122,7 @@ changes at the front of it), about three minutes late in life.
 | Qwen3 4B, 30 minutes | Thoughts | Thought-count rule |
 |---|---|---|
 | The one-hour shape compressed (two reloads, three erosion steps) | 13 | rules (a) and (b) fail at the one-hour minimums |
-| Per-profile minimums (2/1/1/3); erosion in two steps; reloads at 7:00 and 13:00 | **12** | met in the cost model, reload silences 144 s and 156 s |
+| Per-profile minimums (2/1/1/3); erosion in two steps; reloads at 7:00 and 13:00 | **12** | met in the cost model, reload silences 144 s and 152 s |
 | Rehearsed with the real model, three seeds | 11-12 | met on two seeds; the third missed by seconds, fixed by moving erosion to 19:30 |
 
 Two costs the cost model did not see until the rehearsal showed it 1-2 minutes optimistic late in

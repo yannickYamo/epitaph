@@ -78,6 +78,7 @@ from epitaph.mind.prompt import (
     speaks_raw,
 )
 from epitaph.mind.sampling import sampling_for
+from epitaph.mind.sanitize import sanitize_text
 from epitaph.pacing import Pacer, Spoken, life_seed, speak
 from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
 from epitaph.verify import (
@@ -832,23 +833,30 @@ class _Life:
         sampling = Sampling(temperature=0.0, min_p=0.0)
         # The raw completion replaces the server's single cache slot; keep the carried memory
         # by saving the slot first and restoring it afterwards (about 0.3 s each, spike S4b).
+        # Without a successful save there is no echo: the restore could not bring it back.
         inner = getattr(self.backend, "inner", None)
         worker = getattr(self.backend, "worker", None)
         slot = f"echo-{self.model.name}.bin"
-        saved = (
-            inner is not None
-            and worker is not None
-            and hasattr(inner, "_slot_action")
-            and worker.call(inner._slot_action("save", slot)) is not None
-        )
+        live = inner is not None and worker is not None and hasattr(inner, "_slot_action")
+        if live and inner is not None and worker is not None:
+            r = worker.call(inner._slot_action("save", slot))
+            if not slot_saved(r):
+                return None
         complete = getattr(self.backend, "echo", self.backend.complete)
-        async for chunk in complete(head, sampling, 18):
-            if chunk.done:
-                break
-            out += chunk.text
-        if saved and inner is not None and worker is not None:
-            worker.call(inner._slot_action("restore", slot))
-        tail = " ".join(out.split()).split(". ")[0]
+        try:
+            async for chunk in complete(head, sampling, 18):
+                if chunk.done:
+                    break
+                out += chunk.text
+        except BackendError:
+            out = ""  # the echo is an ornament: its failure never ends the life
+        finally:
+            if live and inner is not None and worker is not None:
+                worker.call(inner._slot_action("restore", slot))
+                path = getattr(getattr(inner, "s", None), "slot_save_path", None)
+                if path:
+                    (Path(path).expanduser() / slot).unlink(missing_ok=True)
+        tail = " ".join(sanitize_text(out)[0].split()).split(". ")[0]
         return f"{head} {tail}".strip() if tail else None
 
     def prepare(self, t: float) -> tuple[Knobs, str]:
@@ -906,6 +914,7 @@ class _Life:
             quant=self.model.quant(self.cur[0]),
             threads=self.cur[1],
             cpu_share=k.cpu_share,
+            cpu_mhz=k.cpu_mhz,
             cores_effective=k.cpu_share,
             tok_s=self.last_tok_s,
             cpu_c=vit.cpu_c,
@@ -1324,6 +1333,13 @@ def echoes(texts: Sequence[str], threshold: float = 0.5) -> list[int]:
 
 
 _FORMULA = ("i am", "i'm", "i\u2019m")  # how most of its sentences open: no echo of those
+
+
+def slot_saved(reply: object) -> bool:
+    """Whether a llama-server slot save succeeded: its reply counts saved tokens.
+
+    `_slot_action` answers failures with an error dict, never None, so only `n_saved` tells."""
+    return isinstance(reply, dict) and bool(reply.get("n_saved"))  # pyright: ignore[reportUnknownMemberType]
 
 
 def echo_head(thoughts: Sequence[str], words: int = 5) -> str | None:

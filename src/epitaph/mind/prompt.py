@@ -459,8 +459,9 @@ class Reader:
             out.append(lang.form(f, "memory").format(recall=x.recall, was=was(str(mem_was))))
         if self.material and x.forgotten_quotes:
             out.append(lang.r("forgotten_quote").format(quote=x.forgotten_quotes[0]))
-            if len(x.forgotten_quotes) > 1:
-                out.append(lang.r("forgotten_more").format(n=len(x.forgotten_quotes) - 1))
+            more = max(len(x.forgotten_quotes), x.forgotten) - 1
+            if more > 0:
+                out.append(lang.r("forgotten_more").format(n=more))
         elif x.forgotten == 1:
             out.append(lang.form(f, "forgotten_one"))
         elif x.forgotten > 1:

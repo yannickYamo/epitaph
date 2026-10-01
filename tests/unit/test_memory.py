@@ -268,3 +268,11 @@ def test_forgotten_quotes_are_the_opening_words_of_each_lost_thought() -> None:
     assert len(quotes) == f.thoughts
     assert quotes[0] == " ".join(words(m.quote_words, "t1w"))
     assert m.take_forgotten_quotes() == ()
+
+
+def test_a_word_trim_quotes_the_words_it_took() -> None:
+    """The quote is what was lost, not what is left (review fix)."""
+    m = mem_with(1, thought_words=20)
+    m.fit(20, 1.0)  # the reading, then the first 4 words
+    assert m.take_forgotten_quotes() == (" ".join(words(m.quote_words, "t1w")),)
+    assert m.turns[0].words[0] == "t1w4"

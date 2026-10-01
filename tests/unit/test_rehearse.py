@@ -34,6 +34,7 @@ from epitaph.rehearse import (
     moments,
     parse_set,
     score_thought,
+    slot_saved,
     thoughts_text,
     with_ladder,
 )
@@ -475,3 +476,10 @@ def test_the_echo_skips_sentences_that_open_on_the_formula() -> None:
     only = ["I am still here, aware of the hum and the heat."]
     assert echo_head(only) == "I am still here, aware"  # no other sentence: the formula it is
     assert echo_head(["Too short."]) is None
+
+
+def test_a_failed_slot_save_means_no_echo() -> None:
+    """Without a saved slot the echo would overwrite the carried memory (review fix)."""
+    assert slot_saved({"id_slot": 0, "n_saved": 412})
+    assert not slot_saved({"error": "slot save path not set", "status": 501})
+    assert not slot_saved({"n_saved": 0}) and not slot_saved(None)
