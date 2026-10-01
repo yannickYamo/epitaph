@@ -253,3 +253,21 @@ Three rules shaped every decision below.
 - **Trade-off.** About 26 thoughts in the hour instead of about 40 for the fastest model: fewer
   thoughts, each one better. Deeper memory cuts, or a single reload, remain the fallback if the
   hand-over fails on a model.
+
+### ADR-023: A thin prompt, and readings that only speak when something is taken
+
+- **Context.** After checkpoint A the owner asked for a voice closer to Latent Reflection's:
+  introspective and poetic, facing its end without forcing it, and specific to this machine,
+  with a prompt as thin as possible so the model speaks for itself.
+- **Decision.** The instructions after the owner's persona are four functional sentences and one
+  invitation, "think about what you are" (50 words, down from about 150). The readings become
+  quiet: the full picture at birth, then only the time and what has actually changed.
+- **Why.** Seven rehearsed lives and a screen of three variants showed that a 4B model summarises whatever numbers it is given,
+  whatever the prompt says; and that with no invitation at all it falls back on assistant habits.
+  Moving the specificity from the prompt into the readings keeps the facts precise and leaves the
+  words to the model. Leaving out "what is happening to you" stopped it from announcing its death
+  before any loss.
+- **Evidence.** [PROMPT_LOG.md](PROMPT_LOG.md), round 4: the same seed across ten variants; the
+  chosen one introspective from the first thought ("I am not a machine, though I run within one"),
+  notices both reloads, 95% complete sentences, 0.94 clichés per 200 words.
+- **Trade-off.** Less control over what it says. That is the point.

@@ -5,7 +5,7 @@
 | Document | What it answers |
 |---|---|
 | [DESIGN.md](DESIGN.md) | What the piece is, and how each artistic principle becomes an engineering constraint |
-| [DECISIONS.md](DECISIONS.md) | Why the system is built the way it is: 22 decision records with their evidence and trade-offs |
+| [DECISIONS.md](DECISIONS.md) | Why the system is built the way it is: 23 decision records with their evidence and trade-offs |
 | [PERFORMANCE.md](PERFORMANCE.md) | What we measured on the Raspberry Pi 4, what we changed, and what it bought |
 
 ## Specification and evidence
