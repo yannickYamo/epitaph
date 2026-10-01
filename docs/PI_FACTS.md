@@ -34,7 +34,29 @@ runs `sudo deploy/install.sh` there. A second install changes nothing (`changed:
 | Units | `epitaph-controller.service` (Type=notify, WatchdogSec=30, Delegate=yes, CPUAffinity=0, Restart=always, OOMPolicy=continue, runs `epitaph run`) and `epitaph-display.service` (`ExecCondition=epitaph display --screen-present`: headless, the unit is skipped, not failed), in `/etc/systemd/system`. Installed **disabled**; `install.sh --enable` enables both at boot |
 | CPU clock (ADR-025) | `/usr/local/sbin/epitaph-clock <MHz>` (600-1800) or `reset`: root-owned, writes `scaling_max_freq` on every policy, accepts nothing else. `/etc/sudoers.d/020_epitaph-clock` lets the service user run exactly that without a password (the rule only matches `reset` or a 3-4 digit number). The unit resets the clock before every start and after every stop; the body resets it at every death and at every start |
 | Watchdogs | The controller pings systemd (WATCHDOG=1) at least every 5 s through `epitaph.controller.sd_notify`, and stops when its life loop stops moving (systemd then restarts it); it sends STOPPING=1 on SIGTERM; below it the hardware watchdog (`RuntimeWatchdogSec=1m`, OS default), which `install.sh` checks |
-| Selftest | `epitaph selftest [--user pi]` relaunches itself as a transient `Delegate=yes` unit for the service user (`sudo systemd-run --uid … --pipe --wait --collect`) and checks the controllers, the leaves, limits set and cleared, `cgroup.kill`, the progress counters, the clock round trip and the llama-server binary; exit 0 or 1. `install.sh` runs it last |
+| Network block (ADR-005) | `/usr/local/sbin/epitaph-netblock add\|del <cgroup>\|status`: root-owned, loads nftables table `inet epitaph`, chain `output`: per creature cgroup (`socket cgroupv2 level 3`), every outbound packet not for 127.0.0.0/8 or ::1 is rejected (TCP: connection refused at once). It accepts only `system.slice/epitaph*.service/creature`. `/etc/sudoers.d/021_epitaph-netblock` lets the service user run exactly that. nft stores the cgroup's id, so the body loads the rule at every controller start (a restart makes a new cgroup) and keeps the creature cgroup across lives; each call drops the rules of cgroups that are gone. The controller refuses to start when the rule does not load. DNS goes straight to the router's servers (no local resolver), so it is refused too |
+| RAM death calibration (C7) | `epitaph calibrate --user pi` (controller stopped; it takes the instance lock): per ladder step, load, 8 tokens, working set, then `memory.max` at half the anonymous memory; 5 good kills in a row at the death step. Qwen3 4B, `dio`, ctx 2048 (2026-10-01): Q4_K_M anon 2739 MiB, Q3_K_M 2331, Q2_K 1940; death levels 1369 / 1165 / 970 MiB; every kill 0.27-0.38 s, 7 of 7. Result in `/var/lib/epitaph/calibration/` and `bench/calibration/`; the body uses it when it is below the creature's anon. About 7 minutes |
+| Thermal | `body/thermal.py`: temperature from `thermal_zone0`, firmware bits from `vcgencmd get_throttled` (no sysfs `get_throttled` on this kernel). A pause hook at `thermal_limit_c` 80 °C, resuming at 75 °C; the Pi runs 40-57 °C, so it never fires in normal use |
+| Selftest | `epitaph selftest [--user pi]` relaunches itself as a transient `Delegate=yes` unit for the service user (`sudo systemd-run --uid … --pipe --wait --collect`) and checks the controllers, the leaves, limits set and cleared, `cgroup.kill`, the progress counters, the creature's network (the rule names its cgroup id; an outbound connect from inside is refused, 127.0.0.1 answers), the clock round trip and the llama-server binary; exit 0 or 1. `install.sh` runs it last |
+
+## Fault rows on the Pi (`tools/fault_pi.sh`, BUILD_PLAN 10.4)
+
+Run under the lock against the installed service: `tools/pi_lock.sh run <agent> 60 --
+tools/fault_pi.sh all` (or one row). Each row prints its evidence and `PASS`/`FAIL`; it never
+stops the controller, and leaves it running whatever happens. First run, 2026-10-01, on the
+phase 2 branch (pi4/default lives, Qwen3 4B):
+
+| Row | Evidence | Result |
+|---|---|---|
+| netblock | rule on the creature cgroup (id 9601); from inside: 1.1.1.1:443 `ConnectionRefusedError`, 127.0.0.1 (own listener and llama-server :8081) connected; from the SSH session: all connected | PASS |
+| two-controllers | `epitaph run` beside the service: "a controller is already running (pid 3008); use `epitaph ctl new-life` …", rc 1; service pid and life unchanged | PASS |
+| crash | `kill -9` of the creature at t=61 s of life 8: `death.json` cause `crash` 3 s later; life 9 living 218 s after the kill (silence 90 s + load) | PASS |
+| controller-kill | `systemctl kill -s KILL epitaph-controller` in life 9: restarted (pid 3008 → 4473, NRestarts 0 → 1); life 9 closed `interrupted`; life 10 next; one llama-server; clock 1800 MHz; the network rule loaded again on the new creature cgroup (id 15230) | PASS |
+| hang | `kill -STOP` of the busy creature at t=64 s of life 11: cause `hang` after 308 s (the first-token limit: the stop came during prompt processing); the stopped process killed by `cgroup.kill`; life 12 born 522 s after the stop | PASS |
+
+Budget: about 30 minutes for `all` (each of crash, controller-kill and hang ends a life and waits
+for the next birth; hang may start a fresh life with `ctl new-life` and waits up to the
+first-token limit).
 
 ## Reaching the Pi
 

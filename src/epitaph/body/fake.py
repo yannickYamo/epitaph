@@ -22,6 +22,7 @@ class FakeBody:
         self.death_squeeze = False
         self._reads = 0
         self._cpu_usec = 0
+        self.thermal_pause = 0.0
 
     def reset_creature_cgroup(self) -> None:
         """Lift the death squeeze."""
@@ -68,6 +69,10 @@ class FakeBody:
     def facts(self) -> MachineFacts:
         """The facts given to the constructor."""
         return self._facts
+
+    def thermal_pause_s(self) -> float:
+        """The thermal pause hook: `thermal_pause` seconds (0 unless a test sets it)."""
+        return self.thermal_pause
 
 
 def local_facts() -> MachineFacts:
