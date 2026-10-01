@@ -42,3 +42,7 @@ readings = "short"
 letter_ms = 270
 jitter = 0.25
 hesitation = 0.08
+
+# A 20-minute test life: its last label (at 16:00) has four minutes, like the 30-minute life's.
+[rules]
+between_health = 2
