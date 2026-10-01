@@ -91,6 +91,8 @@ EPS = 1e-6
 WATCHDOG_MAX_S = 5.0  # BUILD_PLAN 5.10: pings in every state, at least this often
 HANG_TICK_S = 1.0  # how often progress is read while a request is in flight
 STALL_MARGIN_S = 60.0  # added to a state's own limit before the loop counts as stuck
+# The longest single thermal wait, far under every stall budget (STALL_MARGIN_S and up).
+THERMAL_WAIT_MAX_S = 30.0
 STALL_GRACE_S = 60.0  # after the stall kill, the loop must move within this or pings stop
 CANCEL_WAIT_S = 5.0  # how long a cancelled backend call may take to let go
 SLOT_TIMEOUT_S = 30.0  # a slot save or restore (about 0.3 s) that takes longer is given up
@@ -561,7 +563,9 @@ class Life:
         wait is an event, so the supervisor sees progress."""
         pause_s: Callable[[], float] | None = getattr(self.body, "thermal_pause_s", None)
         while pause_s is not None and self.dead is None:
-            wait = pause_s()
+            # Each wait is short (an event each time keeps the supervisor's stall check fed),
+            # whatever `thermal_poll_s` says.
+            wait = min(pause_s(), THERMAL_WAIT_MAX_S)
             if wait <= 0:
                 return
             self.emit("thermal", pause_s=round(wait, 1), cpu_c=self.body.vitals().cpu_c)
@@ -574,7 +578,6 @@ class Life:
 
     async def thought(self, t: float) -> Spoken:
         """One turn: prepare, speak (generation and typing on the life clock), remember."""
-        await self.thermal_pause()
         t = self.lived()
         k, _ = self.prepare(t)
         msgs = self.memory.messages()
@@ -600,6 +603,11 @@ class Life:
 
     async def step(self) -> bool:
         """One pass of the loop: a reload if due, then a thought. False once the life is over."""
+        if self.dead is not None:
+            return False
+        # The thermal pause comes first: the reload and the full-context checks below must see
+        # the time after it, or a turn that waited past a keyframe would read at the old rung.
+        await self.thermal_pause()
         if self.dead is not None:
             return False
         t = self.clock.elapsed()

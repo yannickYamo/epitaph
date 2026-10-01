@@ -659,3 +659,25 @@ def test_a_hot_cpu_pauses_before_the_next_thought() -> None:
     pauses = of(ev, "thermal")
     assert [e["pause_s"] for e in pauses] == [15.0, 15.0]
     assert of(ev, "thought_end") and death(ev)["cause"] == "deadline"
+
+
+def test_the_thermal_pause_comes_before_the_reload_check() -> None:
+    """Regression: the pause ran inside the thought, after the reload check, so a turn that
+    waited past a reload keyframe read and spoke at the old rung. Each wait is also clamped
+    far under the stall budget, whatever thermal_poll_s says."""
+    cfg = cfg_of(DEFAULT)
+    first_reload = Schedule(cfg.profile).reload_times()[0]
+
+    async def setup(ctl: Controller, clock: VirtualClock) -> None:
+        def hot() -> float:
+            # A hot spell from 40 s before the keyframe until 20 s after it.
+            return 600.0 if first_reload - 40 <= clock.elapsed() < first_reload + 20 else 0.0
+
+        ctl.body.thermal_pause_s = hot  # type: ignore[attr-defined]
+
+    _, ev = run(cfg, setup=setup)
+    pauses = of(ev, "thermal")
+    assert pauses and all(e["pause_s"] <= 30.0 for e in pauses)
+    last = max(i for i, e in enumerate(ev) if e["type"] == "thermal")
+    after = next(e for e in ev[last + 1 :] if e["type"] in ("reload", "thought_start"))
+    assert after["type"] == "reload" and after["t"] >= first_reload
