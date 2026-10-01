@@ -31,6 +31,7 @@ import random
 import re
 import socket
 import time
+import weakref
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -797,7 +798,7 @@ class LifeRecord:
 
 
 def pick_model(cfg: Config, index: int, seed: int = 0) -> ModelSpec:
-    """The model of the `index`-th life born by this controller (0-based), per `life.rotation`.
+    """The model of life number `index + 1`, per `life.rotation`.
 
     round_robin walks `life.models`; random draws from it (seeded); fixed keeps the first.
     """
@@ -890,7 +891,7 @@ class Controller:
         self.squeezed = False
         self.pings = 0
         self.ping_times: list[float] = []
-        self._registered: set[int] = set()
+        self._registered: weakref.WeakSet[Any] = weakref.WeakSet()
         self._next: _NewLife | None = None
         self._wake = asyncio.Event()
         self._last_ping = -math.inf
@@ -1109,15 +1110,17 @@ class Controller:
         return cfg, nxt.model
 
     def _register(self, backend: Backend) -> None:
-        if id(backend) not in self._registered:
-            self._registered.add(id(backend))
+        # By identity, weakly: a freed backend's id can come back for a new one.
+        if backend not in self._registered:
+            self._registered.add(backend)
             backend.on_death(self._on_backend_death)
 
-    async def live_one(self, index: int) -> LifeRecord:
+    async def live_one(self) -> LifeRecord:
         """Birth, the loop, death from any cause, the death flush and the death record."""
         cfg, model_name = self._life_config()
         n = self._next_number()  # the counter is written first (atomic write + fsync)
-        model = cfg.model(model_name) if model_name else pick_model(cfg, index, self.seed)
+        # Rotation follows the life number, so it carries on across controller restarts.
+        model = cfg.model(model_name) if model_name else pick_model(cfg, n - 1, self.seed)
         costs = self.costs_for(model)
         inner = self.backend_for(n, model)
         self._register(inner)
@@ -1241,11 +1244,11 @@ class Controller:
             self.recover()
             if self.notify is not None:
                 self.notify("READY=1")
-            index = 0
-            while self.lives is None or index < self.lives:
-                rec = await self.live_one(index)
-                index += 1
-                more = self.lives is None or index < self.lives
+            born = 0
+            while self.lives is None or born < self.lives:
+                rec = await self.live_one()
+                born += 1
+                more = self.lives is None or born < self.lives
                 await self.silence(rec, sleep=more)
             self._set_state("stopped")
             return self.records
