@@ -17,7 +17,6 @@ ORDER_START = ["birth_loading", "birth", "vitals", "thought_start", "gen_start"]
     "name,cause",
     [
         ("pi4/default", "oom"),
-        ("pi4/compressed-2700", "oom"),
         ("pi4/skeleton-1200", "deadline"),
         ("pi4/smoke-300", "deadline"),
         ("pi4/unbounded", "full"),
@@ -26,6 +25,17 @@ ORDER_START = ["birth_loading", "birth", "vitals", "thought_start", "gen_start"]
 def test_each_profile_dies_the_right_way(name: str, cause: str) -> None:
     r = simulate(load_config(name, "pi4-4gb"), lives=2)
     assert r.causes == [cause, cause]
+
+
+@pytest.mark.parametrize("hardware", ["pi5-8gb", "pi5-16gb"])
+@pytest.mark.parametrize(
+    "name,cause",
+    [("pi5/default", "oom"), ("pi5/skeleton-600", "deadline"), ("pi5/unbounded", "full")],
+)
+def test_each_pi5_profile_dies_the_right_way(name: str, cause: str, hardware: str) -> None:
+    """BUILD_PLAN 11.8: the Pi 5 profiles pass simulation; the unbounded life fills its context."""
+    r = simulate(load_config(name, hardware), lives=1)
+    assert r.causes == [cause]
 
 
 def test_event_order_and_lifecycle() -> None:
@@ -45,7 +55,7 @@ def test_event_order_and_lifecycle() -> None:
 
 def test_sync_rule_in_sim() -> None:
     """No gen_start before the previous thought ended (BUILD_PLAN 5.7 step 7)."""
-    r = simulate(load_config("pi4/compressed-2700", "pi4-4gb"))
+    r = simulate(load_config("pi4/default", "pi4-4gb"))
     open_turn = None
     for e in r.events:
         if e["type"] == "gen_start":
@@ -82,13 +92,13 @@ def test_deterministic() -> None:
 def test_event_conventions() -> None:
     """Contract decisions E2, E3, D2, D6 and E4: `t` on every event (0 before birth),
     `birth_loading` names what the life runs with, and `gen_end` carries its timings."""
-    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    cfg = load_config("pi4/default", "pi4-4gb")
     r = simulate(cfg, lives=2)
     assert all("t" in e for e in r.events)
     for life in (1, 2):
         loading = next(e for e in r.events if e["life"] == life and e["type"] == "birth_loading")
         assert loading["t"] == 0.0
-        assert loading["profile"] == "pi4/compressed-2700"
+        assert loading["profile"] == "pi4/default"
         assert loading["hardware"] == "pi4-4gb"
         assert loading["lifespan_s"] == cfg.profile.lifespan_s
     ends = [e for e in r.events if e["type"] == "gen_end"]

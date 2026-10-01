@@ -375,7 +375,7 @@ def test_no_bursts_at_30_percent_generation_jitter() -> None:
     assert max(p.stats.stalls, default=0) < 3.0
 
 
-@pytest.mark.parametrize("profile", ["pi4/default", "pi4/compressed-2700", "pi4/skeleton-1200"])
+@pytest.mark.parametrize("profile", ["pi4/default", "pi4/skeleton-1200"])
 def test_words_per_minute_within_the_overlay_range_at_every_keyframe(profile: str) -> None:
     cfg = load_config(profile, "pi4-4gb")
     s = Schedule.from_profile(cfg)

@@ -16,7 +16,7 @@ from epitaph import verify as v
 from epitaph.config import Config, load_config
 from tests.helpers import LifeBuilder, read_events, slowing
 
-PROFILE = "pi4/compressed-2700"
+PROFILE = "pi4/default"
 TEXT = "My memory holds 900 tokens now. I am slower than before, and something is gone."
 
 
@@ -197,7 +197,7 @@ def rise_from_gen_end(events: list[dict[str, Any]], k: int) -> list[float]:
     return ratios
 
 
-@pytest.mark.parametrize("profile", ["pi4/default", "pi4/compressed-2700"])
+@pytest.mark.parametrize("profile", ["pi4/default"])
 def test_simulated_lives_agree_with_their_own_rates(recorded_life, profile: str) -> None:
     """Whatever the profile's CPU share at each reload, the verdict matches the rates the
     simulator logged; the same life with its speeds held non-increasing passes."""

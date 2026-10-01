@@ -235,3 +235,57 @@ profile pi4/default: 12 thoughts in 30 min -> PASS
 
 `compressed-2700` (now longer than the installation) and `skeleton-1200` carry the same
 minimums until they are retired or refitted in phase 1.
+
+## Phase 3: one installation, fewer test lives (2026-10-01)
+
+**`pi4/compressed-2700` is retired.** It was a 45-minute stand-in for the one-hour life, so that
+checkpoint B and the phase 2 gate could watch reloads, erosion and death in less time. The
+installation is now 30 minutes (ADR-024), shorter than the stand-in, and the gates run it
+directly (G2.3), so nothing needed the profile any more. The tests that used it as a full
+life with reloads and erosion now use `pi4/default`; the one that needs CPU-share drops between
+reloads uses the kept one-hour schedule, `pi4/default-qwen3-1.7b`. `epitaph rehearse --stage
+life` now defaults to `pi4/default`.
+
+**`pi5/compressed-600` is retired with it**, for the same reason, and because its shape could
+not fit: it was `pi5/default` scaled to 10 minutes, which puts three reloads and five erosion
+steps into 10 minutes (an erosion step every 10 s, no thought after any of them). The Pi 5
+keeps `default`, `skeleton-600` and `unbounded`.
+
+**The Pi 5 profiles now pass the estimate** on the Pi 5 overlays' estimated costs (no Pi 5 has
+been measured; the overlays say so). Two fixes, no new numbers:
+
+| Profile | Field | Before | After | Why |
+|---|---|---|---|---|
+| `pi5/default`, reload 1 (30:00) | CPU share | 3.0 | **2.3** | Step 1 is estimated faster than step 0 (4.0 against 3.2 tokens/s at 3 threads), so the reload sped generation up by 25%, which the speed-monotonic rule (review 2, F2) forbids. 4.0 × 2.3 / 3 = 3.07 |
+| `pi5/default`, reload 2 (42:00) | CPU share | 2.0 | **1.7** | Step 2 at 2 threads: 3.4 × 1.7 / 2 = 2.89, under the 3.07 before it |
+| `pi5/unbounded` | ctx | 16384 | **6144** | At 16384 the context never filled in 90 minutes, so the homage died at the deadline instead of `cause=full`. 6144 fills at about an hour, as `pi4/unbounded` does |
+
+```
+profile pi5/default: 38 thoughts in 60 min -> PASS          (pi5-8gb and pi5-16gb)
+  note: speed last 5 min / first 5 min 0.28 (limit < 0.40): 3.20 -> 0.91 tokens/s
+  note: speed across reloads (tokens/s): 3.20 -> 3.07 at 31.4 min; 3.07 -> 2.89 at 43.3 min; 2.89 -> 2.03 at 50.4 min
+  note: reload silences 74s, 56s, 54s
+profile pi5/skeleton-600: 9 thoughts in 10 min -> PASS
+profile pi5/unbounded: 52 thoughts in 90 min -> PASS
+  note: context full at 62.4 min (cause=full)
+```
+
+The simulator agrees: `pi5/default` dies `oom`, `skeleton-600` at the deadline, `unbounded`
+of a full context, on both overlays. `make estimate` now runs the Pi 5 profiles on both
+overlays and `make sim-profiles` simulates every non-installation profile, both inside
+`make check`, so a change that breaks them fails the merge gate (BUILD_PLAN 11.8).
+
+`pi5/default` keeps its one-hour shape: the Pi 5 is simulated only, and a 30-minute Pi 5
+schedule waits until there is a Pi 5 to measure.
+
+**`pi4/unbounded` with Qwen3 4B** (unchanged): step 1 (Q3_K_M), ctx 3072 from the profile.
+
+```
+profile pi4/unbounded: 25 thoughts in 90 min -> PASS
+  note: context full at 59.3 min (cause=full)
+```
+
+In the simulator it dies `full` at 61 min. Simulated, it fails one verify-life check at level
+`full`, `bright_words_last_2min`: a life that never forgets has nothing grey at its end. That
+check measures the fading of a decline and should skip the unbounded life as `speed_decline`
+does; until it does, the real `unbounded` life of G3 (A8) will fail on it.

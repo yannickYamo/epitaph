@@ -9,8 +9,9 @@ Two layers:
 - `Controller` runs lives back to back and survives every death: recovery of an unfinished
   life, the life counter (written first), transcripts, the deadline, the death squeeze and
   hang detection checked continuously (also during reloads, pauses and typing), silence,
-  rebirth, model rotation, systemd watchdog pings in every state, and the control commands
-  `status`, `new_life` and `screenshot`.
+  rebirth, model rotation, systemd watchdog pings in every state, exhibition hours
+  (`exhibit.py`: outside them the screen goes dark, or lives pause after the current one),
+  and the control commands `status`, `new_life` and `screenshot`.
 
 The watchdog pings say the life loop moves, not only that the event loop runs: the loop
 stamps its progress at every event, state change and step, and a loop that overruns its
@@ -40,6 +41,7 @@ import weakref
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
@@ -49,6 +51,7 @@ from epitaph.clock import LifeClock, Schedule, VirtualClock
 from epitaph.config import Config
 from epitaph.costmodel import Costs
 from epitaph.events import Event, make_event
+from epitaph.exhibit import Exhibit
 from epitaph.mind.memory import Memory, approx_tokens
 from epitaph.mind.prompt import (
     Lang,
@@ -97,6 +100,12 @@ STALL_GRACE_S = 60.0  # after the stall kill, the loop must move within this or 
 CANCEL_WAIT_S = 5.0  # how long a cancelled backend call may take to let go
 SLOT_TIMEOUT_S = 30.0  # a slot save or restore (about 0.3 s) that takes longer is given up
 PING_HISTORY = 1024  # watchdog ping times kept for the tests and the status (bounded)
+# Closed hours in pause mode: the wait looks at the clock this often (a clock set by NTP, or a
+# daylight-saving change, moves the opening) and stamps loop progress each time.
+EXHIBIT_POLL_S = 60.0
+# While the screen is dark, the closed state is published again this often, so a display
+# that (re)connects goes dark within it (a snapshot does not carry the exhibit state).
+EXHIBIT_REPEAT_S = 60.0
 
 
 # ---------------------------------------------------------------------------------------
@@ -968,6 +977,7 @@ class Controller:
         reconfigure: Reconfigure | None = None,
         counter: Callable[[str], int] = approx_tokens,
         offload: Offload | None = None,
+        exhibit: Exhibit | None = None,
     ) -> None:
         """Run `cfg`'s profile.
 
@@ -978,6 +988,9 @@ class Controller:
         `reconfigure(profile, lifespan)` builds the config of a `new_life` with overrides.
         `offload(fn)` runs a blocking body call (the cgroup reset waits for the kill) off the
         event loop: a worker thread by default, `run_inline` on the virtual clock.
+        `exhibit` gives the exhibition hours (default: `[exhibit]` of `cfg` on the system
+        clock, or on `ts` when given, which is then simulated time and counts as synced).
+        Raises ConfigError for bad `[exhibit]` settings.
         """
         self.cfg = cfg
         self.clock = clock
@@ -1019,6 +1032,20 @@ class Controller:
         self.wedged = False  # the loop is stuck: the pings have stopped
         self._emit_errors: set[str] = set()
         self._sup_error: BaseException | None = None
+        self.exhibit = exhibit or self._exhibit_from(cfg)
+        self.shown = True  # what the displays were last told: on show (True) or dark
+        self._shown_at = -math.inf  # loop time of the last exhibit event
+
+    def _exhibit_from(self, cfg: Config) -> Exhibit:
+        ts = self.ts
+        if ts is None:
+            return Exhibit.from_config(cfg, mono=lambda: self._loop_time())
+        return Exhibit.from_config(
+            cfg,
+            wall=lambda: datetime.fromtimestamp(ts()),
+            synced=lambda: True,
+            mono=lambda: self._loop_time(),
+        )
 
     # -- events ----------------------------------------------------------------------------
 
@@ -1049,6 +1076,9 @@ class Controller:
                 self.publish(e)
             except Exception as err:
                 self._emit_failed("publish", e, err)
+        if e["type"] == "birth_loading" and not self.shown:
+            # A display starts a new life lit: tell it again that the screen stays dark.
+            self._event("exhibit", int(e["life"]), 0.0, open=False)
 
     def _emit_failed(self, where: str, e: Event, err: Exception) -> None:
         key = f"{where}:{type(err).__name__}"
@@ -1072,6 +1102,7 @@ class Controller:
             "lives_run": len(self.records),
             "last": asdict(self.records[-1]) if self.records else None,
             "pings": self.pings,
+            "exhibit": self.exhibit.describe() | {"shown": self.shown},
         }
         if cur is not None:
             life = cur.life
@@ -1215,6 +1246,8 @@ class Controller:
         if self.state == "silence":
             seconds = float(self.cfg.get("life.silence_seconds", 90))
             return since, seconds + STALL_MARGIN_S
+        if self.state == "closed":  # the wait stamps progress at every look at the clock
+            return since, EXHIBIT_POLL_S + STALL_MARGIN_S
         return since, max(self.limits.load_s, self.limits.token_gap_s) + STALL_MARGIN_S
 
     def _stalled(self, now: float) -> bool:
@@ -1256,6 +1289,7 @@ class Controller:
             if now - self._last_ping >= self.watchdog_s - EPS:
                 self.ping()
             wait = max(self._last_ping + self.watchdog_s - self._loop_time(), 0.0)
+        self._exhibit_tick()
         cur = self.cur
         if cur is not None and cur.life.dead is None:
             wait = min(wait, self._check(cur))
@@ -1317,6 +1351,60 @@ class Controller:
             cur.applied_kf = i
         nxt = sch.times[i + 1] if i + 1 < len(sch.times) else math.inf
         return max(nxt - t, 0.05)  # a floor: a sliver of float time must not stall the loop
+
+    # -- exhibition hours (BUILD_PLAN 5.10) ------------------------------------------------
+
+    def _show(self, shown: bool) -> None:
+        """Tell the displays whether the piece is on show (`exhibit {open}`), on a change."""
+        if shown == self.shown:
+            return
+        self.shown = shown
+        self._shown_at = self._loop_time()
+        cur = self.cur
+        n = cur.life.n if cur is not None else (self.records[-1].life if self.records else 0)
+        t = cur.life.lived() if cur is not None else 0.0
+        log.info("life %s: exhibition %s", n or "-", "open" if shown else "closed")
+        self._event("exhibit", n, t, open=shown)
+        self._save_status()
+
+    def _exhibit_tick(self) -> None:
+        """Each supervisor pass: in unseen mode follow the hours; while dark, say so again
+        every EXHIBIT_REPEAT_S to the bus only (not into the transcript)."""
+        ex = self.exhibit
+        if not ex.enabled:
+            return
+        if not ex.pause:
+            self._show(ex.is_open())
+        if not self.shown and self._loop_time() - self._shown_at >= EXHIBIT_REPEAT_S:
+            self._shown_at = self._loop_time()
+            if self.publish is not None:
+                cur = self.cur
+                n = cur.life.n if cur is not None else 0
+                e = make_event("exhibit", n, open=False)
+                e["t"] = round(cur.life.lived(), 3) if cur is not None else 0.0
+                if self.ts is not None:
+                    e["ts"] = round(self.ts(), 3)
+                try:
+                    self.publish(e)
+                except Exception as err:
+                    self._emit_failed("publish", e, err)
+
+    async def wait_for_opening(self) -> None:
+        """Pause mode: before a birth outside the hours, the screen goes dark and the
+        controller waits for the opening. A `ctl new_life` starts a life anyway."""
+        ex = self.exhibit
+        if not ex.enabled or not ex.pause:
+            return
+        if not ex.is_open() and not self._wake.is_set():
+            self._set_state("closed")
+            self._show(False)
+            log.info("closed: the next life waits %.0f s for the opening", ex.seconds_to_open())
+            while not ex.is_open() and not self._wake.is_set():
+                wait = min(EXHIBIT_POLL_S, max(1.0, ex.seconds_to_open()))
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._wake.wait(), wait)
+                self._bump()
+        self._show(True)
 
     def squeeze(self, life: Life) -> None:
         """Take the creature's RAM at `end-0:30` (the death squeeze), whatever it is doing."""
@@ -1542,6 +1630,7 @@ class Controller:
                 self.notify("READY=1")
             born = 0
             while self.lives is None or born < self.lives:
+                await self.wait_for_opening()
                 rec = await self.live_one()
                 born += 1
                 more = self.lives is None or born < self.lives

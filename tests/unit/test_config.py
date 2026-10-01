@@ -12,8 +12,8 @@ from epitaph.config import (
     validate_config,
 )
 
-PI4 = ["pi4/default", "pi4/smoke-300", "pi4/skeleton-1200", "pi4/compressed-2700", "pi4/unbounded"]
-PI5 = ["pi5/default", "pi5/skeleton-600", "pi5/compressed-600", "pi5/unbounded"]
+PI4 = ["pi4/default", "pi4/smoke-300", "pi4/skeleton-1200", "pi4/unbounded"]
+PI5 = ["pi5/default", "pi5/skeleton-600", "pi5/unbounded"]
 
 
 def test_parse_times() -> None:
@@ -44,9 +44,9 @@ def test_pi5_profiles_load(name: str) -> None:
 
 
 def test_extends_inherits_and_rescales() -> None:
-    cfg = load_config("pi5/compressed-600", "pi5-8gb")
+    cfg = load_config("pi5/skeleton-600", "pi5-8gb")
     assert cfg.profile.lifespan_s == 600
-    assert cfg.profile.nominal_s == 3600
+    assert cfg.profile.nominal_s == 1200
 
 
 def test_impossible_lifespan_is_rejected() -> None:

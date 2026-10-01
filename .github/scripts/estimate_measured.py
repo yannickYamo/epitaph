@@ -36,7 +36,6 @@ PI4_PROFILES = [
     "pi4/default",
     "pi4/smoke-300",
     "pi4/skeleton-1200",
-    "pi4/compressed-2700",
     "pi4/unbounded",
 ]
 

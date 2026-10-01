@@ -68,7 +68,7 @@ def worker():
 
 
 def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
-    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    cfg = load_config("pi4/default", "pi4-4gb")
     (tmp_path / "pi4-qwen3-1.7b-1-2.json").write_text(
         json.dumps({"step": 1, "threads": 2, "pp_tok_s": 4.0, "tg_tok_s": 2.1, "load_s": 33})
     )
@@ -85,7 +85,7 @@ def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
 
 
 def test_an_estimated_bench_file_gives_rates_labelled_estimates(tmp_path: Path) -> None:
-    cfg = load_config("pi4/compressed-2700", "pi4-4gb")
+    cfg = load_config("pi4/default", "pi4-4gb")
     rec = {"step": 2, "threads": 2, "pp_tok_s": 3.0, "tg_tok_s": 2.5, "estimated": True}
     (tmp_path / "pi4-qwen3-1.7b-2-2.json").write_text(json.dumps(rec))
     costs = PiCosts.from_bench(cfg, "qwen3-1.7b", tmp_path)
@@ -289,8 +289,8 @@ def test_life_events_follow_the_contract(life_dir: Path) -> None:
     # the words generated before the death are still shown (the death flush), then the card
     assert types.index("death") < types.index("death_shown")
     loading = events[0]
-    assert loading["profile"] == "pi4/compressed-2700" and loading["hardware"] == "pi4-4gb"
-    assert loading["lifespan_s"] == 2700.0
+    assert loading["profile"] == "pi4/default" and loading["hardware"] == "pi4-4gb"
+    assert loading["lifespan_s"] == 1800.0
     for e in events:
         assert {"v", "ts", "life", "type", "t"} <= set(e), e
     ts = [e["t"] for e in events]
@@ -298,7 +298,7 @@ def test_life_events_follow_the_contract(life_dir: Path) -> None:
     assert types.count("reload") == types.count("reload_done") == 2
     assert types.count("thought_start") == types.count("thought_end") >= 10
     death = next(e for e in events if e["type"] == "death")
-    assert death["cause"] == "oom" and death["t"] == pytest.approx(2670.0)  # end-0:30
+    assert death["cause"] == "oom" and death["t"] == pytest.approx(1770.0)  # end-0:30
     for e in events:
         if e["type"] == "vitals":
             assert e["reading"].startswith("[host]") and e["recall_used"] <= e["recall"] * 1.1
