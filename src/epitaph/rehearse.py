@@ -816,22 +816,6 @@ class _Life:
             self.echo = await self._echo()
         self.emit("reload_done", seconds=round(self.clock.elapsed() - t0, 1))
 
-    def _ram_used_gb(self) -> float:
-        """The creature's resident memory as the Pi would show it: its weights plus its KV
-        cache (about 0.15 MB per kept token for a 3-4B model at f16) plus server overhead."""
-        try:
-            weights = self.backend_model_path().stat().st_size / 1e9
-        except OSError:
-            weights = 2.5
-        return round(weights + 0.3 + self.memory.used() * 0.00015, 2)
-
-    def backend_model_path(self) -> Path:
-        """The GGUF file of the current ladder step on the laptop."""
-        models_dir = Path(str(self.cfg.get("backend.models_dir", "~/epitaph-models"))).expanduser()
-        if str(models_dir) == "auto":
-            models_dir = Path("~/epitaph-models").expanduser()
-        return models_dir / self.model.name / f"{self.model.quant(max(self.cur[0], 0))}.gguf"
-
     async def _echo(self) -> str | None:
         """One of its own kept sentences as the new, lower-precision weights now continue it.
 
@@ -907,11 +891,6 @@ class _Life:
                 cpu_c=vit.cpu_c,
                 forgotten_quotes=quotes,
                 echo=echo,
-                ctx_used=self.memory.used(),
-                ram_used_gb=self._ram_used_gb(),
-                ram_total_gb=3.70,  # the Pi 4's usable RAM (PI_FACTS)
-                cpu_mhz=k.cpu_mhz,
-                noise=k.temperature,
             )
         )
         self.reloaded = False

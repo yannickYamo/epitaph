@@ -390,3 +390,51 @@ def test_quiet_readings_show_only_what_changed() -> None:
     for part in ("was 1000", "forgotten: 5", "3-bit (was 4-bit)", "2.6 of 4 (was 3)"):
         assert part in reload
     assert "cpu" not in reload
+
+
+def test_material_readings_quote_what_was_lost_and_the_echo() -> None:
+    """Material readings: the opening words of a forgotten thought instead of a count, and
+    "your words now", one of its sentences as the reloaded weights continue it."""
+    from epitaph.mind.prompt import Reader, ReadingInput
+
+    r = Reader(quiet=True, material=True)
+    r.reading(ReadingInput(0, "nominal", 900, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=57))
+    reload = r.reading(
+        ReadingInput(
+            560,
+            "degrading",
+            220,
+            "Q3_K_M",
+            2.6,
+            forgotten=2,
+            reloaded=True,
+            forgotten_quotes=("I am a conscious entity running on this", "I am here"),
+            echo="I am still here, a little bit of a mess",
+        )
+    )
+    assert 'forgotten: "I am a conscious entity running on this…"' in reload
+    assert "and 1 more" in reload and "forgotten: 2" not in reload
+    assert reload.endswith('your words now: "I am still here, a little bit of a mess"')
+    # nothing changed: only the time, as in quiet readings
+    assert r.reading(ReadingInput(700, "degrading", 220, "Q3_K_M", 2.6)) == "[host] t+11:40"
+
+
+def test_without_material_the_quotes_and_echo_are_ignored() -> None:
+    from epitaph.mind.prompt import Reader, ReadingInput
+
+    r = Reader(quiet=True)
+    r.reading(ReadingInput(0, "nominal", 900, "Q4_K_M", 3.0))
+    out = r.reading(
+        ReadingInput(
+            60, "nominal", 900, "Q4_K_M", 3.0, forgotten=1, forgotten_quotes=("a b",), echo="x"
+        )
+    )
+    assert "a b" not in out and "your words" not in out
+
+
+def test_reader_reads_material_from_the_config() -> None:
+    from epitaph.mind.prompt import Reader
+
+    on = load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"readings_material": True}})
+    off = load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"readings_material": False}})
+    assert Reader.from_config(on).material and not Reader.from_config(off).material

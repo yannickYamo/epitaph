@@ -486,3 +486,10 @@ async def test_slot_dir_is_created_before_the_first_spawn(tmp_path: Any) -> None
         assert slots.is_dir()
     finally:
         await b.aclose()
+
+
+def test_request_body_sends_the_logit_bias_as_strings() -> None:
+    """llama-server tokenizes string biases itself; only a leading-space form matches a word."""
+    biased = Sampling(temperature=0.7, min_p=0.05, logit_bias=((" realm", -5.0),))
+    assert request_body([], biased, 1)["logit_bias"] == [[" realm", -5.0]]
+    assert "logit_bias" not in request_body([], SAMPLING, 1)

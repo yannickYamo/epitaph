@@ -54,3 +54,10 @@ def test_the_loaded_step_decides_not_the_knobs() -> None:
     section = {"latin_only_from_step": 2}
     assert not sampling_for(section, _knobs(step=2), 1).latin_only
     assert sampling_for(section, _knobs(step=2), 2).latin_only
+
+
+def test_logit_bias_comes_from_the_config() -> None:
+    """Silent word penalties: the clichés small models reach for, never named in the prompt."""
+    s = sampling_for({"logit_bias": [[" tapestry", -10], [" realm", -5.0]]}, _knobs(), 0)
+    assert s.logit_bias == ((" tapestry", -10.0), (" realm", -5.0))
+    assert sampling_for({}, _knobs(), 0).logit_bias == ()

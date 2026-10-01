@@ -455,3 +455,11 @@ def test_bare_mode_raw_continues_the_text_once_the_persona_is_gone(tmp_path: Pat
     (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
     log = (folder / "screen.json").read_text()
     assert json.loads(log)[0]["thoughts"][0]["text"]
+
+
+def test_material_readings_carry_the_echo_after_a_reload(life_dir: Path) -> None:
+    """After each reload the next reading quotes the reloaded weights' own continuation."""
+    events = load_events(life_dir / "events.jsonl")
+    readings = [e["reading"] for e in events if e["type"] == "vitals"]
+    after = [r for r in readings if "-bit (was" in r]  # the readings that report a reload
+    assert after and all("your words now:" in r for r in after)
