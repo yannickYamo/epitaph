@@ -46,7 +46,7 @@ jitter = 0.15
 hesitation = 0.02
 
 [[keyframe]]
-at = "13:30"
+at = "13:00"
 phase = "failing"
 health = "critical"
 recall = 130
@@ -64,7 +64,7 @@ jitter = 0.25
 hesitation = 0.08
 
 [[keyframe]]
-at = "end-11:30"
+at = "end-11:00"
 phase = "eroding"
 recall = 110
 cpu_mhz = 1400

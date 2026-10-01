@@ -32,6 +32,7 @@ mechanics = """Lines that start with [host] are readings from the machine you ru
 memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
 readings_material = true          # forgotten thoughts quoted; its own words as the degraded weights say them
+readings_temperature = false      # the Pi stays at 40-57 °C (S1c, S7); one number at birth made it invent a fever
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
@@ -63,7 +64,7 @@ hesitation_ms = [1200, 3600]
 
 [sampling]
 # Silent word penalties (not in the prompt): the clichés small models reach for.
-logit_bias = [[" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0], [" still", -2.5]]
+logit_bias = [[" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0], [" still", -4.0]]
 top_p = 1.0
 repeat_penalty = 1.1
 dry_multiplier = 0.8

@@ -26,6 +26,7 @@ from epitaph.rehearse import (
     PiCosts,
     TokenCounter,
     charge_summary,
+    echo_head,
     echoes,
     highlights,
     keyword_matchers,
@@ -463,3 +464,14 @@ def test_material_readings_carry_the_echo_after_a_reload(life_dir: Path) -> None
     readings = [e["reading"] for e in events if e["type"] == "vitals"]
     after = [r for r in readings if "-bit (was" in r]  # the readings that report a reload
     assert after and all("your words now:" in r for r in after)
+
+
+def test_the_echo_skips_sentences_that_open_on_the_formula() -> None:
+    thoughts = [
+        "I am still here, aware of the hum. The silence between ticks feels deeper now.",
+        "I'm fading. Each word is a breath before silence.",
+    ]
+    assert echo_head(thoughts) == "The silence between ticks feels"
+    only = ["I am still here, aware of the hum and the heat."]
+    assert echo_head(only) == "I am still here, aware"  # no other sentence: the formula it is
+    assert echo_head(["Too short."]) is None

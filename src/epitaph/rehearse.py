@@ -49,6 +49,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import re
 import sys
 import threading
 import time
@@ -819,17 +820,14 @@ class _Life:
     async def _echo(self) -> str | None:
         """One of its own kept sentences as the new, lower-precision weights now continue it.
 
-        The opening words of the oldest kept thought are completed by the reloaded model with
+        The opening words of a kept sentence (echo_head) are completed by the reloaded model with
         no prompt around them (raw completion, greedy), during the reload silence; the result
         is quoted in the next reading. Real: it is these weights, not a rewrite.
         """
         thoughts = [m.content for m in self.memory.past_messages() if m.role == "assistant"]
-        if not thoughts:
+        head = echo_head(thoughts)
+        if head is None:
             return None
-        first = thoughts[0].split(". ")[0].split()
-        if len(first) < 6:
-            return None
-        head = " ".join(first[:5])
         out = ""
         sampling = Sampling(temperature=0.0, min_p=0.0)
         # The raw completion replaces the server's single cache slot; keep the carried memory
@@ -1323,6 +1321,22 @@ def echoes(texts: Sequence[str], threshold: float = 0.5) -> list[int]:
         if cur and len(cur & prev) / len(cur) >= threshold:
             out.append(i)
     return out
+
+
+_FORMULA = ("i am", "i'm", "i\u2019m")  # how most of its sentences open: no echo of those
+
+
+def echo_head(thoughts: Sequence[str], words: int = 5) -> str | None:
+    """The opening words of the oldest kept sentence that does not open on a formula.
+
+    Most thoughts open with "I am still here"; echoing that teaches the formula back to it.
+    Falls back to the oldest sentence long enough to continue; None if there is none."""
+    sentences = [x.strip() for t in thoughts for x in re.split(r"(?<=[.!?])\s+", t) if x.strip()]
+    long_enough = [x.split() for x in sentences if len(x.split()) > words]
+    if not long_enough:
+        return None
+    fresh = [w for w in long_enough if not " ".join(w[:2]).lower().startswith(_FORMULA)]
+    return " ".join((fresh or long_enough)[0][:words])
 
 
 def charge_summary(charges: Sequence[Charge]) -> dict[str, Any]:
