@@ -8,6 +8,12 @@ small status strip above the text, and the birth and death cards typed letter by
 With `reload_dim_text` the whole text dims during a reload.
 With the `segment16` theme it draws a grid of 16-segment LED cells instead of a font.
 
+The dread plan adds a second voice and the dark: readings are drawn small and dim grey
+(`machine_scale` of the text's size, in their own narrower cells), the whole screen dims
+with the world's `screen:<N>` losses (never under the contrast floors the frame carries),
+and after death the vigil is drawn: the last words dim and centred, the small death card
+under them, fading.
+
 Only what changed is repainted (D7): each frame is reduced to the items of each text row
 and the status strip, and only rows whose items differ are cleared, redrawn and sent to
 the display. A letter typed costs one row, not the screen. `python -m
@@ -44,7 +50,7 @@ DEFAULT_WINDOW = (1280, 720)
 FADE_STEPS = 32
 
 Rect = tuple[int, int, int, int]
-RowItem = tuple[str, int, str, Rgb]  # kind (text, gauge, cursor), column, text, colour
+RowItem = tuple[str, int, str, Rgb]  # kind (text, small, gauge, cursor), column, text, colour
 
 
 @dataclass(frozen=True)
@@ -94,9 +100,14 @@ class ScreenDriver:
         size: tuple[int, int] | None = None,
         fullscreen: bool = False,
         clock: Callable[[], float] = time.monotonic,
+        machine_scale: float = 0.55,
     ) -> None:
         """Configure the driver; no window is opened until `open` (or the first draw)."""
         self.view = LifeView(settings)
+        self.machine_scale = machine_scale
+        self.small_px = 12
+        self.small_adv = 7.0
+        self.machine_cols = 0
         self.theme = theme
         self.line_chars = line_chars
         self.status_strip = status_strip
@@ -127,6 +138,7 @@ class ScreenDriver:
         self.font_path: Path | None = None
         self._cells: dict[tuple[frozenset[str], Rgb], Any] = {}
         self._panel: Any = None  # the segment look's unlit panel, behind every repaint
+        self._bright = 1.0  # the screen's brightness as last drawn
 
     # -- setup ------------------------------------------------------------------------------
 
@@ -176,6 +188,10 @@ class ScreenDriver:
         adv = self.font(m.font_px).size("M")[0]
         usable = logical[0] - 2 * m.margin_x
         cols = max(1, min(self.line_chars, usable // max(1, adv)))
+        # the machine's voice: smaller letters in their own cells, over the same width
+        self.small_px = max(12, round(m.font_px * self.machine_scale))
+        self.small_adv = float(max(1, self.font(self.small_px).size("M")[0]))
+        self.machine_cols = max(1, int(cols * adv // self.small_adv))
         self.metrics = Metrics(
             m.width,
             m.height,
@@ -272,7 +288,9 @@ class ScreenDriver:
         if self.layout == "grid":
             rows, cols, *_ = self._grid_geometry()
             return compose_grid(self.view, now, rows, cols, self.charset)
-        return compose_flow(self.view, now, m.cols, m.rows, self.status_strip)
+        return compose_flow(
+            self.view, now, m.cols, m.rows, self.status_strip, machine_cols=self.machine_cols
+        )
 
     def draw(self, now: float, force: bool = False) -> bool:
         """Paint the view at `now` onto the window; returns whether anything was painted.
@@ -289,10 +307,17 @@ class ScreenDriver:
         self.last_frame = frame
         g = self._geometry()
         rows = row_items(frame, self.theme)
-        scene = (frame.dark, frame.card is not None, frame.dim, frame.idle)
+        bright = self.theme.brightness(frame.brightness, frame.contrast_floor)
+        self._bright = bright
+        scene = (frame.dark, frame.card is not None, frame.dim, frame.idle, bright)
         status = self._status_text(frame.status) if frame.status and not frame.dark else None
         card = (
-            (frame.card[0], tuple(frame.card[1]), tuple(frame.card_shown or ()))
+            (
+                frame.card[0],
+                tuple(frame.card[1]),
+                tuple(frame.card_shown or ()),
+                self.card_colour(frame),
+            )
             if frame.card is not None
             else None
         )
@@ -307,7 +332,9 @@ class ScreenDriver:
             if not frame.dark:
                 if status:
                     self._draw_status(status)
-                if frame.card is not None:
+                if frame.card is not None and frame.card[0] == "vigil":
+                    self._draw_vigil(frame, g.px)
+                elif frame.card is not None:
                     self._draw_card(frame.card[1], g.px, frame.card_shown)
                 else:
                     for r, items in rows.items():
@@ -454,7 +481,8 @@ class ScreenDriver:
         """Draw the (already fitted) status strip in small type above the text."""
         m = self.metrics
         assert m is not None
-        glyphs = self._glyphs(self._status_px(), text, self.theme.status)
+        colour = self.theme.lit(self.theme.status, self._bright)
+        glyphs = self._glyphs(self._status_px(), text, colour)
         self.surface.blit(glyphs, (m.margin_x, m.margin_y))
 
     def _draw_card(self, lines: list[str], px: int, shown: list[int] | None = None) -> None:
@@ -487,7 +515,41 @@ class ScreenDriver:
                 self.surface.blit(part, ((m.width - full.get_width()) / 2, y))
             y += heights[n] + gap
 
-    def _draw_segment_card(self, lines: list[str], shown: list[int] | None) -> None:
+    def card_colour(self, frame: Frame) -> Rgb:
+        """The vigil's colour at its level: the machine's grey easing toward the ground."""
+        return self.theme.lit(self.theme.machine, frame.card_level)
+
+    def _draw_vigil(self, frame: Frame, px: int) -> None:
+        """The vigil: the last words dim and centred, the small death card under them."""
+        assert frame.card is not None
+        lines = frame.card[1]
+        shown = frame.card_shown or [len(x) for x in lines]
+        colour = self.card_colour(frame)
+        if self.theme.look == "segment16":
+            self._draw_segment_card(lines, shown, colour)
+            return
+        m = self.metrics
+        assert m is not None
+        sizes = [px, self.small_px]
+        heights = [self.font(sz).get_height() for sz in sizes]
+        gap = px * 0.6
+        y = (m.height - (sum(heights) + gap)) / 2
+        room = m.width - 2 * m.margin_x
+        for n, line in enumerate(lines[:2]):
+            size = sizes[n]
+            full = self._glyphs(size, line, colour)
+            if full.get_width() > room:
+                size = max(12, int(size * room / full.get_width()))
+                full = self._glyphs(size, line, colour)
+            k = shown[n]
+            if k > 0:
+                part = full if k >= len(line) else self._glyphs(size, line[:k], colour)
+                self.surface.blit(part, ((m.width - full.get_width()) / 2, y))
+            y += heights[n] + gap
+
+    def _draw_segment_card(
+        self, lines: list[str], shown: list[int] | None, colour: Rgb | None = None
+    ) -> None:
         """A card on the 16-segment grid: lines centred on whole cells, typed in order."""
         rows, cols, left, top, cell_w, line_h, px = self._grid_geometry()
         g = _Geometry(left, top, cell_w, line_h, px)
@@ -496,7 +558,7 @@ class ScreenDriver:
             k = len(line) if shown is None else shown[n]
             c0 = max(0, (cols - len(line)) // 2)
             y = top + (r0 + n) * line_h
-            self._segment_text(line[:k], left + c0 * cell_w, y, self.theme.card, g)
+            self._segment_text(line[:k], left + c0 * cell_w, y, colour or self.theme.card, g)
 
     def _extent(self, items: set[RowItem], g: _Geometry) -> tuple[int, int]:
         """The horizontal pixel span covering `items` as drawn (a margin of 1 pixel)."""
@@ -505,8 +567,11 @@ class ScreenDriver:
         segment = self.theme.look == "segment16"
         for kind, col, text, colour in items:
             x = round(g.left + col * g.cell_w)
-            if kind == "text" and segment:
+            if kind in ("text", "small") and segment:
                 end = x + round(len(text) * g.cell_w) + 1
+            elif kind == "small":
+                x = round(g.left + col * self.small_adv)
+                end = x + self._glyphs(self.small_px, text, colour).get_width()
             elif kind == "text":
                 end = x + self._glyphs(g.px, text, colour).get_width()
             elif kind == "cursor":
@@ -553,8 +618,13 @@ class ScreenDriver:
             x = g.left + col * g.cell_w
             if kind == "text":
                 self.surface.blit(self._glyphs(g.px, text, colour), (round(x), round(y)))
+            elif kind == "small":
+                # the machine's line: small letters on the row's baseline, in its own cells
+                small = self._glyphs(self.small_px, text, colour)
+                sy = y + font_h - small.get_height() - (font_h - small.get_height()) * 0.25
+                self.surface.blit(small, (round(g.left + col * self.small_adv), round(sy)))
             elif kind == "gauge":
-                self._draw_gauge(frame.gauge, x, y, frame.cols * g.cell_w, font_h)
+                self._draw_gauge(frame.gauge, x, y, frame.cols * g.cell_w, font_h, colour)
             else:  # the cursor
                 self.pg.draw.rect(
                     self.surface, colour, (round(x), round(y), round(g.cell_w), font_h)
@@ -566,7 +636,7 @@ class ScreenDriver:
         """A row of 16-segment cells: words, the gauge as lit dashes, the cursor as "_"."""
         for kind, col, text, colour in items:
             x = g.left + col * g.cell_w
-            if kind == "text":
+            if kind in ("text", "small"):
                 self._segment_text(text, x, y, colour, g)
             elif kind == "gauge":
                 n = round((frame.gauge or 0.0) * frame.cols)
@@ -576,17 +646,15 @@ class ScreenDriver:
                 self.surface.blit(cell, (round(x), round(y)))
 
     def _draw_gauge(
-        self, fraction: float | None, x: float, y: float, width: float, h: float
+        self, fraction: float | None, x: float, y: float, width: float, h: float, colour: Rgb
     ) -> None:
         """Draw the memory gauge as an outlined bar filled to `fraction` (0..1)."""
         th = self.theme
         pg = self.pg
         bar_h = max(2, round(h * 0.3))
         y0 = round(y + (h - bar_h) / 2)
-        pg.draw.rect(self.surface, th.dimmed(th.gauge), (round(x), y0, round(width), bar_h), 1)
-        pg.draw.rect(
-            self.surface, th.gauge, (round(x), y0, round(width * (fraction or 0.0)), bar_h)
-        )
+        pg.draw.rect(self.surface, th.dimmed(colour), (round(x), y0, round(width), bar_h), 1)
+        pg.draw.rect(self.surface, colour, (round(x), y0, round(width * (fraction or 0.0)), bar_h))
 
     def grid_cells(self) -> tuple[int, int, float, float, float, float]:
         """The grid layout's cells on the window: rows, cols, the first cell's left and top,
@@ -621,19 +689,23 @@ class ScreenDriver:
 def row_items(frame: Frame, theme: Theme) -> dict[int, tuple[RowItem, ...]]:
     """What each text row shows, as comparable items: a row is repainted when its items
     change. Colours, not fade progress, are compared, and fades move in `FADE_STEPS`
-    steps, so a fading row is repainted only when its colour visibly moves."""
+    steps, so a fading row is repainted only when its colour visibly moves. Every colour
+    is drawn at the screen's brightness (`Theme.brightness`: the world's dimming, held
+    above the frame's contrast floor); readings are "small" items."""
+    b = theme.brightness(frame.brightness, frame.contrast_floor)
     rows: dict[int, list[RowItem]] = {}
     for s in frame.spans:
         if s.kind == "gauge":
-            item: RowItem = ("gauge", s.col, f"{frame.gauge or 0.0:.4f}", theme.gauge)
+            item: RowItem = ("gauge", s.col, f"{frame.gauge or 0.0:.4f}", theme.lit(theme.gauge, b))
         else:
             fade = round(s.fade * FADE_STEPS) / FADE_STEPS
-            item = ("text", s.col, s.text, theme.word(s.kind, fade, frame.dim))
+            kind = "small" if s.kind == "machine" else "text"
+            item = (kind, s.col, s.text, theme.lit(theme.word(s.kind, fade, frame.dim), b))
         rows.setdefault(s.row, []).append(item)
     cur = frame.cursor
     if cur is not None and cur.mode in ("on", "dim"):
         colour = theme.dimmed(theme.live) if cur.mode == "dim" else theme.live
-        rows.setdefault(cur.row, []).append(("cursor", cur.col, "", colour))
+        rows.setdefault(cur.row, []).append(("cursor", cur.col, "", theme.lit(colour, b)))
     return {r: tuple(items) for r, items in rows.items()}
 
 

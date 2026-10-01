@@ -24,7 +24,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from epitaph.display.layout import LifeView
+from epitaph.display.layout import LifeView, ViewSettings
 
 Event = dict[str, Any]
 
@@ -128,8 +128,15 @@ def start_index(events: list[Event], from_s: float) -> int:
 
 
 def scaled(e: Event, speed: float) -> Event:
-    """A word event with its typing cadence divided by the replay speed."""
-    if e.get("type") != "word" or speed == 1:
+    """A word event with its typing cadence divided by the replay speed; a reading gets
+    the machine's letter interval divided by it (`char_ms`)."""
+    if speed == 1:
+        return e
+    if e.get("type") == "reading":
+        ms = _num(e.get("char_ms"))
+        base = ms if ms is not None else ViewSettings().machine_char_ms
+        return {**e, "char_ms": max(0, round(base / speed))}
+    if e.get("type") != "word":
         return e
     out = dict(e)
     if isinstance(e.get("char_ms"), list):
