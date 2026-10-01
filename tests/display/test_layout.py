@@ -327,7 +327,9 @@ def test_status_line_and_life_clock() -> None:
     v.handle(ev("reload", **{"from": "Q6_K", "to": "Q4_K_M"}), 111.0)
     assert "reloading Q6_K → Q4_K_M" in v.status_line(111.0)
     v.connected = False
-    assert v.status_line(111.0).endswith("reconnecting")
+    assert v.status_line(111.0).startswith("life 1 · reconnecting · 01:12")
+    # regression (found on the Pi): a long strip dropped `reconnecting`, the last part, first
+    assert fit_status(v.status_line(111.0), 30) == "life 1 · reconnecting · 01:12"
     v.handle(ev("death", cause="deadline", lived_s=3600), 112.0)
     assert "dead (deadline)" in v.status_line(200.0)
     assert v.life_t(200.0) == v.t_life
