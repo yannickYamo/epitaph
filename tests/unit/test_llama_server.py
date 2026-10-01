@@ -27,6 +27,7 @@ from epitaph.backend.llama_server import (
     parse_sse_line,
     request_body,
 )
+from epitaph.clock import VirtualClock, run_virtual
 from epitaph.config import load_config
 from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 
@@ -493,3 +494,57 @@ def test_request_body_sends_the_logit_bias_as_strings() -> None:
     biased = Sampling(temperature=0.7, min_p=0.05, logit_bias=((" realm", -5.0),))
     assert request_body([], biased, 1)["logit_bias"] == [[" realm", -5.0]]
     assert "logit_bias" not in request_body([], SAMPLING, 1)
+
+
+async def test_slot_action_is_bounded() -> None:
+    """Regression: a slot save that never answers must not hang the echo or the reload."""
+    seen: list[Any] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.extensions["timeout"])
+        raise httpx.ReadTimeout("slot save took too long", request=req)
+
+    b = make(handler, slot_timeout_s=7.0)
+    try:
+        r = await b._slot_action("save", "x.bin")  # pyright: ignore[reportPrivateUsage]
+        assert r is not None and "ReadTimeout" in str(r["error"])
+        assert seen[0]["read"] == 7.0
+    finally:
+        await b.aclose()
+
+
+class StuckProc:
+    """A child that never exits, even after SIGKILL (stuck in the kernel)."""
+
+    pid = 4321
+    returncode: int | None = None
+
+    def __init__(self) -> None:
+        self.signals: list[int] = []
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+
+    def kill(self) -> None:
+        self.signals.append(signal.SIGKILL)
+
+    async def wait(self) -> int:
+        await asyncio.Event().wait()
+        return 0
+
+
+def test_stop_does_not_wait_forever_after_sigkill() -> None:
+    """Regression: stop() awaited the process without a bound after the SIGKILL."""
+
+    async def main(clock: VirtualClock) -> tuple[float, list[int], object]:
+        b = LlamaServerBackend(ServerSettings(models_dir="/m", stop_timeout_s=10))
+        proc = StuckProc()
+        b._proc = proc  # type: ignore[assignment]  # pyright: ignore[reportPrivateUsage]
+        b._watcher = asyncio.ensure_future(b._watch(proc))  # type: ignore[arg-type]  # pyright: ignore[reportPrivateUsage]
+        t0 = clock.now()
+        await b.stop(hard=True)
+        return clock.now() - t0, proc.signals, b._proc  # pyright: ignore[reportPrivateUsage]
+
+    took, signals, left = run_virtual(main)
+    assert took == pytest.approx(20.0, abs=0.1)  # two bounded waits, then it moves on
+    assert signals == [signal.SIGKILL, signal.SIGKILL] and left is None
