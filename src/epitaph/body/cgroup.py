@@ -323,6 +323,31 @@ class CgroupBody:
             raise CgroupError(f"cannot block the creature's network: {e}") from e
         self.network = BLOCKED
 
+    def ensure_network_blocked(self) -> None:
+        """Check the rule before a spawn; load it again if it is gone; refuse if that fails.
+
+        Something outside the controller (an `nft flush ruleset`, a firewall reload, a
+        selftest's `del`) can drop the rule after setup(). Every spawn (each birth and each
+        reload) therefore checks that the loaded rule names the creature cgroup's current id.
+        If not, it is loaded again; if that fails, the spawn is refused with CgroupError: the
+        creature is never born with a network (fail closed).
+        """
+        if self.settings.creature_network != BLOCKED or self.netblock is None:
+            return
+        if self.network == BLOCKED and self.netblock.verify(self.creature, self.fs):
+            return
+        log.error(
+            "creature network rule MISSING for %s before a spawn: loading it again",
+            self.creature,
+        )
+        self.network = "open"
+        try:
+            self.block_network()
+        except CgroupError as e:
+            log.critical("REFUSING to spawn the creature with a network: %s", e)
+            raise
+        log.warning("creature network rule loaded again for %s", self.creature)
+
     def release_network(self) -> None:
         """Drop this cgroup's rule: for a selftest or calibration unit, never the controller."""
         if self.netblock is not None and self.network == BLOCKED:
@@ -437,8 +462,11 @@ class CgroupBody:
     def wrap_spawn(self, argv: list[str]) -> list[str]:
         """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv).
 
-        Remembers the model and quant it spawns, for the calibrated death level.
+        Remembers the model and quant it spawns, for the calibrated death level. With the
+        network blocked, the rule is checked first (ensure_network_blocked): CgroupError, and
+        no spawn, when it cannot be loaded.
         """
+        self.ensure_network_blocked()
         self.spawned = model_of(argv)
         return wrap_argv(argv, self.creature / "cgroup.procs", self.settings.creature_cpus)
 

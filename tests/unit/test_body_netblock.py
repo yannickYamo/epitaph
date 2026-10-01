@@ -276,3 +276,53 @@ def test_sudoers_parses(tmp_path: Path) -> None:
 def test_install_manages_both_helpers() -> None:
     text = (ROOT / "deploy" / "install.sh").read_text()
     assert "HELPERS=(epitaph-clock:020 epitaph-netblock:021)" in text
+
+
+# --- the rule is checked before every spawn (gate review finding 1) -----------------------------
+
+
+def test_spawn_reloads_a_rule_that_vanished(cgroup_root: Path) -> None:
+    """Regression: a rule dropped after setup() (nft flush, firewall reload) is loaded again
+    before the next spawn, not discovered after the creature had a network."""
+    h = FakeHelper()
+    body = body_with(cgroup_root, h)
+    body.setup()
+    h.calls.clear()
+    body.wrap_spawn(["llama-server"])
+    assert h.calls == [["status"]]  # the rule is there: checked, nothing loaded
+    h.listing = ""  # flushed behind the controller's back
+
+    def add_restores(argv: Sequence[str]) -> tuple[int, str]:
+        if argv[1] == "add":
+            h.listing = LISTING
+        return h(argv)
+
+    body.netblock = NetBlock("helper", add_restores)
+    h.calls.clear()
+    argv = body.wrap_spawn(["llama-server"])
+    assert argv[-1] == "llama-server"
+    assert h.calls == [["status"], ["add", CG], ["status"]]
+    assert body.network == BLOCKED
+
+
+def test_spawn_refused_when_the_rule_cannot_be_loaded(cgroup_root: Path) -> None:
+    """Fail closed: no rule and no way to load it means no creature."""
+    h = FakeHelper()
+    body = body_with(cgroup_root, h)
+    body.setup()
+    body.spawned = None
+    body.netblock = NetBlock("helper", FakeHelper(listing="", rc=1))
+    with pytest.raises(CgroupError, match="network"):
+        body.wrap_spawn(["llama-server", "-m", "/m/qwen/Q4_K_M.gguf"])
+    assert body.network == "open" and body.spawned is None
+
+
+def test_spawn_skips_the_check_when_allowed_or_no_helper(cgroup_root: Path) -> None:
+    h = FakeHelper(listing="")
+    allowed = body_with(cgroup_root, h, creature_network="allowed")
+    allowed.setup()
+    allowed.wrap_spawn(["llama-server"])
+    assert h.calls == []
+    plain = body_with(cgroup_root, None)
+    plain.setup()
+    assert plain.wrap_spawn(["llama-server"])[-1] == "llama-server"
