@@ -228,6 +228,48 @@ def test_calibrate_every_step(body: CgroupBody, monkeypatch: pytest.MonkeyPatch)
     assert calibration_path(Path("/s"), "pi4", "m") == Path("/s/calibration/pi4-m.json")
 
 
+async def never_dies(body: CgroupBody, timeout_s: float, poll_s: float = 0.02) -> bool:
+    """A creature that survives the squeeze and the cgroup.kill (D state on a dying card)."""
+    return False
+
+
+def test_a_creature_that_will_not_die_aborts_the_step(
+    body: CgroupBody, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the next trial spawned a new creature beside the one still in the cgroup."""
+    monkeypatch.setattr(calibrate, "wait_dead", never_dies)
+    monkeypatch.setattr(calibrate, "GIVE_UP_S", 0.01)
+    creature = FakeCreature(body)
+    lines: list[str] = []
+    r = run(calibrate_step(body, creature, MODEL, 2, 2, 3, 0.5, say=lines.append))
+    assert creature.loads == ["Q2_K"] and creature.stops == 1  # no new spawn
+    assert r.error is not None and "still populated" in r.error
+    assert not r.reliable and r.to_json()["error"] == r.error
+    assert "ERROR" in lines[-1]
+
+
+def test_a_populated_cgroup_before_a_trial_spawns_nothing(
+    body: CgroupBody, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (body.creature / "cgroup.events").write_text("populated 1\n")  # cgroup.kill does nothing
+    creature = FakeCreature(body)
+    r = run(calibrate_step(body, creature, MODEL, 0, 2, 1, 0.5, say=lambda s: None))
+    assert creature.loads == [] and r.error is not None and not r.reliable
+
+
+def test_calibrate_stops_after_an_aborted_step(
+    body: CgroupBody, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibrate, "wait_dead", never_dies)
+    monkeypatch.setattr(calibrate, "GIVE_UP_S", 0.01)
+    cfg = load_config("pi4/default", "pi4-4gb")
+    args = argparse.Namespace(steps="0,2", trials=3, threads=2)
+    creature = FakeCreature(body)
+    record, ok = run(calibrate.calibrate(cfg, args, body, creature, say=lambda s: None))
+    assert not ok and creature.loads == ["Q4_K_M"]
+    assert [s["quant"] for s in record["steps"]] == ["Q4_K_M"]
+
+
 def test_step_result_json() -> None:
     r = StepResult(2, "Q2_K", 2, 2000, 5, 2005, None, 0.5, 1000, 2)
     r.trials += [Trial(1000, True, 0.4, True, True), Trial(1000, True, 0.3, True, True)]
