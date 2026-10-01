@@ -691,6 +691,8 @@ class _Life(Life):
         lang: Lang | None = None,
     ) -> None:
         wall0 = time.time() - clock.now()
+        from epitaph.sim import fake_world  # the simulator's world (ADR-031), never the Pi's
+
         super().__init__(
             cfg,
             clock,
@@ -704,6 +706,7 @@ class _Life(Life):
             tg_rate=lambda s, t, c: backend.costs.tg(s, t, c).value,
             slots=_laptop_slots(backend),
             ts=lambda: wall0 + clock.now(),
+            world=fake_world(cfg),
         )
         self.pi = backend
         backend.on_death(self.on_death)
@@ -853,6 +856,8 @@ async def run_life(
     life.emit("death_shown", last_line=last, words_total=words, **stream)
     silence = float(cfg.get("life.silence_seconds", 90))
     life.emit("silence", seconds=silence, style=str(cfg.get("display.silence_style", "dark")))
+    if life.world is not None:
+        life.world.restore()  # as the controller does after every death
     out.charges = backend.charges
     out.revivals = backend.revivals
     out.cause = life.dead or "crash"
@@ -1036,6 +1041,11 @@ def thoughts_text(events: Sequence[Event]) -> str:
             lines.append(f"t+{_fmt_t(when)}  {said}")
             lines.append(f"    {e.get('text', '')}".rstrip())
             lines.append("")
+        elif e["type"] == "reading" and e.get("final"):
+            tail.extend([f"t+{_fmt_t(float(e['t']))}  -- last reading: {e.get('text', '')}", ""])
+        elif e["type"] == "world":
+            done = "" if e.get("performed") else " (not performed)"
+            lines.extend([f"t+{_fmt_t(float(e['t']))}  -- world {e.get('action')}{done}", ""])
         elif e["type"] in ("reload", "erosion", "death"):
             extra = {k: v for k, v in e.items() if k not in ("v", "ts", "life", "type", "t")}
             line = f"t+{_fmt_t(float(e['t']))}  -- {e['type']} {json.dumps(extra)}"

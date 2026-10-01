@@ -305,7 +305,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
             life.groups, life.mechanics = k.persona_groups, k.mechanics
             extra += reread_cost(sys_tokens + life.memory)
 
-        reading = reading_tokens(cfg, k.readings)
+        reading = reading_tokens(cfg, k.readings, after_birth=bool(life.thought_times))
         if not cfg.profile.unbounded and life.memory > k.recall:
             life.memory = int(k.recall * trim_to)
             extra += reread_cost(sys_tokens + life.memory)
@@ -730,7 +730,7 @@ def estimate_stream(
             step, threads = k.step, k.threads
             k = sch.at(t)
         sys_tokens = sys_tokens_of(k.persona_groups, k.mechanics)
-        reading = reading_tokens(cfg, k.readings)
+        reading = reading_tokens(cfg, k.readings, after_birth=bool(memory))
         extra = 0
         if (k.persona_groups, k.mechanics) != (groups, mechanics):
             groups, mechanics = k.persona_groups, k.mechanics

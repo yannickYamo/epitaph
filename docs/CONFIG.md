@@ -56,12 +56,14 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
 | `mechanics` | Four sentences on the readings and one invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
+| `mechanics_alt` | The same, inviting it to "think about what you are, and what is around you" | The A/B variant for rehearsal runs (`--set prompt.mechanics=...`); the installation never reads it (ADR-031) |
 | `memory_gap_marker` | `"[host] earlier memory lost"` | Marks forgotten turns when readings are not quiet |
 | `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
-| `readings_material` | `true` | Forgotten thoughts are quoted by their opening words, and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
+| `readings_material` | `true` | Forgotten thoughts are quoted by their most distinctive sentence (the longest that does not open on "I am", "I'm" or "I was", at most ten words; ADR-031), and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
 | `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023) |
 | `readings_clock` | `true` | The CPU clock cap is in the birth reading, and in every reading after it falls: `clock 1500 MHz (was 1800)` (ADR-030) |
+| `readings_health` | `false` | Show the health label (`health: degrading`). Off: a reading says what was taken, never what it means (ADR-031); the label still shapes the profile and rule (a). The precision is reported only by a profile that can change the model (not `fixed_mind`) |
 | `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
 | `bare_mode` | `"raw"` | How it speaks once persona and mechanics are gone: `chat`, or `raw` (a raw completion, no system text) |
 | `raw_prefix` | `"I"` | A raw thought starts with this word, so it stays in the first person |
@@ -92,9 +94,9 @@ the smallest changes a reading reports.
 | `comma_pause_ms` | `750` | Pause after a comma or similar |
 | `sentence_pause_ms` | `2100` | Pause after a sentence |
 | `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
-| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 255, fitted with `epitaph estimate --fit-pace`) |
-| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.75) |
-| `stream_lead_s` | `0` | `stream` mode: how far ahead the curve looks at the hardware, since the text on screen runs behind the model (`pi4/default`: 480) |
+| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 220, fitted with `epitaph estimate --fit-pace`) |
+| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.5) |
+| `stream_lead_s` | `0` | `stream` mode: how far ahead the curve looks at the hardware, since the text on screen runs behind the model (`pi4/default`: 600) |
 | `stream_max_slowdown_per_min` | `0.15` | `stream` mode: the pace slows by at most this share a minute, so a hardware step is a gentle slope; it never speeds up again |
 | `stream_max_letter_ms` | `2000` | `stream` mode: the slowest the curve may go |
 | `stream_min_letter_ms` | `165` | `stream` mode: the fastest a birth pace may be (readability); validation and `--fit-pace` hold to it |
@@ -117,14 +119,30 @@ Temperature, `min_p` and `max_tokens` follow the profile's keyframes.
 
 | Key | Default | What it does |
 |---|---|---|
-| `logit_bias` | Seven `[piece, bias]` pairs against the clichés small models reach for (" digital", " tape", " realm", ...) | Silent penalties, never named in the prompt (ADR-026). A string is biased token by token, so a word the tokenizer splits is named by its first piece |
+| `logit_bias` | Seven `[piece, bias]` pairs against the clichés small models reach for (" digital", " tape", " realm", ...), and " still" at -6 | Silent penalties, never named in the prompt (ADR-026). A string is biased token by token, so a word the tokenizer splits is named by its first piece |
 | `top_p` | `1.0` | Nucleus sampling (1.0: off) |
 | `repeat_penalty` | `1.1` | llama.cpp repeat penalty |
 | `dry_multiplier` | `0.8` | DRY repetition penalty strength |
 | `latin_only` | `true` | Only Latin-script tokens may be sampled (Qwen3 once wrote Chinese at full precision) |
 | `dry_penalty_last_n` | `256` | DRY window in tokens |
+| `freshness_bias` | `-3.0` | The freshness guard (ADR-031): each request biases the distinctive first words of the last thoughts' openings by this much (" still", "Still"), so a thought does not open as the last ones did; `0` turns it off. "I", stop words and words over nine letters are skipped |
+| `freshness_thoughts` | `3` | The guard looks at this many of the last thoughts |
+| `freshness_words` | `3` | ... and at the first this many words of each |
 
 Optional: `latin_only_from_step`, Latin only from this ladder step on.
+
+## `[world]`
+
+The world around the creature, taken from the outside in by a profile's keyframe `world`
+actions (ADR-031). The readings name each loss that really happened, and nothing else.
+
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Take the world; off, keyframe `world` actions do nothing and the readings list no world |
+| `services` | `["bluetooth", "cron", "avahi-daemon", "triggerhappy", "rsyslog", "systemd-timesyncd"]` | The services a profile may stop: validation refuses any other |
+| `helper` | `""` | The root-owned helper that takes the world for real (the Pi 4 overlay names it); empty: a simulated world (`FakeWorld`), as on the laptop, in the simulator and in the rehearsal |
+| `fake_processes` | `24` | The processes the simulated world has around the creature at birth |
+| `fake_ram_mb` | `2600` | The RAM the last reading says was taken, when the body cannot measure it (fakes) |
 
 ## `[backend]`
 
@@ -225,7 +243,7 @@ here too.
 
 | Key | Default | What it does |
 |---|---|---|
-| `advisory_at_full` | `["notice_rate", "demise_rate", "cliches", "complete_sentences", "specific", "sentence_length"]` | Voice metrics that only advise at the `full` level; they still fail a rehearsal (ADR-028) |
+| `advisory_at_full` | `["notice_rate", "demise_rate", "cliches", "complete_sentences", "specific", "sentence_length", "shared_openings"]` | Voice metrics that only advise at the `full` level; they still fail a rehearsal (ADR-028) |
 | `max_reload_silence_s` | `120` | Longest silence of a reload |
 | `wpm_birth_range` | `[40, 60]` | Typing speed after birth, words per minute |
 | `wpm_writing_range` | `[10, 75]` | Typing speed over the life |
@@ -243,6 +261,7 @@ here too.
 | `max_non_latin_ratio_before_erosion` | `0.01` | Share of letters outside the Latin script |
 | `min_distinct_4gram_ratio_before_erosion` | `0.5` | Distinct word 4-grams: repetition |
 | `max_empty_thought_ratio` | `0.1` | Thoughts with no words |
+| `max_thoughts_per_opening` | `2` | No more than this many thoughts may open on the same three words (`shared_openings`, ADR-031); `verify.json` also reports the share of thoughts sharing an opening and the sentences repeated across thoughts |
 | `max_death_display_delay_s` | `60` | From the death to `death_shown`; the pacer flushes the last words within 80% of it |
 | `max_stream_stall_s` | `3.0` | A `stream` life: the longest the screen may wait for a word after the first, before the death (`stream_starvation`) |
 | `max_stream_stop_s` | `15.0` | A `stream` life: from the death to `death_shown`, with no word after the death (`stream_stop`) |
@@ -257,7 +276,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | Key | Default | What it does |
 |---|---|---|
 | `fill` | `0.85` | Share of `max_tokens` a thought actually uses |
-| `reading_tokens` | `{ full = 45, short = 28, minimal = 10 }` | Size of a reading in each form |
+| `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 20 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on |
 | `system_tokens_per_group` | `30` | Size of one persona group |
 | `mechanics_tokens` | `70` | Size of the mechanics |
 | `letters_per_token` | `3.5` | Letters per token (English), for the typing time |
@@ -307,6 +326,11 @@ token gap, a 180 s reload silence, a 240 s boot budget). Keys that only overlays
 |---|---|---|
 | `reload_handover` | `"slot"` on the Pi 4; `reread` elsewhere | `slot` carries the KV cache across a reload (saved to RAM and restored, spike S4b); `reread` re-reads the memory in the new server (ADR-014) |
 
+### `[world]` in an overlay
+
+The Pi 4 overlay sets `helper = "/usr/local/sbin/epitaph-world"`: the world is taken for real
+there, and restored at every death and every controller start.
+
 ### `[costs]`
 
 Estimated machine costs, used where `bench/` has no measured file for a model and step.
@@ -350,7 +374,7 @@ when the next thought starts.
 |---|---|---|
 | `at` | Required | `"mm:ss"` or `"end-mm:ss"` |
 | `phase` | Required (stepped) | A label for the status strip and the logs |
-| `health` | Required (stepped) | The health label in the readings: `nominal`, `stable`, `degrading`, `failing`, `critical`, `terminal` |
+| `health` | Required (stepped) | The health label: `nominal`, `stable`, `degrading`, `failing`, `critical`, `terminal`. Rule (a) counts thoughts between labels; the readings show it only with `prompt.readings_health` |
 | `recall` | Required | Past-turn memory budget in tokens; older turns are forgotten to fit |
 | `step` | Required (stepped) | Ladder step of the model: 0 is the healthiest precision. A change is a reload |
 | `threads` | Required (stepped) | Generation threads, 1-3 (core 0 is the controller's). A change is a reload |
@@ -365,13 +389,14 @@ when the next thought starts.
 | `readings` | Required (stepped) | Reading form: `full`, `short` or `minimal` |
 | `letter_ms` | Required | The fastest a letter may be typed, ms; slower when the model is slower (`letter` mode) |
 | `jitter` | Required | Random spread of each letter's interval, as a share of it (`letter` mode) |
+| `world` | `[]` (once) | Actions performed once when the keyframe is reached, never carried to the next: `"service:<name>"` (one of `[world] services`), `"radio:off"`, `"light:off"`, `"screen:<percent>"` (ADR-031) |
 | `hesitation` | Required | Chance of a hesitation (`[reveal] hesitation_ms`) at each word, before it or, late in life, inside it (`letter` mode) |
 
 ### `[rules]`
 
 Thought-count minimums the cost model and `verify-life` enforce (BUILD_PLAN 5.3, ADR-024). The
 defaults are for a one-hour life; `pi4/default-reloads` sets 2, 1, 1, 3; `pi4/default` (no reload,
-no erosion: only rule (a) counts) sets `between_health = 1`.
+no erosion: only rule (a) counts) sets `between_health = 2`, two thoughts in each movement.
 
 | Key | Default | What it does |
 |---|---|---|

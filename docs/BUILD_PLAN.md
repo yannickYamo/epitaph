@@ -745,7 +745,9 @@ JSON lines on `127.0.0.1:7707`. Every message carries `v`, `ts`, `life`, `type`.
 | `snapshot` | model, phase, t, words `[{turn, i, text, state}]`, vitals, memory gauge | On subscribe or after an overflow |
 | `birth_loading` | life, model, step, quant, facts | Load starts |
 | `birth` | model, step, quant, threads, epitaph_in (V1.5) | Loaded; life clock starts |
-| `vitals` | t, phase, health, recall, recall_used, forgotten_since_last, step, quant, threads, cpu_share, cores_effective, tok_s, cpu_c, ram_limit_mb | Before each thought |
+| `vitals` | t, phase, health, recall, recall_used, forgotten_since_last, step, quant, threads, cpu_share, cores_effective, tok_s, cpu_c, ram_limit_mb, reading, marker, health_shown | Before each thought |
+| `reading` | turn, text (the reading without its `[host]` tag); `final` on the last one | In stream order, right before the first word of the thought written after it (ADR-031); the final one (`ram <MB> MB taken`) at once, before the death |
+| `world` | action, performed, detail, state `{services, processes, radio, light, screen}` | A keyframe's world action, at its moment (ADR-031); only performed ones reach a reading |
 | `gen_start` / `gen_end` | turn / prompt_n, tokens, tok_s | Backend request |
 | `thought_start` | turn | |
 | `word` | turn, i, text, char_ms, pause_after_ms | Each released word |

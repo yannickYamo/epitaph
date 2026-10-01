@@ -38,13 +38,14 @@ belongs to, and readings around an empty thought, share one user message.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from epitaph.types import Msg
 
-__all__ = ["Forgetting", "Memory", "approx_tokens"]
+__all__ = ["Forgetting", "Memory", "approx_tokens", "distinctive_quote"]
 
 TokenCounter = Callable[[str], int]
 
@@ -207,7 +208,7 @@ class Memory:
             ):
                 self.turns.pop(0)
                 if oldest.words:  # an empty thought had nothing on screen to forget
-                    self._note(res, oldest, oldest.words[: self.quote_words])
+                    self._note(res, oldest, oldest.words)
                     res.items.append({"turn": oldest.turn, "all": True})
                 continue
             # Only a turn with words gets here: an empty one is all reading, so it went whole.
@@ -238,7 +239,7 @@ class Memory:
             t.reading, t.reading_tokens = None, 0
             if self.used() <= target:
                 return
-        opening = t.words[: self.quote_words]  # what is lost first, quoted before it goes
+        whole = list(t.words)  # quoted before anything of it goes
         full_text = " ".join(t.words)
         full_tokens = t.thought_tokens
         full_est = self.count(full_text) or 1
@@ -249,7 +250,7 @@ class Memory:
             text = " ".join(t.words)
             t.thought_tokens = round(full_tokens * self.count(text) / full_est) if text else 0
         if dropped:
-            self._note(res, t, opening)
+            self._note(res, t, whole)
             if t.words:
                 res.items.append({"turn": t.turn, "upto_i": t.first_i + dropped - 1})
                 t.first_i += dropped
@@ -257,20 +258,23 @@ class Memory:
                 self.turns.remove(t)
                 res.items.append({"turn": t.turn, "all": True})
 
-    def _note(self, res: Forgetting, t: _Turn, opening: list[str]) -> None:
-        """Count a thought's first loss, and keep its opening words for a material reading."""
+    def _note(self, res: Forgetting, t: _Turn, words: list[str]) -> None:
+        """Count a thought's first loss, and keep its most distinctive sentence for a material
+        reading."""
         if not t.touched:
             t.touched = True
             res.thoughts += 1
             self._forgotten += 1
             self.forgotten_total += 1
-            if opening:
-                self._forgotten_quotes.append(" ".join(opening))
+            quote = distinctive_quote(words, self.quote_words)
+            if quote:
+                self._forgotten_quotes.append(quote)
 
-    quote_words = 8  # opening words of a forgotten thought quoted in a material reading
+    quote_words = 10  # the longest a quoted sentence of a forgotten thought may be
 
     def take_forgotten_quotes(self) -> tuple[str, ...]:
-        """Opening words of each thought forgotten since the last call (material readings)."""
+        """The quoted sentence of each thought forgotten since the last call (material
+        readings)."""
         q, self._forgotten_quotes = tuple(self._forgotten_quotes), []
         return q
 
@@ -313,6 +317,36 @@ class Memory:
         if self._pending is not None and self._pending.reading is not None:
             raw.append(Msg("user", self._pending.reading, self._pending.turn, "reading"))
         return merge_consecutive(raw)
+
+
+# How most of its sentences open; a quote prefers a sentence that does not.
+_FORMULA_OPENINGS = ("i am", "i'm", "i’m", "im", "i was")
+_SENT_RE = re.compile(r"(?<=[.!?…])\s+")
+
+
+def distinctive_quote(words: Sequence[str], max_words: int = 10) -> str:
+    """The most distinctive sentence of a thought, for the reading that says it was forgotten.
+
+    The longest sentence that does not open on "I am", "I'm" or "I was" (the longest of all
+    when every one does), trimmed to `max_words` words with an ellipsis. "" for no words.
+    """
+    text = " ".join(w for w in words if w.strip())
+    sentences = [x.split() for x in _SENT_RE.split(text) if x.strip()]
+    if not sentences:
+        return ""
+
+    def formula(ws: list[str]) -> bool:
+        head = " ".join(ws[:2]).lower()
+        return any(head == f or head.startswith(f + " ") for f in _FORMULA_OPENINGS) or (
+            ws[0].lower() in ("i'm", "i’m")
+        )
+
+    fresh = [ws for ws in sentences if not formula(ws)]
+    pool = fresh or sentences
+    best = max(pool, key=len)  # max keeps the first of equals: the earliest
+    if len(best) <= max_words:
+        return " ".join(best)
+    return " ".join(best[:max_words]).rstrip(",;:—-") + "…"
 
 
 def _target(recall: int, trim_to: float) -> int:

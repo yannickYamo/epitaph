@@ -190,10 +190,12 @@ def _ram_gb() -> float:
 
 @dataclass(frozen=True)
 class Keyframe:
-    """One row of a profile: its time and the knob values set at that time."""
+    """One row of a profile: its time, the knob values set at that time, and the world
+    actions performed once when it is reached (ADR-031; never carried to the next row)."""
 
     at: TimeSpec
     values: dict[str, Any]
+    world: tuple[str, ...] = ()
 
 
 @dataclass
@@ -283,18 +285,35 @@ def load_profile(name: str, hw_class: str, _seen: tuple[str, ...] = ()) -> Profi
     for i, row in enumerate(raw["keyframe"]):
         if "at" not in row:
             raise ConfigError(f"{path}: keyframe {i} has no 'at'")
-        unknown = set(row) - {"at", *KNOB_FIELDS}
+        unknown = set(row) - {"at", "world", *KNOB_FIELDS}
         if unknown:
             raise ConfigError(f"{path}: keyframe {i} has unknown fields {sorted(unknown)}")
-        current = {**current, **{k: v for k, v in row.items() if k != "at"}}
+        world = _world_actions(path, i, row.get("world", []))
+        current = {**current, **{k: v for k, v in row.items() if k not in ("at", "world")}}
         if i == 0:
             for name, default in OPTIONAL_DEFAULTS.items():
                 current.setdefault(name, default)
             missing = [f for f in KNOB_FIELDS if f not in current]
             if missing:
                 raise ConfigError(f"{path}: the first keyframe must set {missing}")
-        frames.append(Keyframe(parse_time(str(row["at"])), dict(current)))
+        frames.append(Keyframe(parse_time(str(row["at"])), dict(current), world))
     return Profile(label, nominal, nominal, frames, death, _profile_settings(raw))
+
+
+def _world_actions(path: Path, i: int, raw: object) -> tuple[str, ...]:
+    """A keyframe's `world` list (ADR-031), each action checked for its form."""
+    from epitaph.body.world import parse_action
+
+    if not isinstance(raw, list):
+        raise ConfigError(f"{path}: keyframe {i}: 'world' must be a list of actions")
+    out: list[str] = []
+    for item in cast("list[object]", raw):
+        try:
+            parse_action(str(item))
+        except ValueError as e:
+            raise ConfigError(f"{path}: keyframe {i}: {e}") from e
+        out.append(str(item).strip())
+    return tuple(out)
 
 
 def _profile_settings(raw: dict[str, Any]) -> dict[str, Any]:
@@ -426,9 +445,15 @@ def system_tokens(cfg: Config, groups: int, mechanics: bool) -> int:
     )
 
 
-def reading_tokens(cfg: Config, form: str) -> int:
-    """Estimated size in tokens of a sensor reading in the given form (full, short, minimal)."""
+def reading_tokens(cfg: Config, form: str, after_birth: bool = False) -> int:
+    """Estimated size in tokens of a sensor reading in the given form (full, short, minimal).
+
+    After birth, quiet readings (`prompt.readings_quiet`) say only what changed: the `quiet`
+    entry, when the table has one, stands for every form but minimal."""
     table = cfg.get("estimate.reading_tokens", {}) or {}
+    quiet = after_birth and bool(cfg.get("prompt.readings_quiet", False)) and form != "minimal"
+    if quiet and "quiet" in table:
+        return int(table["quiet"])
     return int(table.get(form, 45))
 
 
@@ -501,6 +526,15 @@ def validate_config(cfg: Config) -> None:
     if network not in CREATURE_NETWORK:
         # Anything but "blocked" used to leave the network open: a typo must not (ADR-005).
         problems.append(f"body.creature_network must be one of {CREATURE_NETWORK}, not {network!r}")
+    services = {str(x) for x in cfg.get("world.services", []) or []}
+    for kf in p.keyframes:
+        for action in kf.world:
+            kind, _, name = action.partition(":")
+            if kind == "service" and name not in services:
+                problems.append(
+                    f"keyframe {_fmt(kf.at)}: world stops {name!r}, which is not in "
+                    "[world] services (the allowed list)"
+                )
     if cfg.get("prompt.readings_material", False) and not cfg.get("prompt.readings_quiet", False):
         problems.append("prompt.readings_material needs prompt.readings_quiet (quotes ride on it)")
 

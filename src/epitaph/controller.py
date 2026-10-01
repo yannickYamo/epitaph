@@ -48,6 +48,7 @@ from typing import Any, Protocol, TypeVar
 from epitaph.afterlife.keeper import make_keeper
 from epitaph.backend.base import Backend, BackendError, ContextFull, CreatureDied
 from epitaph.body.base import Body
+from epitaph.body.world import TakeResult, World
 from epitaph.clock import LifeClock, Schedule, VirtualClock
 from epitaph.config import Config
 from epitaph.costmodel import Costs
@@ -63,7 +64,7 @@ from epitaph.mind.prompt import (
     render_diary,
     speaks_raw,
 )
-from epitaph.mind.sampling import sampling_for
+from epitaph.mind.sampling import freshness_bias, sampling_for
 from epitaph.mind.sanitize import sanitize_text
 from epitaph.pacing import (
     Pacer,
@@ -126,6 +127,10 @@ EXHIBIT_POLL_S = 60.0
 # While the screen is dark, the closed state is published again this often, so a display
 # that (re)connects goes dark within it (a snapshot does not carry the exhibit state).
 EXHIBIT_REPEAT_S = 60.0
+# The RAM reading (ADR-031) is written this long before the death squeeze, so it is on screen
+# before the kill whatever order the timers fire in.
+RAM_LEAD_S = 0.5
+RECENT_THOUGHTS = 8  # thoughts kept for the freshness guard (it looks at the last few)
 
 
 # ---------------------------------------------------------------------------------------
@@ -269,13 +274,17 @@ class Life:
         slots: SlotStore | None = None,
         cause_of: Callable[[CreatureStatus], str] | None = None,
         ts: Callable[[], float] | None = None,
+        world: World | None = None,
+        offload: Offload | None = None,
     ) -> None:
         """One life `life` of `cfg`'s profile, on `clock`, talking to `backend`.
 
         `counter` counts tokens for the memory; `tg_rate` gives the bench generation rate
         that seeds the cadence; `slots` keeps the carried memory around the echo (None:
         the echo runs without a save); `cause_of` names the cause of a backend death (the
-        default reads the life clock); `ts` stamps events (default: wall time).
+        default reads the life clock); `ts` stamps events (default: wall time). `world` is
+        what the profile's `world` actions take (ADR-031; None: nothing around it), its
+        blocking calls run through `offload` (default: inline).
         """
         self.cfg = cfg
         self.clock = clock
@@ -322,6 +331,16 @@ class Life:
         self.knobs: Knobs | None = None  # the knobs last applied to the body
         self.compute = 3.0  # cores' worth of compute now (for the hang limits)
         self.on_dead: Callable[[str], None] | None = None
+        # The world (ADR-031): the losses performed since the last reading, the task that
+        # takes them on time, and whether the RAM reading was written.
+        self.world = world
+        self.offload: Offload = offload or run_inline
+        self._losses: list[TakeResult] = []
+        self._world_task: asyncio.Task[None] | None = None
+        self.ram_said = False
+        self.ram_mb: int | None = None  # the creature's memory at the last reading
+        # The words of the last thoughts written, for the freshness guard.
+        self.recent: deque[list[str]] = deque(maxlen=RECENT_THOUGHTS)
 
     # -- events ----------------------------------------------------------------------------
 
@@ -350,9 +369,14 @@ class Life:
         """Emit `death` with `cause` now, once. Returns False when it was already dead."""
         if self.dead is not None:
             return False
+        if cause == Cause.OOM.value and self.born:
+            self.ram_taken()  # the last reading, if the squeeze did not write it already
         self.dead = cause
         self.death_t = self.lived()
         self.state = "dead"
+        task, self._world_task = self._world_task, None
+        if task is not None:
+            task.cancel()
         if self.screen is not None:
             self.screen.stop()  # the stream stops where it is (ADR-030)
         else:
@@ -453,6 +477,85 @@ class Life:
             "max_stall_s": round(st.max_stall_s, 2),
         }
 
+    # -- the world (ADR-031) ---------------------------------------------------------------
+
+    def start_world(self) -> None:
+        """Start taking the world on the profile's schedule; called at birth."""
+        if self._world_task is not None or self.dead is not None:
+            return
+        if self.world is None and self.oom_at is None:
+            return
+        self._world_task = asyncio.ensure_future(self._world_loop())
+        self._world_task.add_done_callback(self._world_done)
+
+    def _world_done(self, task: asyncio.Task[None]) -> None:
+        if not task.cancelled() and task.exception() is not None:
+            log.error("life %d: taking the world failed: %r", self.n, task.exception())
+
+    async def _world_loop(self) -> None:
+        """Each keyframe's world actions at its moment, then the RAM reading just before the
+        death squeeze."""
+        for at, actions in self.sch.world_times():
+            await self.clock.sleep(at - self.lived())
+            if self.dead is not None:
+                return
+            for action in actions:
+                await self.take(action)
+        if self.oom_at is not None:
+            await self.clock.sleep(self.oom_at - RAM_LEAD_S - self.lived())
+            if self.dead is None:
+                self.ram_taken()
+
+    async def take(self, action: str) -> TakeResult | None:
+        """Perform one world action now; a performed loss waits for the next reading.
+
+        The truth rule: an action the world could not perform is logged and emitted with
+        `performed` false, and never reaches a reading."""
+        world = self.world
+        if world is None:
+            return None
+        try:
+            res: TakeResult = await self.offload(lambda: world.take(action))
+            state = await self.offload(world.inventory)
+        except Exception as e:  # the world is scenery: its failure never ends the life
+            log.error("life %d: world action %s failed: %r", self.n, action, e)
+            res, state = TakeResult(action, False, repr(e)), None
+        if self.dead is not None:
+            return res
+        if res.performed:
+            self._losses.append(res)
+        else:
+            log.warning("life %d: world action %s not performed: %s", self.n, action, res.detail)
+        self.emit(
+            "world",
+            action=action,
+            performed=res.performed,
+            detail=res.detail,
+            state=asdict(state) if state is not None else None,
+        )
+        return res
+
+    def ram_taken(self) -> None:
+        """The last reading: the RAM taken at the death squeeze (ADR-031). Emitted at once,
+        not in the stream, so the screen can show it even though it is never answered."""
+        if self.ram_said or self.dead is not None:
+            return
+        self.ram_said = True
+        mb = self.body.vitals().mem_used_mb or self.ram_mb  # after a kill it reads 0
+        if not mb:
+            mb = int(self.cfg.get("world.fake_ram_mb", 2600))  # a fake body knows none
+        text = self.reader.ram_taken(int(mb))
+        self.emit("reading", turn=self.turn + 1, text=self.reader.strip(text), final=True)
+
+    def _reading_event(self, reading: str) -> None:
+        """The reading for the screen (ADR-031), without its `[host]` tag: in the stream, at
+        the point where the thought written after it begins."""
+        text = self.reader.strip(reading)
+        if self.screen is not None:
+            self.screen.put_event("reading", turn=self.turn, text=text)
+        else:
+            self.emit("reading", turn=self.turn, text=text)
+
     # -- hooks for the rehearsal -----------------------------------------------------------
 
     async def _load(self, quant: str, threads: int) -> None:
@@ -507,6 +610,7 @@ class Life:
         self.state = "living"
         self.emit("birth", model=self.model.name, step=k.step, quant=quant, threads=k.threads)
         self.start_stream()
+        self.start_world()
         self.persona.update(k.persona_groups, k.mechanics)
         self.attach_memory()
         self.cur = (k.step, k.threads)
@@ -634,6 +738,9 @@ class Life:
         forgotten = self.memory.take_forgotten()
         quotes = self.memory.take_forgotten_quotes()
         echo, self.echo = self.echo, None
+        losses, self._losses = tuple(self._losses), []
+        self.ram_mb = vit.mem_used_mb or self.ram_mb
+        world = self.world.inventory() if self.world is not None else None
         reading = self.reader.reading(
             ReadingInput(
                 t=t,
@@ -650,6 +757,8 @@ class Life:
                 forgotten_quotes=quotes,
                 echo=echo,
                 cpu_mhz=k.cpu_mhz,
+                world=world,
+                losses=losses,
             )
         )
         self.reloaded = False
@@ -674,7 +783,9 @@ class Life:
             ram_limit_mb=vit.ram_limit_mb,
             reading=reading,
             marker=self.memory.gap,
+            health_shown=self.reader.health,
         )
+        self._reading_event(reading)
         return k, reading
 
     def check_network(self) -> None:
@@ -709,8 +820,13 @@ class Life:
             await self.clock.sleep(wait)
 
     def _sampling(self, k: Knobs) -> Sampling:
+        section = self.cfg.section("sampling")
         return sampling_for(
-            self.cfg.section("sampling"), k, self.cur[0], seed=self.seed * 1000 + self.turn
+            section,
+            k,
+            self.cur[0],
+            seed=self.seed * 1000 + self.turn,
+            extra_bias=freshness_bias(section, list(self.recent)),
         )
 
     async def thought(self, t: float) -> Spoken:
@@ -737,6 +853,8 @@ class Life:
         if self.screen is not None:
             spoken = await write_ahead(self.pacer, stream, self.turn, self.emit, self.on_death)
             self.memory.append_thought([w.text for w in spoken.words])
+            if spoken.words:
+                self.recent.append([w.text for w in spoken.words])
         else:
             spoken = await speak(
                 self.pacer,
@@ -750,6 +868,8 @@ class Life:
                 death_flush_s=0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)),
             )
             self.memory.append_thought([w.text for w in spoken.words])
+            if spoken.words:
+                self.recent.append([w.text for w in spoken.words])
             self.emit("thought_end", turn=self.turn, text=spoken.text)
         rate = self.backend.status().tok_s
         self.last_tok_s = rate if rate else self.last_tok_s
@@ -1120,6 +1240,7 @@ class Controller:
         counter: Callable[[str], int] = approx_tokens,
         offload: Offload | None = None,
         exhibit: Exhibit | None = None,
+        world: World | None = None,
     ) -> None:
         """Run `cfg`'s profile.
 
@@ -1132,7 +1253,9 @@ class Controller:
         event loop: a worker thread by default, `run_inline` on the virtual clock.
         `exhibit` gives the exhibition hours (default: `[exhibit]` of `cfg` on the system
         clock, or on `ts` when given, which is then simulated time and counts as synced).
-        Raises ConfigError for bad `[exhibit]` settings.
+        `world` is what the profiles' `world` actions take (ADR-031): restored as at birth
+        when the controller starts and after every death. Raises ConfigError for bad
+        `[exhibit]` settings.
         """
         self.cfg = cfg
         self.clock = clock
@@ -1153,6 +1276,7 @@ class Controller:
         self.limits = HangLimits.from_config(cfg)
         self.slot_timeout_s = float(cfg.get("backend.slot_timeout_s", SLOT_TIMEOUT_S))
         self.offload: Offload = offload or asyncio.to_thread
+        self.world = world
         self.life_counter = LifeCounter(state_dir) if state_dir is not None else None
         self._mem_count = 0
         # the last lives only (status and tests read them); `lives_run` counts them all, so a
@@ -1559,8 +1683,14 @@ class Controller:
         self._show(True)
 
     def squeeze(self, life: Life) -> None:
-        """Take the creature's RAM at `end-0:30` (the death squeeze), whatever it is doing."""
+        """Take the creature's RAM at `end-0:30` (the death squeeze), whatever it is doing.
+
+        The last reading says so first (ADR-031), with the memory it holds before the cut."""
         self.squeezed = True
+        try:
+            life.ram_taken()
+        except Exception:  # a reading must never hold the death back
+            log.exception("life %d: the RAM reading failed", life.n)
         k = life.knobs or life.sch.at(life.lived())
         self.body.apply(replace(k, death_squeeze=True))
 
@@ -1657,7 +1787,18 @@ class Controller:
         self.records.append(rec)
         self.lives_run += 1
         await self._reset_body(n)
+        await self.restore_world(n)
         return rec
+
+    async def restore_world(self, n: int) -> None:
+        """Everything taken from the world back as at birth (ADR-031); never raises."""
+        world = self.world
+        if world is None:
+            return
+        try:
+            await self.offload(world.restore)
+        except Exception:
+            log.exception("life %d: restoring the world failed", n)
 
     def _setup(self, n: int, cfg: Config, model_name: str | None) -> tuple[_Current, ModelSpec]:
         """Everything of life n before its birth: model, costs, creature, life, transcript."""
@@ -1692,6 +1833,8 @@ class Controller:
             slots=GuardedSlots(slots, guard, self.slot_timeout_s) if slots is not None else None,
             cause_of=self._cause_of,
             ts=self.ts,
+            world=self.world,
+            offload=self.offload,
         )
         holder.append(life)
         life.on_dead = self._on_dead
@@ -1728,6 +1871,7 @@ class Controller:
                 log.error("life %d: could not write the death record: %s", n, e)
         self._set_state("dead")
         await self._reset_body(n)
+        await self.restore_world(n)
         return rec
 
     async def _reset_body(self, n: int) -> None:
@@ -1786,6 +1930,7 @@ class Controller:
         try:
             self._set_state("recover")
             await self.offload(self.recover)
+            await self.restore_world(0)  # whatever a crashed controller left taken
             if self.notify is not None:
                 self.notify("READY=1")
             born = 0
@@ -1843,6 +1988,7 @@ def make_controller(
 
     from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
     from epitaph.body.cgroup import make_body
+    from epitaph.body.world import make_world
     from epitaph.costmodel import load_costs
 
     body = make_body(cfg)
@@ -1864,4 +2010,5 @@ def make_controller(
         notify=notify,
         watchdog_s=watchdog_s,
         reconfigure=reconfigure,
+        world=make_world(cfg.section("world")),
     )

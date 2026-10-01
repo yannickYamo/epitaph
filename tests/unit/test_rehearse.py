@@ -379,7 +379,7 @@ def test_screen_stage_on_the_fake(tmp_path: Path) -> None:
     assert reload1["seeded_turns"] > 5
     first = reload1["thoughts"][0]["reading"]
     assert "(was 8-bit)" in first and "forgotten" in first  # the reload's news, all at once
-    assert results[2]["thoughts"][0]["reading"].count("·") == 2  # the minimal form at the end
+    assert results[2]["thoughts"][0]["reading"].count("·") == 1  # the minimal form at the end
     md = (folder / "screen.md").read_text()
     assert "| qwen3-1.7b | persona |" in md
 

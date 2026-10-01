@@ -320,11 +320,17 @@ def test_pi4_default_keeps_one_model_and_only_the_hardware_shrinks() -> None:
     for f in ("step", "threads", "temperature", "min_p", "max_tokens", "persona_groups"):
         assert len({getattr(k, f) for k in ks}) == 1, f
     assert all(k.mechanics for k in ks)
-    assert sch.at(0).recall == 900 and sch.at(299).recall == 900 and sch.at(300).recall == 260
+    # the first forgetting comes in movement II (ADR-031)
+    assert sch.at(0).recall == 900 and sch.at(554).recall == 900 and sch.at(555).recall == 300
     recalls = [k.recall for k in ks]
     computes = [k.compute for k in ks]
     assert recalls == sorted(recalls, reverse=True)
     assert computes == sorted(computes, reverse=True) and computes[-1] < 0.4 * computes[0]
+    # the world is taken from the outside in: services, then radio, light and screen
+    taken = [a for _, actions in sch.world_times() for a in actions]
+    assert taken[0].startswith("service:") and "radio:off" in taken and "light:off" in taken
+    assert taken.index("radio:off") < taken.index("screen:70") < taken.index("screen:25")
+    assert all(t >= 7 * 60 for t, _ in sch.world_times())  # movement I takes nothing
     labels = [k.health.value for k in ks]
     assert labels[0] == "nominal" and labels[-1] == "terminal"
     assert sch.death_s == sch.lifespan_s - 30
@@ -333,8 +339,8 @@ def test_pi4_default_keeps_one_model_and_only_the_hardware_shrinks() -> None:
 def test_stepped_knobs_are_set_at_their_keyframe_not_eased() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     sch = Schedule(cfg.profile)
-    assert sch.at(150).recall == 900  # eased, it would be halfway to 260
-    assert sch.at(599).cpu_share == 3.0 and sch.at(600).cpu_share == 2.6
+    assert sch.at(300).recall == 900  # eased, it would be halfway to 300
+    assert sch.at(1199).cpu_share == 3.0 and sch.at(1200).cpu_share == 2.4
     reloads = Schedule(load_config("pi4/default-reloads", "pi4-4gb").profile)
     assert reloads.at(600).temperature != reloads.at(420).temperature  # others still ease
 
@@ -585,10 +591,10 @@ def test_the_curve_is_constant_without_gamma_and_never_falls_with_it() -> None:
     assert values[0] == 250 and values == sorted(values)
     for t in range(0, 1740, 1):  # never more than 15% slower within a minute
         assert values[t + 60] <= values[t] * 1.15 + 1e-6
-    # it follows the hardware: compute at the end is 1.5 x 1000/1800 of 3.0 at birth
-    end = 250 * (3.0 / (1.5 * 1000 / 1800)) ** 1.0
-    assert values[-1] == pytest.approx(end, rel=1e-6)
-    assert values[599] == 250  # nothing slows before the first hardware step at 10:00
+    # it follows the hardware: compute at the end is 1.2 x 800/1800 of 3.0 at birth
+    end = 250 * (3.0 / (1.2 * 800 / 1800)) ** 1.0
+    assert 4 * 250 < values[-1] <= end + 1e-6  # toward it, at most 15% a minute
+    assert values[1019] == 250  # nothing slows before the first hardware step at 17:00
 
 
 def test_a_lead_starts_the_slope_before_the_step() -> None:
@@ -597,8 +603,8 @@ def test_a_lead_starts_the_slope_before_the_step() -> None:
     sch = Schedule(load_config("pi4/default", "pi4-4gb").profile)
     now = StreamCurve.build(sch, 250, gamma=0.75)
     early = StreamCurve.build(sch, 250, gamma=0.75, lead_s=300)
-    assert now.at(400) == 250 and early.at(400) > 250
-    assert early.at(1700) == pytest.approx(now.at(1700))
+    assert now.at(800) == 250 and early.at(800) > 250
+    assert early.at(1700) >= now.at(1700)
     assert early.scale(1700) == pytest.approx(early.at(1700) / 250)
 
 
@@ -635,7 +641,7 @@ def test_the_fit_finds_the_profile_curve_at_least_half_again_as_fast_at_birth() 
     from epitaph.costmodel import fit_stream_curve
 
     cfg = load_config("pi4/default", "pi4-4gb")
-    fit = fit_stream_curve(cfg, load_costs(cfg), gammas=(0.0, 0.75), leads_s=(0.0, 480.0))
+    fit = fit_stream_curve(cfg, load_costs(cfg), gammas=(0.0, 0.5), leads_s=(0.0, 600.0))
     assert fit is not None
     rev = cfg.section("reveal")
     assert (fit.letter_ms, fit.gamma, fit.lead_s) == (
