@@ -646,3 +646,16 @@ def test_clock_steps_land_on_time_even_mid_thought() -> None:
     for t, mhz in steps:
         first = next(at for at, m in applied if m == mhz)
         assert t - 1e-6 <= first <= t + 5.0, (mhz, t, first)
+
+
+def test_a_hot_cpu_pauses_before_the_next_thought() -> None:
+    """C9: above thermal_limit_c the next request waits; the life goes on afterwards."""
+    answers = iter([15.0, 15.0])
+
+    async def setup(ctl: Controller, clock: VirtualClock) -> None:
+        ctl.body.thermal_pause_s = lambda: next(answers, 0.0)  # type: ignore[attr-defined]
+
+    _, ev = run(cfg_of(), setup=setup)
+    pauses = of(ev, "thermal")
+    assert [e["pause_s"] for e in pauses] == [15.0, 15.0]
+    assert of(ev, "thought_end") and death(ev)["cause"] == "deadline"

@@ -45,6 +45,9 @@ for a in "$@"; do
     --dry-run) DRY=1 ;;
     all) ROWS+=(netblock two-controllers crash controller-kill hang) ;;
     netblock|two-controllers|crash|hang|controller-kill) ROWS+=("$a") ;;
+    # the row names of tools/fault_matrix_pi.sh (BUILD_PLAN 10.4 wording)
+    creature-network) ROWS+=(netblock) ;;
+    controller-killed) ROWS+=(controller-kill) ;;
     -h|--help) sed -n '2,/^set -euo/{/^#/p}' "$0"; exit 0 ;;
     *) echo "unknown row or flag: $a (see --help)" >&2; exit 2 ;;
   esac
