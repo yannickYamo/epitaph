@@ -5,8 +5,12 @@
 - `word_accuracy` compares the words shown with the words read (in order).
 - `measure_contrast` measures the contrast of the rendered text against the background
   from the pixels themselves, not from the theme's intentions.
-- `readability` runs all three for one size and returns a report dict; `main` runs it at
-  the four D13 resolutions (`python -m epitaph.display.screenshot --out DIR`).
+- `readability` runs all three for one size and returns a report dict.
+- `life_moments` and `readability_life` do the same for a recorded life (`epitaph sim
+  --events`, or a real `events.jsonl`): the life is replayed on its own clock and drawn
+  as it stood at a moment, so the words, fades and forgotten grey are what a visitor saw.
+- `main` runs D13 at the four resolutions (`python -m epitaph.display.screenshot --out DIR
+  [--events LIFE.jsonl]`), on a simulated `pi4/skeleton-1200` life by default.
 """
 
 from __future__ import annotations
@@ -21,8 +25,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from epitaph.display.layout import Frame, LifeView, ViewSettings
+from epitaph.display.layout import Frame, LifeView, ViewSettings, life_times
 from epitaph.display.themes import PLAIN, Theme, contrast_ratio
+
+Event = dict[str, Any]
 
 D13_SIZES = [(800, 480), (1280, 720), (1920, 1080), (1080, 1920)]
 
@@ -126,6 +132,8 @@ def ocr_words(path: str | Path) -> list[str]:
     import pytesseract
     from PIL import Image, ImageOps
 
+    # tesseract's OpenMP threads make one page several times slower on a busy machine
+    os.environ.setdefault("OMP_THREAD_LIMIT", "1")
     img = ImageOps.invert(Image.open(path).convert("L"))
     text = pytesseract.image_to_string(img, config="--psm 6")
     return norm_words(text)
@@ -172,9 +180,79 @@ def readability(size: tuple[int, int], out_dir: Path, theme: Theme = PLAIN) -> d
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"d13_{size[0]}x{size[1]}.png"
     frame = render_png(path, size, sample_events(), theme=theme)
+    return _measure(path, size, frame)
+
+
+# -- a recorded life ---------------------------------------------------------------------
+
+LIFE_PROFILE = ("pi4/skeleton-1200", "pi4-4gb")
+
+
+def simulated_life(profile: str = LIFE_PROFILE[0], hardware: str = LIFE_PROFILE[1]) -> list[Event]:
+    """One life from the simulator, as `epitaph sim --events` prints it (seed 0)."""
+    from epitaph.config import load_config
+    from epitaph.sim import simulate
+
+    result = simulate(load_config(profile, hardware), lives=1, seed=0)
+    return [json.loads(json.dumps(e)) for e in result.events]
+
+
+def life_moments(events: list[Event]) -> dict[str, float]:
+    """Life times worth checking in a recorded life.
+
+    - `writing`: half a second before the first `forget` (a full screen of live text);
+      the middle of the life when nothing is forgotten.
+    - `late`: half a second before `death` (forgotten grey, fading words, the last live
+      thought), when there is a death.
+    """
+    times = life_times(events)
+    if not times:
+        return {}
+    first: dict[str, float] = {}
+    for e, t in zip(events, times, strict=True):
+        first.setdefault(str(e.get("type", "")), t)
+    out = {"writing": max(0.0, first.get("forget", times[-1] / 2) - 0.5)}
+    if "death" in first:
+        out["late"] = max(0.0, first["death"] - 0.5)
+    return out
+
+
+def view_at(events: list[Event], at: float, settings: ViewSettings | None = None) -> LifeView:
+    """A view fed every event up to life time `at`, each at its own life time.
+
+    Words are typed with their recorded `char_ms` and pauses, as on a live screen.
+    """
+    view = LifeView(settings or ViewSettings(birth_card=False))
+    for e, t in zip(events, life_times(events), strict=True):
+        if t > at:
+            break
+        view.handle(e, t)
+    return view
+
+
+def readability_life(
+    size: tuple[int, int],
+    out_dir: Path,
+    events: list[Event],
+    moment: str = "writing",
+    theme: Theme = PLAIN,
+) -> dict[str, Any]:
+    """D13 for one size on a recorded life, drawn as it stood at `life_moments()[moment]`.
+
+    Raises KeyError when the life has no such moment (no death for `late`).
+    """
+    at = life_moments(events)[moment]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"d13_{moment}_{size[0]}x{size[1]}.png"
+    frame = render_png(path, size, view=view_at(events, at), now=at, theme=theme)
+    return {"moment": moment, "t": round(at, 2), **_measure(path, size, frame)}
+
+
+def _measure(path: Path, size: tuple[int, int], frame: Frame) -> dict[str, Any]:
     shown = shown_words(frame)
     read = ocr_words(path)
     contrast = measure_contrast(path)
+    kinds = Counter(s.kind for s in frame.spans)
     return {
         "size": f"{size[0]}x{size[1]}",
         "png": str(path),
@@ -187,24 +265,43 @@ def readability(size: tuple[int, int], out_dir: Path, theme: Theme = PLAIN) -> d
         "bg": contrast["bg"],
         "split_words": frame.split_words,
         "bright_words": frame.bright_words,
+        "spans": dict(sorted(kinds.items())),
     }
 
 
+def passes(r: dict[str, Any], min_ocr: float = 0.95, min_contrast: float = 12.0) -> bool:
+    """Whether one D13 report meets the bar: OCR, contrast and no split word."""
+    return bool(
+        r["ocr_accuracy"] >= min_ocr and r["contrast"] >= min_contrast and not r["split_words"]
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run D13 at every size, printing one JSON line each; 0 when all pass, else 1."""
+    """Run D13 at every size, printing one JSON line each; 0 when all pass, else 1.
+
+    Checks the built-in sample, then the recorded life (`--events`, else a simulated
+    `pi4/skeleton-1200` life) at each of its `life_moments`.
+    """
     p = argparse.ArgumentParser(prog="python -m epitaph.display.screenshot")
     p.add_argument("--out", type=Path, default=Path("d13"))
+    p.add_argument("--events", type=Path, help="a recorded life (events.jsonl); default: sim")
+    p.add_argument("--no-life", action="store_true", help="the built-in sample only")
     p.add_argument("--min-ocr", type=float, default=0.95)
     p.add_argument("--min-contrast", type=float, default=12.0)
     args = p.parse_args(argv)
+    reports: list[dict[str, Any]] = [readability(size, args.out) for size in D13_SIZES]
+    if not args.no_life:
+        if args.events:
+            from epitaph.display.replay import load_events
+
+            events = load_events(args.events)
+        else:
+            events = simulated_life()
+        for moment in life_moments(events):
+            reports += [readability_life(size, args.out, events, moment) for size in D13_SIZES]
     ok = True
-    for size in D13_SIZES:
-        r = readability(size, args.out)
-        passed = (
-            r["ocr_accuracy"] >= args.min_ocr
-            and r["contrast"] >= args.min_contrast
-            and not r["split_words"]
-        )
+    for r in reports:
+        passed = passes(r, args.min_ocr, args.min_contrast)
         ok &= passed
         print(json.dumps({**r, "pass": passed}))
     return 0 if ok else 1
