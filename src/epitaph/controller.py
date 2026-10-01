@@ -594,7 +594,16 @@ class Life:
                 return _led_by(prefix, self.backend.complete(text, sampling, k.max_tokens))
             return self.backend.chat(msgs, sampling, k.max_tokens)
 
-        spoken = await speak(self.pacer, stream, k, self.turn, self.emit, self.on_death)
+        spoken = await speak(
+            self.pacer,
+            stream,
+            k,
+            self.turn,
+            self.emit,
+            self.on_death,
+            # the words generated before the death end on screen with a margin under the limit
+            death_flush_s=0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)),
+        )
         self.memory.append_thought([w.text for w in spoken.words])
         self.emit("thought_end", turn=self.turn, text=spoken.text)
         rate = self.backend.status().tok_s

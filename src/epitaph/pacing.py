@@ -18,7 +18,7 @@ import asyncio
 import random
 from collections import deque
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from epitaph.backend.base import CreatureDied
@@ -223,6 +223,7 @@ class Pacer:
         self._sanitizer = Sanitizer()
         self._segmenter = WordSegmenter()
         self._not_before = 0.0
+        self._flush_by: float | None = None  # at death, when the last word must be typed
         self._last_end: float | None = None
 
     @classmethod
@@ -295,7 +296,31 @@ class Pacer:
         self._hit = None
         self._reset_attempt()
         self._not_before = 0.0 if self._last_end is None else self._last_end + pause_s
+        self._flush_by = None
         self.begin_request()
+
+    def flush_within(self, seconds: float) -> None:
+        """At death: the words still queued finish typing within `seconds` from now. Their
+        rhythm keeps its shape, only faster when it would not fit (BUILD_PLAN 5.7 step 8;
+        verify's max_death_display_delay_s)."""
+        self._flush_by = self.clock.elapsed() + max(0.0, seconds)
+
+    def _fit(self, tw: TimedWord) -> TimedWord:
+        """Scale a word's cadence so it and the words after it end by the flush deadline."""
+        if self._flush_by is None:
+            return tw
+        own = sum(tw.char_ms) + tw.pause_after_ms + tw.hesitate_before_ms
+        need_ms = own * (1 + len(self._queue))  # this word as a measure for those after it
+        left_ms = (self._flush_by - self.clock.elapsed()) * 1000
+        if need_ms <= left_ms or need_ms <= 0:
+            return tw
+        k = max(left_ms, 0.0) / need_ms
+        return replace(
+            tw,
+            char_ms=tuple(round(c * k) for c in tw.char_ms),
+            pause_after_ms=round(tw.pause_after_ms * k),
+            hesitate_before_ms=round(tw.hesitate_before_ms * k),
+        )
 
     def _reset_attempt(self) -> None:
         self.stats.divergences += self._sanitizer.divergences
@@ -446,7 +471,7 @@ class Pacer:
                 if stall > 0:
                     self.stats.stalls.append(stall)
             word = self._queue.popleft()
-            tw = self.cadence(word, knobs)
+            tw = self._fit(self.cadence(word, knobs))
             wait = tw.hesitate_before_ms / 1000
             if first:
                 wait = max(wait, self._not_before - self.clock.elapsed())
@@ -500,13 +525,15 @@ async def speak(
     turn: int,
     emit: Emit,
     on_died: Callable[[CreatureStatus], None] | None = None,
+    death_flush_s: float = 75.0,
 ) -> Spoken:
     """Generate and show one thought (BUILD_PLAN 5.7).
 
     Emits `gen_start` and `gen_end` per request and `word` per shown word. Regenerates on a
     banned opening, stops the request at a cut, and on `CreatureDied` calls `on_died` at
     once (the real moment of death), then shows the words already generated at the current
-    pace. Returns after the last word has finished typing (the sync rule).
+    pace, compressed when needed so they end within `death_flush_s`. Returns after the last
+    word has finished typing (the sync rule).
     """
     pacer.begin_thought(turn, knobs.pause_s)
     result = Spoken(turn, [])
@@ -568,6 +595,7 @@ async def speak(
         emit("gen_end", turn=turn, prompt_n=None, tokens=result.tokens, tok_s=None)
         if on_died is not None:
             on_died(e.status)
+        pacer.flush_within(death_flush_s)
         pacer.finish_thought(dead=True)
     except BaseException:
         shower.cancel()

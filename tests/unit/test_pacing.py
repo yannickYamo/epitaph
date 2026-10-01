@@ -500,3 +500,27 @@ def test_cadence_comes_from_config_decision_30() -> None:
     assert p.comma_pause_ms == rev["comma_pause_ms"] == 750
     assert p.sentence_pause_ms == rev["sentence_pause_ms"] == 2100
     assert p.hesitation_ms == (1200, 3600)
+
+
+def test_the_death_flush_fits_its_budget() -> None:
+    """At death the queued words keep their rhythm's shape but end within the budget (life
+    000019 on the Pi took 115 s at 600 ms a letter; verify allows 90)."""
+    late = knobs(letter_ms=600.0, hesitation=0.2, jitter=0.4)
+
+    def typing_time(budget: float | None) -> float:
+        async def main(clock: VirtualClock) -> float:
+            p = pacer(clock)
+            p.begin_thought(1)
+            pushed(p, tokens_of("the slow words of a dying mind keep coming " * 4))
+            if budget is not None:
+                p.flush_within(budget)
+            p.finish_thought(dead=True)
+            start = clock.elapsed()
+            async for _ in p.drain(late):
+                pass
+            return clock.elapsed() - start
+
+        return run_virtual(main)
+
+    assert typing_time(None) > 40.0  # the late rhythm alone would overrun
+    assert typing_time(20.0) <= 20.0 + 1e-6

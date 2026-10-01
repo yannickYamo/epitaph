@@ -351,14 +351,17 @@ Three rules shaped every decision below.
 - **Context.** The first full life on the Pi passed every machine check (two reloads noticed,
   silences 136 s and 168 s, the thought-count rule, the RAM death at 29:30) and failed three
   voice metrics: complete sentences 0.79 (0.8), the demise rate 0 (0.4), clichés 1.3 (1.0).
-- **Decision.** At the `full` level, `verify.advisory_at_full` (demise rate, clichés, complete
-  sentences, specific, sentence length) reports a failure as `advisory` instead of failing the
-  life. The rehearsal level keeps them failing. Machine-checkable voice faults stay hard:
+- **Decision.** At the `full` level, `verify.advisory_at_full` (notice rate, demise rate,
+  clichés, complete sentences, specific, sentence length) reports a failure as `advisory`
+  instead of failing the life. The rehearsal level keeps them failing. Machine-checkable voice faults stay hard:
   helpdesk phrases, markup, thinking tags, answering the readings, non-Latin text, reload
   noticing.
 - **Why.** These are keyword proxies set for the round-3 voice. The chosen voice speaks of
   fading and losing itself rather than of death (PROMPT_LOG round 4), and its late thoughts
   are cut short by design; a blind panel and the owner have judged it (ADR-026). A gate on a
   real life should fail on what the machine got wrong, not on a word count.
+- **Amended after life 000019.** The notice rate joined the list: a keyword proxy too (that
+  life spoke of fragments and fading after every loss but never of its "health", and scored
+  0.40). Whether it notices the reloads, the life's largest losses, stays a hard check.
 - **Trade-off.** A drift in the voice no longer stops a soak. It still shows in every
   `verify.json`, and the rehearsal still fails on it when the prompt or model changes.
