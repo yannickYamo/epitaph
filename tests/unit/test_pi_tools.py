@@ -34,6 +34,8 @@ exec bash -c "$*"
 exec "$@"
 """,
     "systemd-run": """
+[ -z "${FAKE_SYSTEMD_RUN_RC:-}" ] || exit "$FAKE_SYSTEMD_RUN_RC"
+printf '%s\n' "$*" > "$FAKE_DIR/systemd-run.args"
 while [ "${1#--}" != "$1" ]; do shift; done
 "$@"
 """,
@@ -161,6 +163,26 @@ def test_a_failed_run_fails_the_smoke(fake_pi: dict[str, str], tmp_path: Path) -
     res = run(SMOKE, {**fake_pi, "FAKE_EPITAPH_RC": "3"}, "--out", str(tmp_path / "out"))
     assert res.returncode == 1
     assert "epitaph run exited 3" in res.stderr
+
+
+def test_the_unit_runs_like_the_installed_controller(
+    fake_pi: dict[str, str], tmp_path: Path
+) -> None:
+    assert run(SMOKE, fake_pi, "--out", str(tmp_path / "out")).returncode == 0
+    args = (tmp_path / "systemd-run.args").read_text()
+    assert "--property=Delegate=yes" in args  # the creature's cgroup needs a delegated tree
+    assert "--property=CPUAffinity=0" in args
+    assert "run --profile pi4/smoke-300 --lives 1" in args
+
+
+def test_a_unit_that_cannot_start_fails_and_restores_the_controller(
+    fake_pi: dict[str, str], tmp_path: Path
+) -> None:
+    (tmp_path / "controller.active").touch()
+    res = run(SMOKE, {**fake_pi, "FAKE_SYSTEMD_RUN_RC": "1"}, "--out", str(tmp_path / "out"))
+    assert res.returncode == 1
+    assert "could not start" in res.stderr
+    assert (tmp_path / "controller.active").exists()
 
 
 def test_a_broken_life_fails_the_smoke(fake_pi: dict[str, str], tmp_path: Path) -> None:
