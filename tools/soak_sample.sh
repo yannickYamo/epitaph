@@ -50,8 +50,9 @@ STATE="${EPITAPH_PI_STATE:-/var/lib/epitaph}"
 UNIT="${EPITAPH_UNIT:-epitaph-controller}"
 log() { printf '[soak_sample %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
-# The probe runs on the Pi with bash; arguments: state dir, unit. It prints one line.
-# shellcheck disable=SC2016  # the probe runs on the Pi: its $ expand there, not here
+# The probe runs on the Pi with bash; arguments: state dir, unit. It prints one line. Its $
+# expand on the Pi, not here, hence the single quotes.
+# shellcheck disable=SC2016
 PROBE='
 state="$1"; unit="$2"
 v() { [ -n "$1" ] && printf "%s" "$1" || printf -- "-"; }
