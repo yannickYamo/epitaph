@@ -24,3 +24,13 @@
 - Blind panel of three judge models: the three new 30-minute lives scored 39.3, 29.7 and 29.0 of
   60 against 23.7 for the best one-hour life (prompt log round 5).
 
+
+## Phase 1: the walking skeleton on the Pi (2026-10-01)
+- The controller: the life loop with every death cause, hang detection, a watchdog that
+  tracks the loop's progress, recovery after a power cut, the control channel; the simulator
+  and the rehearsal run on it.
+- Installed as systemd services on the Pi (`deploy/install.sh`, `tools/pi_deploy.sh`), with a
+  narrow helper for the CPU clock and `epitaph selftest`.
+- The local display starts only when a screen is connected; the remote view works over SSH.
+- Gate G1 passed on the Pi: a smoke life, two 20-minute lives, the remote view live, a headless
+  reboot (docs/process/reports/1-L.md).

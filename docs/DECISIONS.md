@@ -329,3 +329,19 @@ Three rules shaped every decision below.
   between a slot save and restore), and quotes add about 15 tokens per reading. Both are charged
   in the cost model. A quote can feed repetition when a thought keeps its own opening; the echo
   skips "I am" openings for that reason.
+
+### ADR-027: The controller runs as the Pi's own user, for now
+
+- **Context.** The controller needs a delegated cgroup subtree and a way to cap the CPU clock
+  (ADR-025). Raspberry Pi OS gives its first user passwordless sudo for everything.
+- **Decision.** The service runs as `pi`, which already owns the state and the models. The clock
+  is capped through a root-owned helper that accepts only a MHz value in 600-1800 or `reset`,
+  allowed by a single sudoers rule; the unit resets the clock before every start and after every
+  stop.
+- **Why.** The Pi is dedicated to the piece and the creature has no network (BUILD_PLAN 5.5); a
+  separate account adds setup to every install without protecting anything else on the
+  machine.
+- **Trade-off.** With `pi`'s blanket sudo, the narrow rule protects nothing today and
+  `install.sh` runs code that `pi` can write. Before the piece runs anywhere it is not alone (a
+  shared network, a gallery machine), the plan is a dedicated `epitaph` user without sudo and a
+  root-owned `/opt/epitaph`; the helper and its rule are already shaped for that.
