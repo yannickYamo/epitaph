@@ -172,6 +172,7 @@ def test_pi_overlay_wires_the_helper(fs: Path, tmp_path: Path) -> None:
     assert CgroupSettings.from_config(cfg).clock_helper == cpuclock.HELPER
     assert CgroupSettings.from_config(load_config("pi4/default", "dev")).clock_helper == ""
     (tmp_path / "self_cgroup").write_text(f"0::/{REL}\n")
+    cfg.data["body"]["netblock_helper"] = ""  # not installed on this machine
     body = make_body(cfg, fs, tmp_path / "self_cgroup")
     assert isinstance(body, CgroupBody) and body.clock is not None
     assert body.clock.helper == cpuclock.HELPER

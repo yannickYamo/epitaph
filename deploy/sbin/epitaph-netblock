@@ -1,0 +1,96 @@
+#!/bin/sh
+# epitaph-netblock: the creature has no network (ADR-005, BUILD_PLAN 9 C8). Installed root-owned,
+# mode 0755, as /usr/local/sbin/epitaph-netblock by deploy/install.sh. The service user may run
+# exactly this command through sudo without a password (deploy/sudoers/epitaph-netblock).
+#
+#   epitaph-netblock add <cgroup>   refuse every outbound packet of <cgroup> except to loopback
+#   epitaph-netblock del <cgroup>   remove that rule
+#   epitaph-netblock status         print the table (nothing when there is none)
+#
+# <cgroup> is a creature cgroup relative to /sys/fs/cgroup, and nothing else:
+# system.slice/epitaph<name>.service/creature, with <name> in [a-z0-9-]. It must exist.
+#
+# The rules live in table `inet epitaph`, chain `output`; each carries the cgroup path as its
+# comment. nft resolves the path to the cgroup's id when the rule is loaded, so a cgroup that is
+# removed and created again (a restarted controller) needs `add` again: the body calls it every
+# time it sets up the creature cgroup. Every call also drops the rules of cgroups that no longer
+# exist. One nft transaction per call: the old rule and the new one never coexist half-loaded.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+CGROUP_FS=/sys/fs/cgroup
+
+usage() {
+  echo "usage: epitaph-netblock add|del system.slice/epitaph<name>.service/creature | status" >&2
+  exit 2
+}
+
+valid_cgroup() {
+  printf '%s\n' "$1" | grep -Eqx 'system\.slice/epitaph[a-z0-9-]*\.service/creature'
+}
+
+# Rule handles to delete: those for cgroup $1 (if given) and those whose cgroup is gone.
+stale_handles() {
+  nft -a list chain inet epitaph output 2>/dev/null \
+    | sed -n 's/.*comment "\([^"]*\)".*# handle \([0-9][0-9]*\)$/\1 \2/p' \
+    | while read -r cg handle; do
+        if [ "$cg" = "${1:-}" ] || [ ! -d "$CGROUP_FS/$cg" ]; then echo "$handle"; fi
+      done
+}
+
+ensure_table() {
+  nft list chain inet epitaph output >/dev/null 2>&1 && return 0
+  nft -f - <<EOF
+table inet epitaph {
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}
+EOF
+}
+
+case "${1:-}" in
+  status)
+    [ "$#" -eq 1 ] || usage
+    nft -a list table inet epitaph 2>/dev/null || true
+    exit 0
+    ;;
+  add | del)
+    [ "$#" -eq 2 ] || usage
+    valid_cgroup "$2" || usage
+    cg=$2
+    ;;
+  *) usage ;;
+esac
+
+ensure_table
+script=$(mktemp)
+trap 'rm -f "$script"' EXIT
+for h in $(stale_handles "$cg"); do
+  echo "delete rule inet epitaph output handle $h" >> "$script"
+done
+
+if [ "$1" = add ]; then
+  [ -d "$CGROUP_FS/$cg" ] || { echo "epitaph-netblock: no cgroup $CGROUP_FS/$cg" >&2; exit 1; }
+  level=$(printf '%s\n' "$cg" | awk -F/ '{print NF}')
+  cat >> "$script" <<EOF
+add rule inet epitaph output socket cgroupv2 level $level "$cg" meta nfproto ipv4 ip daddr != 127.0.0.0/8 counter reject comment "$cg"
+add rule inet epitaph output socket cgroupv2 level $level "$cg" meta nfproto ipv6 ip6 daddr != ::1 counter reject comment "$cg"
+EOF
+fi
+if [ -s "$script" ]; then nft -f "$script"; fi
+
+if [ "$1" = add ]; then
+  # The rule holds the cgroup's id (the directory's inode). nft prints it back as the path
+  # while that id is alive, else as the bare id: either form, for this cgroup, is this one.
+  id=$(stat -c %i "$CGROUP_FS/$cg")
+  n=$(nft -a list chain inet epitaph output \
+    | grep -cE "cgroupv2 level $level (\"$cg\"|$id) .*comment \"$cg\"" || true)
+  if [ "$n" -ne 2 ]; then
+    echo "epitaph-netblock: rule for $cg (cgroup id $id) not loaded" >&2
+    exit 1
+  fi
+  echo "epitaph-netblock: $cg blocked (cgroup id $id; loopback allowed)"
+else
+  echo "epitaph-netblock: $cg unblocked"
+fi

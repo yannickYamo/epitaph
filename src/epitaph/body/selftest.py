@@ -6,6 +6,8 @@ The checks are spike S3b's, made permanent:
 - the delegated cgroup: `+memory +cpu +io` in the subtree, the supervisor and creature leaves
 - limits set and cleared (cpu.max, memory.max, memory.swap.max, memory.oom.group)
 - `cgroup.kill` empties the creature cgroup, and its progress counters rise
+- the creature has no network: the nftables rule names its cgroup id, and from inside the
+  creature cgroup an outbound TCP connect is refused while 127.0.0.1 answers (ADR-005)
 - the CPU clock helper round trip: 1200 MHz, then back to 1800 (ADR-025)
 - the llama-server binary is present and executable
 
@@ -20,9 +22,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import getpass
+import json
 import os
 import pwd
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -33,6 +37,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from epitaph.body.cgroup import CgroupBody, CgroupError, CgroupSettings
 from epitaph.body.cpuclock import CPUFREQ, MAX_MHZ, CpuClock, read_max_mhz
+from epitaph.body.netblock import BLOCKED
 from epitaph.types import Cause
 
 if TYPE_CHECKING:
@@ -44,6 +49,27 @@ JOIN_TIMEOUT_S = 5.0  # how long the child may take to appear in the creature cg
 UNIT_PREFIX = "epitaph-selftest"
 # Burns about 0.3 s of CPU, then waits to be killed: the counters must move, the kill must work.
 BUSY_CHILD = "import time\nt = time.time()\nwhile time.time() - t < 0.3: pass\ntime.sleep(120)"
+# Run inside the creature cgroup: an outbound TCP connect, then one to a listener of its own
+# on 127.0.0.1. Prints {"out": "connected" | the error, "lo": ...} as one JSON line.
+NET_PROBE = """
+import json, socket, sys
+host, port = sys.argv[1].rsplit(":", 1)
+def connect(addr):
+    s = socket.socket(socket.AF_INET6 if ":" in addr[0] else socket.AF_INET)
+    s.settimeout(4)
+    try:
+        s.connect(addr)
+        return "connected"
+    except OSError as e:
+        return type(e).__name__ + ": " + (e.strerror or str(e))
+    finally:
+        s.close()
+srv = socket.socket()
+srv.bind(("127.0.0.1", 0))
+srv.listen(1)
+print(json.dumps({"out": connect((host.strip("[]"), int(port))), "lo": connect(srv.getsockname())}))
+"""
+DEFAULT_PROBE = "1.1.1.1:443"
 
 
 @dataclass(frozen=True)
@@ -170,6 +196,60 @@ def check_kill(
     ]
 
 
+def probe_connect(target: str, timeout_s: float = 4.0) -> str:
+    """ "connected", or the error, for a TCP connect to `target` ("host:port") from here."""
+    host, _, port = target.rpartition(":")
+    try:
+        with socket.create_connection((host.strip("[]"), int(port)), timeout=timeout_s):
+            return "connected"
+    except OSError as e:
+        return f"{type(e).__name__}: {e.strerror or e}"
+
+
+def check_network(
+    body: CgroupBody,
+    target: str = DEFAULT_PROBE,
+    run: Callable[[list[str]], str] | None = None,
+    control: Callable[[str], str] = probe_connect,
+) -> Check:
+    """The creature's network is blocked: the rule, a refused connect, loopback still works.
+
+    A child in the creature cgroup connects to `target` (it must fail; with the rule it is
+    refused at once) and to a listener of its own on 127.0.0.1 (it must connect). The same
+    connect from here, outside the creature cgroup, is reported for comparison: when it
+    connects too, the refusal is the rule's doing and not an offline machine.
+    """
+    if body.settings.creature_network != BLOCKED:
+        return Check("network", True, "skipped: body.creature_network allows it")
+    if body.netblock is None:
+        return Check("network", True, "skipped: no body.netblock_helper on this machine")
+    if not body.netblock.verify(body.creature, body.fs):
+        return Check("network", False, "no nftables rule names the creature cgroup's id")
+    argv = body.wrap_spawn([sys.executable, "-c", NET_PROBE, target])
+    try:
+        out = (run or _probe_output)(argv)
+        res = json.loads(out.strip().splitlines()[-1])
+        inside, lo = str(res["out"]), str(res["lo"])
+    except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError) as e:
+        return Check("network", False, f"probe failed: {e}")
+    outside = control(target)
+    # With the rule the connect is refused at once; on a machine with no route out it fails
+    # earlier (unreachable). Either way nothing leaves; the detail says which.
+    ok = inside != "connected" and lo == "connected"
+    return Check(
+        "network",
+        ok,
+        f"creature -> {target}: {inside}; creature -> 127.0.0.1: {lo}; "
+        f"outside the cgroup -> {target}: {outside}",
+    )
+
+
+def _probe_output(argv: list[str]) -> str:
+    return subprocess.run(
+        argv, capture_output=True, text=True, timeout=20, check=True, stdin=subprocess.DEVNULL
+    ).stdout
+
+
 def check_clock(clock: CpuClock, cpufreq: Path = CPUFREQ) -> Check:
     """The helper caps every policy at 1200 MHz, then restores 1800 (always restored)."""
     if not read_max_mhz(cpufreq):
@@ -198,20 +278,31 @@ def run_checks(
     clock: CpuClock | None = None,
     spawn: Spawn = _popen,
     cpufreq: Path = CPUFREQ,
+    net_run: Callable[[list[str]], str] | None = None,
+    net_control: Callable[[str], str] = probe_connect,
 ) -> list[Check]:
-    """Every check, in order; `body` defaults to the delegated cgroup this process runs in."""
+    """Every check, in order; `body` defaults to the delegated cgroup this process runs in
+    (its network rule is removed again at the end)."""
     settings = CgroupSettings.from_config(cfg)
     checks: list[Check] = []
+    own = body is None
     if body is None:
         try:
             body = CgroupBody.delegated(settings)
         except (CgroupError, OSError) as e:
             checks.append(Check("delegation", False, str(e)))
     if body is not None:
-        checks.append(Check("delegation", True, str(body.root)))
-        checks += check_delegation(body)
-        checks.append(check_limits(body))
-        checks += check_kill(body, spawn)
+        try:
+            checks.append(Check("delegation", True, str(body.root)))
+            checks += check_delegation(body)
+            checks.append(check_limits(body))
+            checks += check_kill(body, spawn)
+            target = str(cfg.get("body.netblock_probe", DEFAULT_PROBE))
+            checks.append(check_network(body, target, net_run, net_control))
+        finally:
+            if own:
+                body.reset_creature_cgroup()
+                body.release_network()
     helper = settings.clock_helper
     if clock is None and helper:
         clock = CpuClock(helper)
@@ -275,12 +366,19 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--user", help="service user for the relaunch (default: the current user)")
 
 
-def relaunch(args: argparse.Namespace, run: Callable[[list[str]], int] | None = None) -> int:
-    """Run `epitaph selftest --inside` in a transient Delegate=yes unit; its exit status."""
+def relaunch(
+    args: argparse.Namespace,
+    run: Callable[[list[str]], int] | None = None,
+    command: str = "selftest",
+    extra: Sequence[str] = (),
+    unit_prefix: str = UNIT_PREFIX,
+) -> int:
+    """Run `epitaph <command> --inside [extra]` in a transient Delegate=yes unit; its exit
+    status. `selftest` by default; `calibrate` uses it too."""
     if shutil.which("systemd-run") is None:
-        print("selftest: systemd-run not found; run with --inside in a Delegate=yes unit")
+        print(f"{command}: systemd-run not found; run with --inside in a Delegate=yes unit")
         return 1
-    inner = [sys.executable, "-m", "epitaph", "selftest", "--inside"]
+    inner = [sys.executable, "-m", "epitaph", command, "--inside", *extra]
     for flag in ("profile", "hardware"):
         value = getattr(args, flag, None)
         if value:
@@ -291,7 +389,7 @@ def relaunch(args: argparse.Namespace, run: Callable[[list[str]], int] | None = 
     # The service user's home, not the caller's: backend.bin is "~/llama.cpp/...".
     with contextlib.suppress(KeyError):
         env["HOME"] = pwd.getpwnam(user).pw_dir
-    argv = relaunch_argv(inner, user, f"{UNIT_PREFIX}-{os.getpid()}", env)
+    argv = relaunch_argv(inner, user, f"{unit_prefix}-{os.getpid()}", env)
     return (run or _call)(argv)
 
 

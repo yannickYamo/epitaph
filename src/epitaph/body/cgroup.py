@@ -7,7 +7,9 @@ Layout under the controller's delegated cgroup (systemd `Delegate=yes`)::
         supervisor/              the controller itself (cgroup v2 forbids processes in
                                  an inner node, so it moves here first)
         creature/                llama-server: memory.swap.max=0, memory.oom.group=1,
-                                 cpu.max (the CPU share), memory.max (death only)
+                                 cpu.max (the CPU share), memory.max (death only);
+                                 created once and kept, its network blocked by an
+                                 nftables rule on its cgroup id (netblock.py)
 
 Everything is plain file I/O on cgroupfs, so the unit tests run it against a temporary
 directory laid out like cgroupfs. Nothing needs root once systemd has delegated the subtree.
@@ -17,6 +19,7 @@ What the Pi spikes proved (S3, S3b, S3c) is recorded in docs/SPIKE.md.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import logging
 import os
 import shutil
@@ -28,7 +31,15 @@ from typing import TYPE_CHECKING
 
 from epitaph.body.base import Body
 from epitaph.body.cpuclock import MAX_MHZ, CpuClock
-from epitaph.body.vitals import DEFAULT_PATHS, SysPaths, VitalsReader, machine_facts
+from epitaph.body.netblock import BLOCKED, NetBlock, NetBlockError
+from epitaph.body.thermal import ThermalGuard, ThermalSettings
+from epitaph.body.vitals import (
+    DEFAULT_PATHS,
+    SysPaths,
+    VitalsReader,
+    machine_facts,
+    read_cpu_temp,
+)
 from epitaph.types import Cause, CreatureStatus, Knobs, MachineFacts, ProgressCounters, Vitals
 
 if TYPE_CHECKING:
@@ -61,6 +72,11 @@ class CgroupSettings:
     kill_wait_s: float = 5.0
     # The clock helper (cpuclock.HELPER on the Pi); empty leaves the CPU clock alone.
     clock_helper: str = ""
+    # "blocked": no outbound network for the creature (netblock.py), through this helper
+    # (netblock.HELPER on the Pi). Empty helper: nothing is blocked, and the log says so.
+    creature_network: str = BLOCKED
+    netblock_helper: str = ""
+    thermal: ThermalSettings = dataclasses.field(default_factory=ThermalSettings)
 
     @classmethod
     def from_config(cls, cfg: Config) -> CgroupSettings:
@@ -76,6 +92,9 @@ class CgroupSettings:
             death_limit_mb=int(limit) if limit is not None else None,
             death_fraction=float(body.get("death_fraction", 0.5)),
             clock_helper=str(body.get("clock_helper", "") or ""),
+            creature_network=str(body.get("creature_network", BLOCKED)),
+            netblock_helper=str(body.get("netblock_helper", "") or ""),
+            thermal=ThermalSettings.from_config(cfg),
         )
 
     @property
@@ -118,6 +137,25 @@ def drop_page_cache(path: str | Path) -> None:
         os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
     finally:
         os.close(fd)
+
+
+@dataclass(frozen=True)
+class WorkingSet:
+    """The creature cgroup's memory in bytes: memory.stat anon and file, memory.current, and
+    memory.peak when the kernel has it."""
+
+    anon: int
+    file: int
+    current: int
+    peak: int | None = None
+
+
+def model_of(argv: list[str]) -> tuple[str, str] | None:
+    """(model, quant) from a llama-server argv: `-m <models>/<model>/<quant>.gguf`."""
+    if "-m" not in argv or argv.index("-m") + 1 >= len(argv):
+        return None
+    path = Path(argv[argv.index("-m") + 1])
+    return path.parent.name, path.stem
 
 
 def own_cgroup(proc_cgroup: Path = Path("/proc/self/cgroup")) -> str:
@@ -171,11 +209,17 @@ class CgroupBody:
         vitals: VitalsReader | None = None,
         sys_paths: SysPaths = DEFAULT_PATHS,
         clock: CpuClock | None = None,
+        netblock: NetBlock | None = None,
+        death_levels: dict[tuple[str, str], int] | None = None,
+        fs: Path = CGROUP_FS,
     ) -> None:
-        """`root` is the delegated cgroup; nothing is touched until setup().
+        """`root` is the delegated cgroup below the cgroup root `fs`; nothing is touched
+        until setup().
 
         `vitals` defaults to a VitalsReader on `sys_paths`. `clock` defaults to a background
-        CpuClock on `settings.clock_helper`, or none when that is empty.
+        CpuClock on `settings.clock_helper`, or none when that is empty; `netblock` to a
+        NetBlock on `settings.netblock_helper`, or none. `death_levels` are the calibrated
+        death limits in MiB by (model, quant) (calibrate.load_calibration).
         """
         self.root = root
         self.settings = settings
@@ -192,6 +236,18 @@ class CgroupBody:
             # sudo can take seconds: off the controller's event loop (ping on time).
             clock = CpuClock(settings.clock_helper, background=True)
         self.clock = clock
+        self.fs = fs
+        if netblock is None and settings.netblock_helper:
+            netblock = NetBlock(settings.netblock_helper)
+        self.netblock = netblock
+        self.network = "open"  # BLOCKED once the rule is loaded for the creature cgroup
+        self.death_levels = dict(death_levels or {})
+        self.spawned: tuple[str, str] | None = None  # (model, quant) of the last spawn
+        self.thermal = ThermalGuard(
+            settings.thermal,
+            temp=lambda: read_cpu_temp(sys_paths),
+            throttled=self._vitals.throttled,
+        )
 
     # --- setup -------------------------------------------------------------------------
 
@@ -201,6 +257,8 @@ class CgroupBody:
         settings: CgroupSettings = DEFAULT_SETTINGS,
         fs: Path = CGROUP_FS,
         proc_cgroup: Path = Path("/proc/self/cgroup"),
+        netblock: NetBlock | None = None,
+        death_levels: dict[tuple[str, str], int] | None = None,
     ) -> CgroupBody:
         """The body for the cgroup this process runs in (the controller's service cgroup).
 
@@ -220,7 +278,7 @@ class CgroupBody:
             raise CgroupError(
                 f"{path} is not delegated to this user (run under a Delegate=yes unit)"
             )
-        body = cls(path, settings)
+        body = cls(path, settings, netblock=netblock, death_levels=death_levels, fs=fs)
         body.setup()
         return body
 
@@ -244,6 +302,32 @@ class CgroupBody:
             log.warning("memory controller unavailable: death falls back to the deadline")
         self.creature.mkdir(exist_ok=True)
         self.reset_creature_cgroup()
+        self.block_network()
+
+    def block_network(self) -> None:
+        """Load the creature cgroup's network rule (ADR-005) before any creature is spawned.
+
+        With `creature_network = "blocked"` and a helper, a rule that cannot be loaded is an
+        error (CgroupError): the creature is never born with a network. Without a helper (the
+        laptop, tests) the network stays open and the log says so.
+        """
+        if self.settings.creature_network != BLOCKED:
+            log.info("creature network allowed by config (body.creature_network)")
+            return
+        if self.netblock is None:
+            log.warning("creature network NOT blocked: no body.netblock_helper on this machine")
+            return
+        try:
+            self.netblock.block(self.creature, self.fs)
+        except (NetBlockError, ValueError) as e:
+            raise CgroupError(f"cannot block the creature's network: {e}") from e
+        self.network = BLOCKED
+
+    def release_network(self) -> None:
+        """Drop this cgroup's rule: for a selftest or calibration unit, never the controller."""
+        if self.netblock is not None and self.network == BLOCKED:
+            self.netblock.unblock(self.creature, self.fs)
+            self.network = "open"
 
     @property
     def death_mode(self) -> str:
@@ -277,9 +361,23 @@ class CgroupBody:
         """The creature's memory.events counters (oom, oom_kill, oom_group_kill, ...)."""
         return read_flat_keyed(self.creature / "memory.events")
 
-    def _oom_kills(self) -> int:
+    def oom_kills(self) -> int:
+        """How many times the kernel OOM-killed in the creature cgroup (memory.events)."""
         ev = self.memory_events()
         return max(ev.get("oom_kill", 0), ev.get("oom_group_kill", 0))
+
+    def working_set(self) -> WorkingSet:
+        """The creature's memory now: anon and file (memory.stat), memory.current, memory.peak."""
+        stat = read_flat_keyed(self.creature / "memory.stat")
+        current: int | None = None
+        peak: int | None = None
+        with contextlib.suppress(OSError, ValueError):
+            current = int(_read(self.creature / "memory.current"))
+        with contextlib.suppress(OSError, ValueError):
+            peak = int(_read(self.creature / "memory.peak"))
+        return WorkingSet(
+            anon=stat.get("anon", 0), file=stat.get("file", 0), current=current or 0, peak=peak
+        )
 
     def _kill_all(self) -> None:
         try:
@@ -333,11 +431,15 @@ class CgroupBody:
         self._share = None
         self._squeezed_at = None
         self._kill_cause = None
-        self._oom_base = self._oom_kills()
+        self._oom_base = self.oom_kills()
         self.restore_clock(force=True)
 
     def wrap_spawn(self, argv: list[str]) -> list[str]:
-        """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv)."""
+        """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv).
+
+        Remembers the model and quant it spawns, for the calibrated death level.
+        """
+        self.spawned = model_of(argv)
         return wrap_argv(argv, self.creature / "cgroup.procs", self.settings.creature_cpus)
 
     def apply(self, knobs: Knobs) -> None:
@@ -370,7 +472,12 @@ class CgroupBody:
         self._share = cores
 
     def death_limit_bytes(self) -> int:
-        """The death level: a fraction of the creature's *anonymous* memory.
+        """The death level: the calibrated one for this model and quant, else a fraction of
+        the creature's *anonymous* memory.
+
+        A calibrated level (`epitaph calibrate`: 5 of 5 kills within 10 s on this machine) is
+        used only while it is below the creature's anonymous memory now; otherwise it could
+        not kill, and the fraction is used instead.
 
         S3: a limit below the anonymous memory kills in about 1 s in every load mode (swap
         is off, so anon cannot be reclaimed). A limit that only undercuts memory.current
@@ -381,6 +488,15 @@ class CgroupBody:
         if self.settings.death_limit_mb is not None:
             return self.settings.death_limit_mb * MIB
         base = read_flat_keyed(self.creature / "memory.stat").get("anon", 0)
+        level = self.death_levels.get(self.spawned) if self.spawned else None
+        if level is not None:
+            if level * MIB < base:
+                return level * MIB
+            log.warning(
+                "calibrated death level %d MiB is not below anon %d MiB: using the fraction",
+                level,
+                base // MIB,
+            )
         if not base:
             try:
                 base = int(_read(self.creature / "memory.current"))
@@ -388,9 +504,12 @@ class CgroupBody:
                 base = 0
         return max(4 * MIB, int(base * self.settings.death_fraction))
 
-    def squeeze_to_death(self) -> None:
-        """Take the creature's RAM: memory.max below its working set (swap is off)."""
-        limit = self.death_limit_bytes()
+    def squeeze_to_death(self, limit: int | None = None) -> None:
+        """Take the creature's RAM: memory.max below its working set (swap is off).
+
+        `limit` in bytes defaults to death_limit_bytes().
+        """
+        limit = self.death_limit_bytes() if limit is None else limit
         log.info("death squeeze: memory.max = %d MiB", limit // MIB)
         self._write("memory.max", str(limit), "memory")
         self._squeezed_at = time.monotonic()
@@ -419,7 +538,7 @@ class CgroupBody:
         self.restore_clock()
         if self._kill_cause is not None:
             return self._kill_cause
-        if self._oom_kills() > self._oom_base:
+        if self.oom_kills() > self._oom_base:
             return Cause.OOM
         if self._squeezed_at is not None and status.signal == signal.SIGKILL:
             return Cause.OOM
@@ -442,6 +561,10 @@ class CgroupBody:
         """True machine facts: board, cores, nominal RAM."""
         return machine_facts(self._sys_paths)
 
+    def thermal_pause_s(self) -> float:
+        """The thermal pause hook: seconds to wait before the next request (0 normally)."""
+        return self.thermal.pause_s()
+
 
 class PlainBody:
     """A body without cgroups (the laptop): pinning only, real vitals, no limits.
@@ -460,6 +583,11 @@ class PlainBody:
         self._sys_paths = sys_paths
         self._share: float | None = None
         self._kill_cause: Cause | None = None
+        self.thermal = ThermalGuard(
+            settings.thermal,
+            temp=lambda: read_cpu_temp(sys_paths),
+            throttled=self._vitals.throttled,
+        )
 
     def reset_creature_cgroup(self) -> None:
         """Forget the last kill cause (there is no cgroup to clean)."""
@@ -493,6 +621,10 @@ class PlainBody:
         """True machine facts: board, cores, nominal RAM."""
         return machine_facts(self._sys_paths)
 
+    def thermal_pause_s(self) -> float:
+        """The thermal pause hook: seconds to wait before the next request (0 normally)."""
+        return self.thermal.pause_s()
+
 
 def make_body(
     cfg: Config, fs: Path = CGROUP_FS, proc_cgroup: Path = Path("/proc/self/cgroup")
@@ -500,13 +632,18 @@ def make_body(
     """The body for this config: the delegated cgroup on a Pi, a plain body elsewhere.
 
     `body.cgroups = "off"` always gives the plain body. With "auto", a Pi without a usable
-    delegated cgroup is an error (the decline would not be real); the laptop falls back.
+    delegated cgroup, or whose creature network cannot be blocked, is an error (the decline
+    would not be real); the laptop falls back. Calibrated death levels come from the state
+    dir, then from bench/calibration (calibrate.py).
     """
+    from epitaph.body.calibrate import calibration_dirs, load_calibration
+
     settings = CgroupSettings.from_config(cfg)
     if str(cfg.get("body.cgroups", "auto")) == "off":
         return PlainBody(settings)
+    levels = load_calibration(calibration_dirs(cfg), cfg.hw_class)
     try:
-        return CgroupBody.delegated(settings, fs, proc_cgroup)
+        return CgroupBody.delegated(settings, fs, proc_cgroup, death_levels=levels)
     except (CgroupError, OSError) as e:
         if cfg.hw_class in ("pi4", "pi5"):
             raise CgroupError(f"cannot use the creature cgroup: {e}") from e
