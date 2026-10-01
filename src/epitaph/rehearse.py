@@ -49,7 +49,6 @@ import argparse
 import asyncio
 import contextlib
 import json
-import re
 import sys
 import threading
 import time
@@ -65,22 +64,11 @@ from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
 from epitaph.body.fake import FakeBody
 from epitaph.clock import FakeClock, Schedule, VirtualClock, run_virtual
 from epitaph.config import REPO_ROOT, Config, deep_merge, load_config, parse_duration
+from epitaph.controller import Life, ServerSlots, SlotStore, echo_head, slot_saved
 from epitaph.costmodel import Costs, estimate, load_costs
-from epitaph.events import Event, make_event
-from epitaph.mind.memory import Memory
-from epitaph.mind.prompt import (
-    Lang,
-    Persona,
-    Reader,
-    ReadingInput,
-    load_lang,
-    render_diary,
-    speaks_raw,
-)
-from epitaph.mind.sampling import sampling_for
-from epitaph.mind.sanitize import sanitize_text
-from epitaph.pacing import Pacer, Spoken, life_seed, speak
-from epitaph.types import Chunk, CreatureStatus, Knobs, ModelSpec, Msg, Sampling
+from epitaph.events import Event
+from epitaph.mind.prompt import Lang, load_lang
+from epitaph.types import Chunk, CreatureStatus, ModelSpec, Msg, Sampling
 from epitaph.verify import (
     DEFAULT_ANSWERING,
     DEFAULT_HELPDESK,
@@ -108,6 +96,7 @@ __all__ = [
     "TokenCounter",
     "add_arguments",
     "charge_summary",
+    "echo_head",
     "echoes",
     "highlights",
     "keyword_matchers",
@@ -121,6 +110,7 @@ __all__ = [
     "run_screen",
     "score_thought",
     "screen_moment",
+    "slot_saved",
     "thoughts_text",
     "with_ladder",
     "write_life_outputs",
@@ -673,11 +663,10 @@ class RehearsedLife:
     revivals: int = 0  # laptop server restarts (harness faults, not deaths)
 
 
-class _Life:
-    """The loop of BUILD_PLAN 5.8 on a virtual clock, with the real mind and a Pi-timed backend.
-
-    This mirrors the P1 controller loop closely enough to rehearse it (and B's
-    tests/sim/test_mind_life.py); it is not the controller.
+class _Life(Life):
+    """The controller's life loop (`controller.Life`) on a virtual clock, with a Pi-timed
+    backend: the birth load is not charged, the scheduled death is armed on the backend
+    (`PiClockBackend.arm_death`), and the slot around the echo is the laptop server's.
     """
 
     def __init__(
@@ -692,292 +681,39 @@ class _Life:
         seed: int = 1,
         lang: Lang | None = None,
     ) -> None:
-        self.cfg = cfg
-        self.clock = clock
-        self.backend = backend
-        self.sch = Schedule(cfg.profile)
-        self.model = cfg.model()
-        self.n = life
-        self.seed = life_seed(seed, life)
-        self.emit_to = emit_to
-        self.body = FakeBody()
-        self.lang = lang or load_lang(str(cfg.get("prompt.language", "en")))
-        self.persona = Persona.from_config(cfg, self.body.facts(), self.lang)
-        self.reader = Reader.from_config(cfg, self.lang)
-        self.counter = counter
-        # Made by `attach_memory` once the server runs: the marker is counted on its tokenizer.
-        self.memory: Memory
-        self.pacer = Pacer.from_config(cfg, clock, self.seed)
-        self.trim_to = float(cfg.get("output.trim_to", 0.85))
-        self.min_gap = float(cfg.get("life.min_reload_gap_s", 120))
-        self.letters_per_token = float(cfg.get("estimate.letters_per_token", 3.5))
-        self.oom_at = self.sch.death_s if str(cfg.get("body.death_mode", "oom")) == "oom" else None
-        self.cur = (-1, -1)
-        self.last_reload = -1e9
-        self.reloaded = False
-        self.echo: str | None = None
-        self.turn = 0
-        self.dead: str | None = None
-        self.death_t: float | None = None
-        self.last_tok_s: float | None = None
-        self.born = False
-        self._wall0 = time.time() - clock.now()
+        wall0 = time.time() - clock.now()
+        super().__init__(
+            cfg,
+            clock,
+            backend,
+            FakeBody(),
+            emit_to,
+            life=life,
+            seed=seed,
+            lang=lang,
+            counter=counter,
+            tg_rate=lambda s, t, c: backend.costs.tg(s, t, c).value,
+            slots=_laptop_slots(backend),
+            ts=lambda: wall0 + clock.now(),
+        )
+        self.pi = backend
         backend.on_death(self.on_death)
 
-    # -- events ----------------------------------------------------------------------------
-
-    def emit(self, etype: str, /, **fields: Any) -> None:
-        """Record an event with the life clock's `t` (0 before birth) and a matching `ts`."""
-        e = make_event(etype, self.n, **fields)
-        e["t"] = round(self.clock.elapsed(), 3) if self.born else 0.0
-        e["ts"] = round(self._wall0 + self.clock.now(), 3)
-        self.emit_to(e)
-
-    def _cause(self) -> str:
-        t = self.clock.elapsed()
-        if t >= self.sch.lifespan_s - 1e-6:
-            return "deadline"
-        if self.oom_at is not None and t >= self.oom_at - 1e-6:
-            return "oom"
-        return "crash"
-
-    def attach_memory(self) -> None:
-        """A fresh memory with the current system prompt (call once the server runs)."""
-        self.memory = Memory(self.counter, str(self.cfg.get("prompt.memory_gap_marker")))
-        self.memory.set_system(self.persona.text)
-
-    def on_death(self, status: CreatureStatus) -> None:
-        """The creature died (on the schedule, or the laptop server crashed): emit `death` once."""
-        if self.dead is not None:
-            return
-        self.dead = self._cause()
-        self.death_t = self.clock.elapsed()
-        self.emit("death", cause=self.dead, lived_s=round(self.death_t, 1), model=self.model.name)
-
-    # -- stages of the loop ----------------------------------------------------------------
-
-    def _system(self) -> list[Msg]:
-        return [Msg("system", self.persona.text, kind="persona")] if self.persona.text else []
-
-    def rate_estimate(self, k: Knobs) -> None:
-        """Seed the pacer's rate with the Pi generation rate at these knobs (BUILD_PLAN 5.12)."""
-        tg = self.backend.costs.tg(k.step, k.threads, k.compute).value
-        self.pacer.set_rate_estimate(tg * self.letters_per_token)
-
-    async def birth(self, k: Knobs, facts: dict[str, Any] | None = None) -> None:
-        """Load step 0, start the clock, prefill the system prompt (the birth card)."""
-        quant = self.model.quant(k.step)
-        self.emit(
-            "birth_loading",
-            model=self.model.name,
-            step=k.step,
-            quant=quant,
-            facts=facts or {},
-            profile=self.cfg.profile.name,
-            hardware=self.cfg.hardware,
-            lifespan_s=self.sch.lifespan_s,
-        )
-        charging, self.backend.charging = self.backend.charging, False
+    async def _load(self, quant: str, threads: int) -> None:
+        charging, self.pi.charging = self.pi.charging, False
         try:
-            await self.backend.start(self.model, quant, k.threads)
+            await self.pi.start(self.model, quant, threads)
         finally:
-            self.backend.charging = charging
-        self.clock.start()
-        self.born = True
-        self.emit("birth", model=self.model.name, step=k.step, quant=quant, threads=k.threads)
-        self.persona.update(k.persona_groups, k.mechanics)
-        self.attach_memory()
-        self.cur = (k.step, k.threads)
-        self.rate_estimate(k)
-        self.backend.arm_death(self.kill_time())
-        await self.backend.prefill(self._system())
+            self.pi.charging = charging
 
-    def kill_time(self) -> float:
-        """Life time of the scheduled death: the OOM squeeze, else the deadline."""
-        return min(self.sch.lifespan_s, self.oom_at if self.oom_at is not None else 1e18)
+    def _born(self) -> None:
+        self.pi.arm_death(self.kill_time())
 
-    async def reload(self, k: Knobs, t: float) -> None:
-        """The reload is also a memory loss: cut, restart one step down, prefill, resume."""
-        f = self.memory.cut_for_reload(k.recall, self.trim_to)
-        self.emit(
-            "reload",
-            **{"from": self.model.quant(self.cur[0]), "to": self.model.quant(k.step)},
-            threads=k.threads,
-            recall_before=f.tokens_before,
-            recall_after=f.tokens_after,
-        )
-        if f.items:
-            self.emit("forget", items=f.items)
-        t0 = self.clock.elapsed()
-        await self.backend.start(self.model, self.model.quant(k.step), k.threads)
-        self.backend.set_cpu_share(k.compute)
-        self.cur, self.last_reload, self.reloaded = (k.step, k.threads), t, True
-        self.rate_estimate(k)
-        await self.backend.prefill(self._system())
-        if self.reader.material:
-            self.echo = await self._echo()
-        self.emit("reload_done", seconds=round(self.clock.elapsed() - t0, 1))
+    def _turn_started(self) -> None:
+        self.pi.turn = self.turn
 
-    async def _echo(self) -> str | None:
-        """One of its own kept sentences as the new, lower-precision weights now continue it.
-
-        The opening words of a kept sentence (echo_head) are completed by the reloaded model with
-        no prompt around them (raw completion, greedy), during the reload silence; the result
-        is quoted in the next reading. Real: it is these weights, not a rewrite.
-        """
-        thoughts = [m.content for m in self.memory.past_messages() if m.role == "assistant"]
-        head = echo_head(thoughts)
-        if head is None:
-            return None
-        out = ""
-        sampling = Sampling(temperature=0.0, min_p=0.0)
-        # The raw completion replaces the server's single cache slot; keep the carried memory
-        # by saving the slot first and restoring it afterwards (about 0.3 s each, spike S4b).
-        # Without a successful save there is no echo: the restore could not bring it back.
-        inner = getattr(self.backend, "inner", None)
-        worker = getattr(self.backend, "worker", None)
-        slot = f"echo-{self.model.name}.bin"
-        live = inner is not None and worker is not None and hasattr(inner, "_slot_action")
-        if live and inner is not None and worker is not None:
-            r = worker.call(inner._slot_action("save", slot))
-            if not slot_saved(r):
-                return None
-        complete = getattr(self.backend, "echo", self.backend.complete)
-        try:
-            async for chunk in complete(head, sampling, 18):
-                if chunk.done:
-                    break
-                out += chunk.text
-        except BackendError:
-            out = ""  # the echo is an ornament: its failure never ends the life
-        finally:
-            if live and inner is not None and worker is not None:
-                worker.call(inner._slot_action("restore", slot))
-                path = getattr(getattr(inner, "s", None), "slot_save_path", None)
-                if path:
-                    (Path(path).expanduser() / slot).unlink(missing_ok=True)
-        tail = " ".join(sanitize_text(out)[0].split()).split(". ")[0]
-        return f"{head} {tail}".strip() if tail else None
-
-    def prepare(self, t: float) -> tuple[Knobs, str]:
-        """Everything before a request at life time t: body, forgetting, erosion, reading.
-
-        Appends the reading to memory and emits forget, erosion and vitals. Returns the knobs
-        and the reading.
-        """
-        k = self.sch.at(t)
-        self.body.apply(k)
-        self.backend.set_cpu_share(k.compute)
-        if not self.cfg.profile.unbounded:
-            f = self.memory.fit(k.recall, self.trim_to)
-            if f.items:
-                self.emit("forget", items=f.items)
-        step = self.persona.update(k.persona_groups, k.mechanics)
-        if step is not None:
-            self.memory.set_system(self.persona.text)
-            self.emit(
-                "erosion", groups_left=step.groups_left, mechanics_present=step.mechanics_present
-            )
-        vit = self.body.vitals()
-        forgotten = self.memory.take_forgotten()
-        quotes = self.memory.take_forgotten_quotes()
-        echo, self.echo = self.echo, None
-        reading = self.reader.reading(
-            ReadingInput(
-                t=t,
-                health=k.health.value,
-                recall=k.recall,
-                quant=self.model.quant(self.cur[0]),
-                cores=k.cpu_share,
-                cores_total=self.body.facts().cores,
-                form=k.readings,
-                forgotten=forgotten,
-                reloaded=self.reloaded,
-                tok_s=self.last_tok_s,
-                cpu_c=vit.cpu_c,
-                forgotten_quotes=quotes,
-                echo=echo,
-            )
-        )
-        self.reloaded = False
-        self.turn += 1
-        self.backend.turn = self.turn
-        self.memory.append_host(reading, self.turn)
-        self.emit(
-            "vitals",
-            phase=k.phase,
-            health=k.health.value,
-            recall=k.recall,
-            recall_used=self.memory.used(),
-            forgotten_since_last=forgotten,
-            step=self.cur[0],
-            quant=self.model.quant(self.cur[0]),
-            threads=self.cur[1],
-            cpu_share=k.cpu_share,
-            cpu_mhz=k.cpu_mhz,
-            cores_effective=k.cpu_share,
-            tok_s=self.last_tok_s,
-            cpu_c=vit.cpu_c,
-            ram_limit_mb=None,
-            reading=reading,
-            marker=self.memory.gap,
-        )
-        return k, reading
-
-    def _sampling(self, k: Knobs) -> Sampling:
-        return sampling_for(
-            self.cfg.section("sampling"), k, self.cur[0], seed=self.seed * 1000 + self.turn
-        )
-
-    async def thought(self, t: float) -> Spoken:
-        """One turn: prepare, speak (generation and typing on the life clock), remember."""
-        k, _ = self.prepare(t)
-        msgs = self.memory.messages()
-        sampling = self._sampling(k)
-        self.emit("thought_start", turn=self.turn)
-
-        prompt = self.cfg.section("prompt")
-        raw = speaks_raw(prompt, self.persona.text)
-        prefix = str(prompt.get("raw_prefix", "")) if raw else ""
-
-        def stream() -> AsyncIterator[Chunk]:
-            if raw:
-                text = render_diary(msgs) + prefix
-                return _led_by(prefix, self.backend.complete(text, sampling, k.max_tokens))
-            return self.backend.chat(msgs, sampling, k.max_tokens)
-
-        spoken = await speak(self.pacer, stream, k, self.turn, self.emit, self.on_death)
-        self.memory.append_thought([w.text for w in spoken.words])
-        self.emit("thought_end", turn=self.turn, text=spoken.text)
-        rate = self.backend.status().tok_s
-        self.last_tok_s = rate if rate else self.last_tok_s
-        return spoken
-
-    async def step(self) -> bool:
-        """One pass of the loop: a reload if due, then a thought. False once the life is over."""
-        if self.dead is not None:
-            return False
-        t = self.clock.elapsed()
-        k = self.sch.at(t)
-        if (k.step, k.threads) != self.cur and t - self.last_reload >= self.min_gap:
-            await self.reload(k, t)
-            t = self.clock.elapsed()
-        if self.cfg.profile.unbounded:
-            k = self.sch.at(t)
-            need = self.reading_tokens_estimate(k)
-            if not self.memory.fits(self.cfg.ctx, k.max_tokens, need):
-                self.backend.alive = False
-                self.dead = "full"
-                self.death_t = t
-                self.emit("death", cause="full", lived_s=round(t, 1), model=self.model.name)
-                return False
-        await self.thought(t)
-        return self.dead is None
-
-    def reading_tokens_estimate(self, k: Knobs) -> int:
-        """Tokens a reading in this form will take (the unbounded context check)."""
-        forms = dict(self.cfg.get("estimate.reading_tokens", {}) or {})
-        return int(forms.get(k.readings, 45))
+    def _full(self) -> None:
+        self.pi.alive = False
 
     def seed_history(self, until: float, times: Sequence[float]) -> int:
         """Walk the scripted history through the real rules up to life time `until`.
@@ -1001,12 +737,18 @@ class _Life:
         return n
 
 
-async def _led_by(prefix: str, stream: AsyncIterator[Chunk]) -> AsyncIterator[Chunk]:
-    """`stream`, with `prefix` (the words the raw prompt ended with) shown first."""
-    if prefix:
-        yield Chunk(prefix)
-    async for c in stream:
-        yield c
+def _laptop_slots(backend: PiClockBackend) -> SlotStore | None:
+    """The laptop server's slot save and restore around the echo, when it has them."""
+    act = getattr(backend.inner, "_slot_action", None)
+    if act is None:
+        return None
+    worker = backend.worker
+
+    async def action(kind: str, name: str) -> object:
+        return worker.call(act(kind, name))
+
+    path = getattr(getattr(backend.inner, "s", None), "slot_save_path", None)
+    return ServerSlots(action, str(path) if path else None)
 
 
 # ---------------------------------------------------------------------------------------
@@ -1330,29 +1072,6 @@ def echoes(texts: Sequence[str], threshold: float = 0.5) -> list[int]:
         if cur and len(cur & prev) / len(cur) >= threshold:
             out.append(i)
     return out
-
-
-_FORMULA = ("i am", "i'm", "i\u2019m")  # how most of its sentences open: no echo of those
-
-
-def slot_saved(reply: object) -> bool:
-    """Whether a llama-server slot save succeeded: its reply counts saved tokens.
-
-    `_slot_action` answers failures with an error dict, never None, so only `n_saved` tells."""
-    return isinstance(reply, dict) and bool(reply.get("n_saved"))  # pyright: ignore[reportUnknownMemberType]
-
-
-def echo_head(thoughts: Sequence[str], words: int = 5) -> str | None:
-    """The opening words of the oldest kept sentence that does not open on a formula.
-
-    Most thoughts open with "I am still here"; echoing that teaches the formula back to it.
-    Falls back to the oldest sentence long enough to continue; None if there is none."""
-    sentences = [x.strip() for t in thoughts for x in re.split(r"(?<=[.!?])\s+", t) if x.strip()]
-    long_enough = [x.split() for x in sentences if len(x.split()) > words]
-    if not long_enough:
-        return None
-    fresh = [w for w in long_enough if not " ".join(w[:2]).lower().startswith(_FORMULA)]
-    return " ".join((fresh or long_enough)[0][:words])
 
 
 def charge_summary(charges: Sequence[Charge]) -> dict[str, Any]:
