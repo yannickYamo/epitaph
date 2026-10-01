@@ -28,7 +28,7 @@ from epitaph.backend.fake import SIGKILL, FakeBackend
 from epitaph.body.fake import FakeBody
 from epitaph.clock import VirtualClock, run_virtual
 from epitaph.config import Config
-from epitaph.controller import Controller, LifeRecord, SlotStore
+from epitaph.controller import Controller, LifeRecord, SlotStore, run_inline
 from epitaph.costmodel import Costs, load_costs
 from epitaph.events import Event
 from epitaph.types import Cause, Knobs, ModelSpec, ProgressCounters
@@ -152,6 +152,7 @@ def make_controller(
         seed=seed,
         slots_for=slots_for,
         ts=lambda: wall0 + clock.now(),
+        offload=run_inline,
     )
 
 

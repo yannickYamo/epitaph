@@ -12,6 +12,11 @@ Two layers:
   rebirth, model rotation, systemd watchdog pings in every state, and the control commands
   `status`, `new_life` and `screenshot`.
 
+The watchdog pings say the life loop moves, not only that the event loop runs: the loop
+stamps its progress at every event, state change and step, and a loop that overruns its
+state's budget first has its creature killed (cause hang), then, if it still does not move,
+loses its pings so that systemd restarts the controller.
+
 Every backend call goes through `GuardedBackend`, which turns a death declared by the
 controller (deadline, hang, manual, full) into `CreatureDied` inside whatever the life is
 waiting on, so the same death path runs whatever the creature was doing.
@@ -32,6 +37,7 @@ import re
 import socket
 import time
 import weakref
+from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -63,6 +69,7 @@ from epitaph.types import Cause, Chunk, CreatureStatus, Knobs, ModelSpec, Msg, S
 __all__ = [
     "Controller",
     "GuardedBackend",
+    "GuardedSlots",
     "HangLimits",
     "HangWatch",
     "Life",
@@ -71,6 +78,7 @@ __all__ = [
     "SlotStore",
     "echo_head",
     "pick_model",
+    "run_inline",
     "sd_notify",
     "slot_saved",
     "watchdog_interval",
@@ -82,6 +90,11 @@ T = TypeVar("T")
 EPS = 1e-6
 WATCHDOG_MAX_S = 5.0  # BUILD_PLAN 5.10: pings in every state, at least this often
 HANG_TICK_S = 1.0  # how often progress is read while a request is in flight
+STALL_MARGIN_S = 60.0  # added to a state's own limit before the loop counts as stuck
+STALL_GRACE_S = 60.0  # after the stall kill, the loop must move within this or pings stop
+CANCEL_WAIT_S = 5.0  # how long a cancelled backend call may take to let go
+SLOT_TIMEOUT_S = 30.0  # a slot save or restore (about 0.3 s) that takes longer is given up
+PING_HISTORY = 1024  # watchdog ping times kept for the tests and the status (bounded)
 
 
 # ---------------------------------------------------------------------------------------
@@ -396,7 +409,13 @@ class Life:
         return passed[:-1]
 
     async def reload(self, k: Knobs, t: float) -> None:
-        """The reload is also a memory loss: cut, restart one step down, prefill, resume."""
+        """The reload is also a memory loss: cut, restart one step down, prefill, resume.
+
+        A death during the reload ends it where it is: no `reload_done`, and a dead life is
+        never marked living again.
+        """
+        if self.dead is not None:
+            return
         self.state = "reloading"
         for at in self.skipped_reloads(t):
             missed = self.sch.at(at)
@@ -419,12 +438,18 @@ class Life:
             self.emit("forget", items=f.items)
         t0 = self.clock.elapsed()
         await self.backend.start(self.model, self.model.quant(k.step), k.threads)
+        if self.dead is not None:
+            return
         self._set_share(k.compute)
         self.cur, self.last_reload, self.reloaded = (k.step, k.threads), t, True
         self.rate_estimate(k)
         await self.backend.prefill(self._system())
+        if self.dead is not None:
+            return
         if self.reader.material:
             self.echo = await self._echo()
+        if self.dead is not None:
+            return
         self.emit("reload_done", seconds=round(self.clock.elapsed() - t0, 1))
         self.state = "living"
 
@@ -650,6 +675,41 @@ class HangWatch:
         return self.now() - self.last > self.limit
 
 
+def _retrieve(task: asyncio.Future[Any]) -> None:
+    """Read a finished task's exception, so that asyncio does not log it as never retrieved."""
+    if not task.cancelled():
+        task.exception()
+
+
+class GuardedSlots:
+    """A SlotStore whose save and restore go through the guard, bounded by a timeout.
+
+    A save that times out reads as not saved (no echo); a restore that times out is logged.
+    A death declared meanwhile raises CreatureDied, like any other backend call.
+    """
+
+    def __init__(self, inner: SlotStore, guard: GuardedBackend, timeout_s: float) -> None:
+        """Guard `inner` with `guard`; give each call `timeout_s` seconds."""
+        self.inner = inner
+        self.guard = guard
+        self.timeout_s = timeout_s
+
+    async def save(self, name: str) -> bool:
+        """Save the slot; False when the server failed or did not answer in time."""
+        try:
+            return await self.guard.bounded("slot", self.inner.save(name), self.timeout_s)
+        except TimeoutError:
+            log.warning("slot save %s gave no answer in %.0f s: no echo", name, self.timeout_s)
+            return False
+
+    async def restore(self, name: str) -> None:
+        """Restore the slot; a restore that does not answer in time is given up."""
+        try:
+            await self.guard.bounded("slot", self.inner.restore(name), self.timeout_s)
+        except TimeoutError:
+            log.warning("slot restore %s gave no answer in %.0f s", name, self.timeout_s)
+
+
 class GuardedBackend:
     """A Backend that raises `CreatureDied` as soon as `died` is set, and feeds a HangWatch.
 
@@ -688,9 +748,22 @@ class GuardedBackend:
         if task in done:
             return task.result()
         task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await task
+        task.add_done_callback(_retrieve)
+        # Bounded: a call that ignores its cancellation must not hold the death path.
+        await asyncio.wait({task}, timeout=CANCEL_WAIT_S)
+        if not task.done():
+            log.error("a backend call did not let go %.0f s after the death", CANCEL_WAIT_S)
         raise self._dead()
+
+    async def bounded(self, phase: str, coro: Coroutine[Any, Any, T], timeout_s: float) -> T:
+        """A call that is not a request (a slot save or restore): raced against a death,
+        given up after `timeout_s` (TimeoutError), and watched for a hang."""
+        # The watch only catches a call that ignores the timeout: twice the limit.
+        self.watch.begin(phase, 2 * timeout_s)
+        try:
+            return await self._race(asyncio.wait_for(coro, timeout_s))
+        finally:
+            self.watch.end()
 
     def close(self) -> None:
         """Drop the death waiter (end of the life)."""
@@ -816,12 +889,17 @@ def pick_model(cfg: Config, index: int, seed: int = 0) -> ModelSpec:
 
 BackendFor = Callable[[int, ModelSpec], Backend]
 Reconfigure = Callable[[str | None, float | None], Config]
+Offload = Callable[[Callable[[], Any]], Awaitable[Any]]
+
+
+async def run_inline(fn: Callable[[], Any]) -> Any:
+    """An Offload that runs `fn` on the loop itself (the fakes, in virtual time)."""
+    return fn()
 
 
 @dataclass
 class _NewLife:
-    profile: str | None = None
-    lifespan: float | None = None
+    cfg: Config | None = None  # built (and so checked) when the command came
     model: str | None = None
 
 
@@ -856,6 +934,7 @@ class Controller:
         ts: Callable[[], float] | None = None,
         reconfigure: Reconfigure | None = None,
         counter: Callable[[str], int] = approx_tokens,
+        offload: Offload | None = None,
     ) -> None:
         """Run `cfg`'s profile.
 
@@ -864,6 +943,8 @@ class Controller:
         `state_dir` holds the counter, transcripts and status (None: in memory only).
         `lives` stops after that many births (None: forever). `notify` is sd_notify;
         `reconfigure(profile, lifespan)` builds the config of a `new_life` with overrides.
+        `offload(fn)` runs a blocking body call (the cgroup reset waits for the kill) off the
+        event loop: a worker thread by default, `run_inline` on the virtual clock.
         """
         self.cfg = cfg
         self.clock = clock
@@ -882,6 +963,8 @@ class Controller:
         self.reconfigure = reconfigure
         self.counter = counter
         self.limits = HangLimits.from_config(cfg)
+        self.slot_timeout_s = float(cfg.get("backend.slot_timeout_s", SLOT_TIMEOUT_S))
+        self.offload: Offload = offload or asyncio.to_thread
         self.life_counter = LifeCounter(state_dir) if state_dir is not None else None
         self._mem_count = 0
         self.records: list[LifeRecord] = []
@@ -890,26 +973,56 @@ class Controller:
         self.kill_cause: Cause | None = None
         self.squeezed = False
         self.pings = 0
-        self.ping_times: list[float] = []
+        self.ping_times: deque[float] = deque(maxlen=PING_HISTORY)
         self._registered: weakref.WeakSet[Any] = weakref.WeakSet()
         self._next: _NewLife | None = None
         self._wake = asyncio.Event()
         self._last_ping = -math.inf
         self._loop_time: Callable[[], float] = time.monotonic
+        # Liveness of the life loop (not just of the event loop): see `_stalled`.
+        self._progress_at = 0.0
+        self._supervising = False  # the supervisor's own events are not loop progress
+        self._stall_mark: float | None = None
+        self.wedged = False  # the loop is stuck: the pings have stopped
+        self._emit_errors: set[str] = set()
+        self._sup_error: BaseException | None = None
 
     # -- events ----------------------------------------------------------------------------
 
+    def _bump(self) -> None:
+        """The life loop moved (an event, a state change, a step)."""
+        if not self._supervising:
+            self._progress_at = self._loop_time()
+
     def _emit(self, e: Event) -> None:
+        """Count, record and publish one event. Never raises: a full SD card or a broken
+        subscriber must not take the controller down."""
+        self._bump()
         cur = self.cur
         if cur is not None:
             if e["type"] == "word":
                 cur.words += 1
             elif e["type"] == "thought_end":
                 cur.last_line = str(e.get("text", ""))
-            if cur.transcript is not None:
-                cur.transcript.write(e)
+            tr = cur.transcript
+            if tr is not None:
+                try:
+                    tr.write(e)
+                except Exception as err:
+                    tr.failed = tr.failed or repr(err)
+                    self._emit_failed("transcript", e, err)
         if self.publish is not None:
-            self.publish(e)
+            try:
+                self.publish(e)
+            except Exception as err:
+                self._emit_failed("publish", e, err)
+
+    def _emit_failed(self, where: str, e: Event, err: Exception) -> None:
+        key = f"{where}:{type(err).__name__}"
+        if key in self._emit_errors:
+            return  # logged once; an event every few hundred ms would flood the card
+        self._emit_errors.add(key)
+        log.error("life %s: %s of %s failed: %r", e.get("life"), where, e.get("type"), err)
 
     def _event(self, etype: str, n: int, t: float, **fields: Any) -> None:
         e = make_event(etype, n, **fields)
@@ -952,6 +1065,7 @@ class Controller:
 
     def _set_state(self, state: str) -> None:
         self.state = state
+        self._bump()
         self._save_status()
 
     # -- control channel -------------------------------------------------------------------
@@ -963,16 +1077,12 @@ class Controller:
     async def ctl_new_life(self, args: dict[str, Any]) -> dict[str, Any]:
         """`ctl new_life {lifespan?, profile?, model?}`: end this life (cause=manual) and
         start the next one now, with these settings for that one life."""
-        lifespan = args.get("lifespan")
-        nxt = _NewLife(
-            profile=str(args["profile"]) if args.get("profile") else None,
-            lifespan=float(lifespan) if lifespan is not None else None,
-            model=str(args["model"]) if args.get("model") else None,
-        )
-        if nxt.model is not None:
-            self.cfg.model(nxt.model)  # raises (an error reply) for an unknown model
-        if (nxt.profile or nxt.lifespan is not None) and self.reconfigure is None:
-            raise ValueError("this controller cannot change the profile or lifespan")
+        # Everything is checked before this life is touched: a bad request ends nothing.
+        try:
+            nxt = self._new_life(args)
+        except (ValueError, OSError) as e:  # ConfigError is a ValueError
+            log.warning("ctl new_life refused: %s", e)
+            return {"ok": False, "error": str(e)}
         self._next = nxt
         ending = None
         if self.cur is not None and self.cur.life.dead is None:
@@ -980,6 +1090,21 @@ class Controller:
             self.kill(Cause.MANUAL)
         self._wake.set()  # cut a silence short
         return {"ok": True, "ending": ending}
+
+    def _new_life(self, args: dict[str, Any]) -> _NewLife:
+        """The settings of a `new_life`, built now so that a bad one raises here."""
+        profile = str(args["profile"]) if args.get("profile") else None
+        raw = args.get("lifespan")
+        lifespan = float(raw) if raw is not None else None
+        model = str(args["model"]) if args.get("model") else None
+        cfg: Config | None = None
+        if profile or lifespan is not None:
+            if self.reconfigure is None:
+                raise ValueError("this controller cannot change the profile or lifespan")
+            cfg = self.reconfigure(profile, lifespan)
+        if model is not None:
+            (cfg or self.cfg).model(model)  # ConfigError for an unknown model
+        return _NewLife(cfg, model)
 
     async def ctl_screenshot(self, args: dict[str, Any]) -> dict[str, Any]:
         """`ctl screenshot`: ask the displays for a screenshot (a `screenshot` event)."""
@@ -1039,16 +1164,87 @@ class Controller:
         if self.notify is not None:
             self.notify("WATCHDOG=1")
 
-    async def _supervise(self) -> None:
-        """Runs in every state: pings, and while alive the deadline, squeeze and hangs."""
-        while True:
-            now = self._loop_time()
+    def stopping(self) -> None:
+        """Tell systemd the controller is stopping (SIGTERM): STOPPING=1."""
+        if self.notify is not None:
+            self.notify("STOPPING=1")
+
+    def _stall_budget(self, cur: _Current | None) -> tuple[float, float]:
+        """(the last progress, how long the loop may go without more) in its current state.
+
+        While a request is in flight the hang watch's own limit applies, from the creature's
+        last progress; in the silence its length; elsewhere a load's worth. Each with a margin.
+        """
+        since = self._progress_at
+        watch = cur.guard.watch if cur is not None and cur.life.dead is None else None
+        if watch is not None and watch.phase is not None:
+            return max(since, watch.last), watch.limit + STALL_MARGIN_S
+        if self.state == "silence":
+            seconds = float(self.cfg.get("life.silence_seconds", 90))
+            return since, seconds + STALL_MARGIN_S
+        return since, max(self.limits.load_s, self.limits.token_gap_s) + STALL_MARGIN_S
+
+    def _stalled(self, now: float) -> bool:
+        """Whether the life loop is stuck past its budget and the kill did not free it.
+
+        At the first overrun the creature is killed (cause hang): that frees any wait on the
+        creature. If the loop then still does not move for STALL_GRACE_S, it is wedged.
+        """
+        cur = self.cur
+        since, budget = self._stall_budget(cur)
+        if now - since <= budget:
+            self._stall_mark = None
+            return False
+        if self._stall_mark is None or self._stall_mark < since:
+            self._stall_mark = now
+            log.error(
+                "life %s: the loop has not moved for %.0f s (state %s, budget %.0f s)",
+                cur.life.n if cur is not None else "-",
+                now - since,
+                self.state,
+                budget,
+            )
+            if cur is not None and cur.life.dead is None:
+                self.kill(Cause.HANG)
+            return False
+        if now - self._stall_mark < STALL_GRACE_S:
+            return False
+        if not self.wedged:
+            log.critical("the life loop is wedged: no more watchdog pings, systemd restarts")
+        return True
+
+    def _pass(self) -> float:
+        """One supervisor pass; returns the seconds to sleep before the next."""
+        now = self._loop_time()
+        self.wedged = self._stalled(now)
+        if self.wedged:
+            wait = self.watchdog_s  # no pings; keep looking in case the loop comes back
+        else:
             if now - self._last_ping >= self.watchdog_s - EPS:
                 self.ping()
-            wait = self._last_ping + self.watchdog_s - self._loop_time()
-            cur = self.cur
-            if cur is not None and cur.life.dead is None:
-                wait = min(wait, self._check(cur))
+            wait = max(self._last_ping + self.watchdog_s - self._loop_time(), 0.0)
+        cur = self.cur
+        if cur is not None and cur.life.dead is None:
+            wait = min(wait, self._check(cur))
+        return wait
+
+    async def _supervise(self) -> None:
+        """Runs in every state: pings, and while alive the deadline, squeeze and hangs.
+
+        A pass that fails is logged and the next one runs: the pings must go on.
+        """
+        while True:
+            wait = HANG_TICK_S
+            self._supervising = True
+            try:
+                wait = self._pass()
+            except Exception:
+                log.exception("supervisor pass failed")
+                with contextlib.suppress(Exception):
+                    if not self.wedged and self._loop_time() - self._last_ping >= HANG_TICK_S:
+                        self.ping()
+            finally:
+                self._supervising = False
             await asyncio.sleep(max(wait, 0.0))
 
     def _check(self, cur: _Current) -> float:
@@ -1104,10 +1300,7 @@ class Controller:
         nxt, self._next = self._next, None
         if nxt is None:
             return self.cfg, None
-        cfg = self.cfg
-        if (nxt.profile or nxt.lifespan is not None) and self.reconfigure is not None:
-            cfg = self.reconfigure(nxt.profile, nxt.lifespan)
-        return cfg, nxt.model
+        return nxt.cfg or self.cfg, nxt.model
 
     def _register(self, backend: Backend) -> None:
         # By identity, weakly: a freed backend's id can come back for a new one.
@@ -1116,62 +1309,30 @@ class Controller:
             backend.on_death(self._on_backend_death)
 
     async def live_one(self) -> LifeRecord:
-        """Birth, the loop, death from any cause, the death flush and the death record."""
+        """Birth, the loop, death from any cause, the death flush and the death record.
+
+        A life whose setup fails (a bad model, a full card, a body error) is logged and closed
+        with cause crash; the controller goes on to the silence and the next life.
+        """
         cfg, model_name = self._life_config()
         n = self._next_number()  # the counter is written first (atomic write + fsync)
-        # Rotation follows the life number, so it carries on across controller restarts.
-        model = cfg.model(model_name) if model_name else pick_model(cfg, n - 1, self.seed)
-        costs = self.costs_for(model)
-        inner = self.backend_for(n, model)
-        self._register(inner)
         self.kill_cause = None
         self.squeezed = False
+        self._emit_errors.clear()
         self._wake.clear()  # a new_life asked from now on cuts the next silence short
-        died = asyncio.Event()
-        watch = HangWatch(self._loop_time)
-        holder: list[Life] = []
-
-        def pp_rate() -> float:
-            life = holder[0]
-            step, threads = life.cur if life.cur[0] >= 0 else (0, 3)
-            return costs.pp(step, threads, life.compute)
-
-        guard = GuardedBackend(inner, died, watch, self.limits, pp_rate)
-        transcript = Transcript(self.state_dir, n) if self.state_dir is not None else None
-        life = Life(
-            cfg,
-            self.clock,
-            guard,
-            self.body,
-            self._emit,
-            life=n,
-            seed=self.seed,
-            model=model,
-            counter=self.counter,
-            tg_rate=costs.tg,
-            slots=self.slots_for(inner) if self.slots_for is not None else None,
-            cause_of=self._cause_of,
-            ts=self.ts,
-        )
-        holder.append(life)
-        life.on_dead = self._on_dead
-        self.cur = _Current(life, guard, transcript)
-        if transcript is not None:
-            transcript.open(
-                {
-                    "life": n,
-                    "model": model.name,
-                    "profile": cfg.profile.name,
-                    "hardware": cfg.hardware,
-                    "lifespan_s": life.sch.lifespan_s,
-                    "seed": life.seed,
-                }
-            )
+        self.cur = None
+        self._bump()
+        try:
+            cur, model = self._setup(n, cfg, model_name)
+        except Exception as e:
+            return await self._setup_failed(n, model_name, e)
+        life, guard, inner = cur.life, cur.guard, cur.guard.inner
         self._set_state("birth")
         try:
             await life.birth(life.sch.at(0), facts=asdict(life.facts))
             self._set_state("living")
             while await life.step():
+                self._bump()
                 self._save_status()
         except CreatureDied as e:
             life.on_death(e.status)
@@ -1191,7 +1352,6 @@ class Controller:
             life.declare_death(life.time_cause())
         guard.close()
         await self._stop_creature(inner)
-        cur = self.cur
         life.emit("death_shown", last_line=cur.last_line, words_total=cur.words)
         rec = LifeRecord(
             n,
@@ -1202,8 +1362,85 @@ class Controller:
             cur.words,
         )
         self.records.append(rec)
-        self.body.reset_creature_cgroup()
+        await self._reset_body(n)
         return rec
+
+    def _setup(self, n: int, cfg: Config, model_name: str | None) -> tuple[_Current, ModelSpec]:
+        """Everything of life n before its birth: model, costs, creature, life, transcript."""
+        # Rotation follows the life number, so it carries on across controller restarts.
+        model = cfg.model(model_name) if model_name else pick_model(cfg, n - 1, self.seed)
+        costs = self.costs_for(model)
+        inner = self.backend_for(n, model)
+        self._register(inner)
+        died = asyncio.Event()
+        watch = HangWatch(self._loop_time)
+        holder: list[Life] = []
+
+        def pp_rate() -> float:
+            life = holder[0]
+            step, threads = life.cur if life.cur[0] >= 0 else (0, 3)
+            return costs.pp(step, threads, life.compute)
+
+        guard = GuardedBackend(inner, died, watch, self.limits, pp_rate)
+        slots = self.slots_for(inner) if self.slots_for is not None else None
+        transcript = Transcript(self.state_dir, n) if self.state_dir is not None else None
+        life = Life(
+            cfg,
+            self.clock,
+            guard,
+            self.body,
+            self._emit,
+            life=n,
+            seed=self.seed,
+            model=model,
+            counter=self.counter,
+            tg_rate=costs.tg,
+            slots=GuardedSlots(slots, guard, self.slot_timeout_s) if slots is not None else None,
+            cause_of=self._cause_of,
+            ts=self.ts,
+        )
+        holder.append(life)
+        life.on_dead = self._on_dead
+        if transcript is not None:
+            transcript.open(
+                {
+                    "life": n,
+                    "model": model.name,
+                    "profile": cfg.profile.name,
+                    "hardware": cfg.hardware,
+                    "lifespan_s": life.sch.lifespan_s,
+                    "seed": life.seed,
+                }
+            )
+        self.cur = _Current(life, guard, transcript)
+        return self.cur, model
+
+    async def _setup_failed(self, n: int, model_name: str | None, err: Exception) -> LifeRecord:
+        """Close life n, which could not be set up, as a crash; the controller goes on."""
+        log.exception("life %d: setup failed", n)
+        name = model_name or ""
+        tr = Transcript(self.state_dir, n) if self.state_dir is not None else None
+        self._event("error", n, 0.0, where="controller", message=repr(err))
+        self._event("death", n, 0.0, cause=Cause.CRASH.value, lived_s=0.0, model=name)
+        self._event("death_shown", n, 0.0, last_line="", words_total=0)
+        rec = LifeRecord(n, name, Cause.CRASH.value, 0, 0.0)
+        self.records.append(rec)
+        if tr is not None:
+            try:
+                tr.dir.mkdir(parents=True, exist_ok=True)
+                tr.close(asdict(rec) | {"last_line": "", "setup_error": repr(err)})
+            except OSError as e:
+                log.error("life %d: could not write the death record: %s", n, e)
+        self._set_state("dead")
+        await self._reset_body(n)
+        return rec
+
+    async def _reset_body(self, n: int) -> None:
+        """Kill any leftover creature and clear the limits, off the loop; never raises."""
+        try:
+            await self.offload(self.body.reset_creature_cgroup)
+        except Exception:
+            log.exception("life %d: resetting the creature cgroup failed", n)
 
     def _close_transcript(self, rec: LifeRecord) -> None:
         cur = self.cur
@@ -1238,10 +1475,22 @@ class Controller:
         """Recover, then live, die and be reborn until `lives` lives are done (or forever)."""
         loop = asyncio.get_running_loop()
         self._loop_time = loop.time
+        self._progress_at = loop.time()
         sup = asyncio.ensure_future(self._supervise())
+        main = asyncio.current_task()
+
+        def supervisor_done(task: asyncio.Future[None]) -> None:
+            # Removed before the supervisor is cancelled on purpose: any call is unexpected.
+            err = None if task.cancelled() else task.exception()
+            self._sup_error = err or RuntimeError("the supervisor stopped")
+            log.critical("the supervisor exited: %r", self._sup_error)
+            if main is not None and not main.done():
+                main.cancel()
+
+        sup.add_done_callback(supervisor_done)
         try:
             self._set_state("recover")
-            self.recover()
+            await self.offload(self.recover)
             if self.notify is not None:
                 self.notify("READY=1")
             born = 0
@@ -1252,10 +1501,15 @@ class Controller:
                 await self.silence(rec, sleep=more)
             self._set_state("stopped")
             return self.records
+        except asyncio.CancelledError:
+            if self._sup_error is not None:  # not a stop: fail loudly, systemd restarts
+                raise RuntimeError("the supervisor exited") from self._sup_error
+            raise
         finally:
+            sup.remove_done_callback(supervisor_done)
             sup.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sup
+            await asyncio.wait({sup})  # its own error, if any, is already in _sup_error
+            sup.add_done_callback(_retrieve)
             if self.cur is not None:
                 self.cur.guard.close()
 

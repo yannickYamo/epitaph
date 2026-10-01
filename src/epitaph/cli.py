@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 from collections.abc import Callable
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from epitaph.config import ConfigError, load_config, parse_duration
+
+_log = logging.getLogger(__name__)
 
 # Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
 PLANNED: dict[str, tuple[str, str]] = {
@@ -134,10 +137,16 @@ async def _serve(args: argparse.Namespace, cfg: Any, state_dir: Path, clock: Any
     )
 
     def publish(e: dict[str, Any]) -> None:
-        mirror.handle(e, loop.time())
-        bus.publish(e)
-        if queue is not None:
-            queue.put_nowait(e)
+        # Each sink on its own: a mirror that fails must not cost the subscribers the event.
+        for name, sink in (
+            ("mirror", lambda: mirror.handle(e, loop.time())),
+            ("bus", lambda: bus.publish(e)),
+            ("display", lambda: queue.put_nowait(e) if queue is not None else None),
+        ):
+            try:
+                sink()
+            except Exception:
+                _log.exception("publishing %s to the %s failed", e.get("type"), name)
 
     def reconfigure(profile: str | None, lifespan: float | None) -> Any:
         return _load(
@@ -179,7 +188,7 @@ async def _serve(args: argparse.Namespace, cfg: Any, state_dir: Path, clock: Any
     if args.clock != "fake" and main is not None:
         for sig in (signal.SIGTERM, signal.SIGINT):
             with contextlib.suppress(NotImplementedError, RuntimeError):
-                loop.add_signal_handler(sig, main.cancel)
+                loop.add_signal_handler(sig, _on_stop_signal, ctl, main)
     try:
         await ctl.run()
     except asyncio.CancelledError:
@@ -194,6 +203,12 @@ async def _serve(args: argparse.Namespace, cfg: Any, state_dir: Path, clock: Any
             with contextlib.suppress(Exception):
                 await shower
         await bus.stop()
+
+
+def _on_stop_signal(ctl: Any, main: asyncio.Task[Any]) -> None:
+    """SIGTERM or SIGINT: tell systemd the controller is stopping, then stop it."""
+    ctl.stopping()
+    main.cancel()
 
 
 def cmd_estimate(args: argparse.Namespace) -> int:
