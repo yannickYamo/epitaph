@@ -148,7 +148,9 @@ def close_interrupted(d: Path) -> dict[str, Any]:
             "model": model,
             "recovered": True,
         }
-        _append(d / "events.jsonl", json.dumps(e) + "\n")
+        path = d / "events.jsonl"
+        torn = path.exists() and not path.read_bytes().endswith(b"\n")
+        _append(path, ("\n" if torn else "") + json.dumps(e) + "\n")
         cause, lived = "interrupted", round(last_t, 1)
     else:
         cause = str(death.get("cause", "interrupted"))
