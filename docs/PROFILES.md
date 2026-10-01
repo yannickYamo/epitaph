@@ -289,3 +289,69 @@ In the simulator it dies `full` at 61 min. Simulated, it fails one verify-life c
 `full`, `bright_words_last_2min`: a life that never forgets has nothing grey at its end. That
 check measures the fading of a decline and should skip the unbounded life as `speed_decline`
 does; until it does, the real `unbounded` life of G3 (A8) will fail on it.
+
+## One model, only the hardware shrinks (2026-10-01)
+
+The owner's rule (ADR-030): the model never changes during a life, only its machine does, and the
+screen types one constant stream from the first word to the death. `pi4/default` is rebuilt on
+it; the 30-minute life above is kept as `pi4/default-reloads` for reference (still estimated and
+simulated by `make check`).
+
+| t | Phase, health | Recall | CPU share | Clock MHz | Model, sampling, persona |
+|---|---|---|---|---|---|
+| 0:00 | birth, nominal | 900 | 3.0 | 1800 | Q4_K_M, 3 threads; temperature 0.70, `min_p` 0.08, 70 tokens; 5 groups and mechanics, throughout |
+| 5:00 | first loss, stable | 260 | 3.0 | 1800 | |
+| 10:00 | decline, degrading | 200 | 2.6 | 1800 | |
+| 15:00 | failing | 160 | 2.4 | 1500 | |
+| 20:00 | critical | 130 | 2.0 | 1200 | |
+| end-6:00 | end, terminal | 100 | 1.5 | 1000 | |
+| end-0:30 | death (RAM taken) | | | | |
+
+`fixed_mind = true` makes validation refuse any keyframe that changes the step, the threads, the
+persona, the mechanics or the sampling. `stepped = ["recall", "cpu_share"]` sets each memory cut
+and CPU step at its moment instead of easing into it. Every value is a real operation the
+readings report: `memory 260 tokens (was 900)` with the opening words of what was forgotten,
+`cores 2.4 of 4 (was 2.6)`, `clock 1500 MHz (was 1800)`.
+
+**The stream.** `[reveal] mode = "stream"`: every letter at 542 ms (a fixed 10% jitter), 270 ms
+after a word, 750 ms after a clause, 2.1 s after a sentence, 3 s between thoughts. The model
+starts its next thought as soon as the previous one is generated, while fewer than three
+generated thoughts and fewer than 900 letters wait. The screen waits once, at birth, for the
+first thought (the first word comes at about 2.5 minutes); then never.
+
+**How the pace was chosen.** `epitaph estimate` replays a stream life: generation token by token
+at the Pi's measured rates (`bench/`) under the schedule's CPU share and clock, the prompt work
+of each reading and each memory cut, and the screen at its constant pace. Every machine cost is
+15% slower than measured (`estimate.stream_margin`); any wait of the screen for a word before
+the death fails the estimate. `epitaph estimate --fit-pace` searches the fastest letter interval
+that passes: **542 ms, 19.2 words a minute** (1.85 letters a second while typing, pauses
+included in the words a minute). At 541 ms the stream runs dry in the last minutes.
+
+The decline is as deep as the speed check needs and no deeper: the last five minutes generate at
+0.28 of the first five (limit 0.40). A deeper one slows the whole stream, since the pace is set
+by what the machine can still produce at the end plus what it wrote ahead before.
+
+```
+$ epitaph estimate --profile pi4/default --hardware pi4-4gb
+profile pi4/default: 11 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.28 (limit < 0.40): 1.26 -> 0.35 tokens/s
+  note: stream 542 ms/letter, 19.2 words/min; costs 15% slower: never starves; letters waiting every 5 min: 0, 315, 400, 357, 329, 127 (max 470); backlog at death 0 words (0 s of typing)
+  note: 11 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
+```
+
+At the measured costs (no margin) the buffer holds 380-400 letters from 5 to 25 minutes and two
+words die unshown at the death. The buffer is about a thought and a half, so what the model
+writes reaches the screen a few minutes later; the forgetting fades the text when the screen
+gets there.
+
+The thought-count rule keeps rule (a) with one thought per health label (`[rules]
+between_health = 1`); rules (b)-(d) count reloads and erosion steps, which this life does not
+have.
+
+**Rehearsed on the real model at Pi costs** (Qwen3 4B on the laptop, `epitaph rehearse --stage
+life --profile pi4/default --seed 1`, generation charged token by token at the CPU share and
+clock of the moment): 13 thoughts generated, 12 shown (the last cut by the death), 550 words;
+the first word at 2:01, no wait of the screen after it (0 s starved), 3 words unshown at the
+death; every letter in the 542 ms band; generation 1.03 tokens/s at birth, 0.29 at the end. The
+model meets its first cut by itself ("I am still here, though my memories have faded") and the
+clock steps in the readings.

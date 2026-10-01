@@ -408,6 +408,23 @@ Per thought:
    - `gen_start` and `gen_end` events let tests check the rule.
 8. **At death:** `finish_thought` runs, the words it really generated are shown at the current pace, then `death_shown`.
 
+**The stream mode** (`[reveal] mode = "stream"`, ADR-030; `pi4/default`) replaces steps 6-8:
+
+- **The display never waits except at birth.** One `StreamScreen` types every word of the life
+  at one constant pace (`stream_letter_ms`, a fixed `stream_jitter`, the fixed word, clause and
+  sentence pauses, `stream_thought_pause_ms` between thoughts; no hesitation). It waits once,
+  until `stream_birth_thoughts` thoughts are written.
+- **The model writes ahead.** The request for thought n+1 starts as soon as thought n is
+  generated, while fewer than `stream_max_thoughts` generated thoughts and `stream_max_letters`
+  letters wait; its reading is written at generation time, as before.
+- **Starvation** (the screen ready, no word waiting, the creature alive) is measured: `starved`
+  events, and `starved_s` / `max_stall_s` on `death_shown`. The cost model fails on any
+  (`epitaph estimate`), `verify-life` on a wait over `max_stream_stall_s`.
+- **At death the stream stops where it is**: the words not yet shown die with it
+  (`backlog_words` on `death_shown`), and `death_shown` follows at once.
+- A memory cut is emitted when it happens (`forget`, `deferred`) and again when the screen
+  reaches that moment (`forget`, `shown`), so the displays fade text only once it was typed.
+
 ### 5.8 The loop
 
 ```

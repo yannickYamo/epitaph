@@ -556,3 +556,20 @@ def test_generation_is_charged_at_the_hardware_of_each_token() -> None:
     tokens_time = run_virtual(main)
     # 5 tokens at full speed, then 5 at a third of it: 5 + 15 token-times
     assert tokens_time == pytest.approx(20, rel=0.05)
+
+
+def test_thoughts_text_pairs_each_thought_with_its_own_reading() -> None:
+    """In a stream life a thought ends on screen after later readings were written."""
+    from epitaph.rehearse import thoughts_text
+
+    events = [
+        {"type": "vitals", "t": 10.0, "reading": "[host] one"},
+        {"type": "thought_start", "turn": 1, "t": 10.0},
+        {"type": "vitals", "t": 70.0, "reading": "[host] two"},
+        {"type": "thought_start", "turn": 2, "t": 70.0},
+        {"type": "thought_end", "turn": 1, "t": 90.0, "text": "First."},
+        {"type": "thought_end", "turn": 2, "t": 150.0, "text": "Second."},
+    ]
+    text = thoughts_text(events)
+    assert text.index("[host] one") < text.index("First.") < text.index("[host] two")
+    assert text.index("[host] two") < text.index("Second.")
