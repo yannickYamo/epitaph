@@ -138,6 +138,9 @@ hours = ""
 outside = "unseen"               # unseen | pause
 
 [verify]
+# Voice metrics that only advise on a real life (level full): keyword proxies, while the owner's
+# reading decides (ADR-028). They still fail at the rehearsal level, where the voice is tuned.
+advisory_at_full = ["demise_rate", "cliches", "complete_sentences", "specific", "sentence_length"]
 max_reload_silence_s = 120
 wpm_birth_range = [40, 60]
 wpm_writing_range = [10, 75]

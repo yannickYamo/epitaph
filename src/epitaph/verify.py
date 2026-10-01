@@ -60,7 +60,7 @@ from epitaph.state import atomic_write_json
 from epitaph.types import RuleReport
 
 Event = dict[str, Any]
-Status = Literal["pass", "fail", "pending", "skip"]
+Status = Literal["pass", "fail", "pending", "skip", "advisory"]
 LEVELS = ("smoke", "skeleton", "full", "rehearsal", "screen")
 # Event types that describe a run instead of happening in a life (rehearsal headers).
 META_TYPES = ("rehearsal", "meta", "header")
@@ -737,7 +737,8 @@ class Check:
     """One row of the verify table: a named check, its status, measured value and limit.
 
     `pending` means the check cannot run yet (a missing layout probe, an unrecorded next
-    life); like `skip`, it never fails a life.
+    life); like `skip`, it never fails a life. `advisory` is a failed voice metric on a real
+    life (`verify.advisory_at_full`): reported, never failing it (ADR-028).
     """
 
     name: str
@@ -779,6 +780,7 @@ class VerifyResult:
             "ok": self.ok,
             "failed": [c.name for c in self.checks if c.status == "fail"],
             "pending": [c.name for c in self.checks if c.status == "pending"],
+            "advisory": [c.name for c in self.checks if c.status == "advisory"],
             "checks": [asdict(c) for c in self.checks],
             "metrics": self.metrics,
             "meta": self.meta,
@@ -929,6 +931,13 @@ class Verifier:
         for enabled, fn in plan:
             if enabled:
                 res.checks.extend(fn())
+        if full:
+            # Keyword proxies for the voice: on a real life they inform, the owner's reading
+            # decides (BUILD_PLAN 5.11; ADR-028). The rehearsal level keeps them failing.
+            advisory = {str(n) for n in self.cfg.get("verify.advisory_at_full", [])}
+            for c in res.checks:
+                if c.status == "fail" and c.name in advisory:
+                    c.status = "advisory"
         res.metrics = self.summary()
         return res
 

@@ -612,3 +612,37 @@ def test_cause_by_clock_when_nobody_names_it() -> None:
     life = Life(cfg, clock, None, FakeBody(), lambda e: None)  # type: ignore[arg-type]
     assert life.time_cause() == Cause.CRASH.value  # not born: nothing on the clock
     assert life.lived() == 0.0
+
+
+def test_clock_steps_land_on_time_even_mid_thought() -> None:
+    """A keyframe's clock cap is applied at its time by the supervisor, not at the next
+    thought (on the Pi the 600 MHz step at end-2:30 fell inside the last thought and was
+    never applied)."""
+    cfg = cfg_of(DEFAULT)
+    applied: list[tuple[float, float]] = []
+
+    async def setup(ctl: Controller, clock: VirtualClock) -> None:
+        inner = ctl.body.apply
+
+        def spy(knobs: Any) -> None:
+            applied.append((clock.elapsed(), knobs.cpu_mhz))
+            inner(knobs)
+
+        ctl.body.apply = spy  # type: ignore[method-assign]
+
+    run(cfg, setup=setup)
+    sch = Schedule(cfg.profile)
+    steps = [
+        (t, mhz)
+        for t, mhz, prev in zip(
+            sch.times[1:],
+            [sch.at(t).cpu_mhz for t in sch.times[1:]],
+            [sch.at(t).cpu_mhz for t in sch.times[:-1]],
+            strict=True,
+        )
+        if mhz != prev
+    ]
+    assert steps, "the default profile steps its clock"
+    for t, mhz in steps:
+        first = next(at for at, m in applied if m == mhz)
+        assert t - 1e-6 <= first <= t + 5.0, (mhz, t, first)
