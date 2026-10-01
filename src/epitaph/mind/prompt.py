@@ -312,6 +312,7 @@ class Reader:
         quiet: bool = False,
         quiet_time: bool = True,
         material: bool = False,
+        temperature: bool = True,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
 
@@ -328,6 +329,7 @@ class Reader:
         self.quiet = quiet
         self.quiet_time = quiet_time
         self.material = material
+        self.temperature = temperature
         self._health: str | None = None
         self.cores_step = cores_step
         self.speed_step = speed_step
@@ -350,6 +352,7 @@ class Reader:
             quiet=bool(p.get("readings_quiet", False)),
             quiet_time=bool(p.get("readings_quiet_time", True)),
             material=bool(p.get("readings_material", False)),
+            temperature=bool(p.get("readings_temperature", True)),
         )
 
     def reading(self, x: ReadingInput) -> str:
@@ -431,7 +434,7 @@ class Reader:
         )
         if speed is not None:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
-        if x.cpu_c is not None:
+        if x.cpu_c is not None and self.temperature:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
         return f"{prefix} " + lang.r("sep").join(parts)
 
