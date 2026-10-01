@@ -315,9 +315,9 @@ def test_sudoers_parses(tmp_path: Path) -> None:
     assert out.returncode == 0, out.stdout + out.stderr
 
 
-def test_install_manages_both_helpers() -> None:
+def test_install_manages_every_helper() -> None:
     text = (ROOT / "deploy" / "install.sh").read_text()
-    assert "HELPERS=(epitaph-clock:020 epitaph-netblock:021)" in text
+    assert "HELPERS=(epitaph-clock:020 epitaph-netblock:021 epitaph-world:022)" in text
 
 
 # --- the rule is checked before every spawn (gate review finding 1) -----------------------------

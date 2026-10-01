@@ -681,3 +681,40 @@ pinned to cores 1-3 with 2 threads (`-p 64 -n 32 -r 2`), then the temperature an
 - **Cores cannot be switched off.** CPU hotplug is not available on the Pi 4 kernel
   (`/sys/devices/system/cpu/cpu*/online` is absent), so "processors taken" stays the CPU share
   plus the clock.
+
+## S8: a core taken from a running creature (part C, 2026-10-01)
+
+The dread plan takes the body after the surroundings: could "a core gone" be real, without a
+restart? `tools/spike/s8_affinity.py`, run as a transient unit under the Pi lock with the
+controller stopped (and started again after). One llama-server as the creature runs it (Qwen3
+4B Q4_K_M, 3 threads, `dio`, ctx 2048, pinned to cores 1-3) streams chat completions (the
+persona and mechanics as system prompt, a reading as user turn, 48 tokens, cache on) without
+pause while `taskset -a -p` narrows every thread's affinity: cores 1-3, 1-2, 1, then 1-3
+again. At least 180 s per phase; every token's arrival time recorded. Raw results:
+`bench/spike/s8_affinity.jsonl`.
+
+| Cores | Tokens | tg tok/s | vs 1-3 | proportional | gap p50 s | gap p99 s | worst gap s | gaps > 5 s | °C |
+|---|---|---|---|---|---|---|---|---|---|
+| 1-3 | 94 | 1.291 | 1.00 | 1.00 | 0.77 | 0.87 | 0.87 | 0 | 54.0 |
+| 1-2 | 141 | 0.842 | 0.65 | 0.67 | 1.19 | 1.22 | 1.23 | 0 | 51.6 |
+| 1 | 94 | 0.452 | 0.35 | 0.33 | 2.21 | 2.24 | 2.24 | 0 | 48.7 |
+| 1-3 again | 188 | 1.290 | 1.00 | 1.00 | 0.77 | 0.84 | 0.86 | 0 | 55.0 |
+
+`get_throttled` 0x0 throughout; load 64 s.
+
+- **Speed follows the cores, proportionally** (within 3% at two cores, 5% better than
+  proportional at one), and comes back in full when the cores do. Three threads on fewer
+  cores do not spin into stalls: the gaps stay as even as at full width (p99 within 2% of
+  p50 in every phase).
+- **No stall.** The worst gap is 2.24 s on one core; nothing over 5 s.
+- The first token of the first request after a narrowing (prompt processing of the reading):
+  25 s at 1-2, 50 s at 1, 17 s back at 1-3. The narrowings fell between requests here; the
+  kernel moves running threads at once, and S3c saw no stall when `cpu.max` changed under a
+  running generation.
+- **Go for "core gone" losses** (1-3 → 1-2 → 1, no restart, threads unchanged). It stacks with
+  the CPU share and the clock: one core at 600 MHz (S7: 0.34) is about 0.15 tok/s, a 6.5 s gap
+  per token, which the stream's write-ahead buffer must cover and the cost model must charge
+  (compute ∝ cores × share × clock). Not built in this round: the body has no cores knob yet.
+  `taskset -a -p` on the creature, as the service user that owns it, does it without root
+  (as here); the creature cgroup's `cpuset.cpus` would too (cpuset is among the machine's
+  controllers; the body enables only memory, cpu and io in its subtree, so that is untested).

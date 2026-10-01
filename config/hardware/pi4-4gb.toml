@@ -41,3 +41,12 @@ estimated = true
 tg_tok_s = { "0-3" = 1.35, "0-2" = 1.0, "1-3" = 1.7, "1-2" = 1.3, "2-2" = 1.6, "2-1" = 0.9 }
 pp_tok_s = { "0-3" = 10.0, "0-2" = 7.0, "1-3" = 11.0, "1-2" = 8.0, "2-2" = 9.0, "2-1" = 5.0 }
 load_s = [60.0, 45.0, 30.0]
+
+# The dread plan (2026-10-01): what a life may lose around it, taken by this root-owned helper
+# (deploy/sbin/epitaph-world, installed by deploy/install.sh with a sudoers drop-in; it also
+# restores everything at every death and start). The services are what runs on this Pi image
+# and can stop for a life without harm, outermost first (docs/PI_FACTS.md "The world");
+# install.sh writes them to /etc/epitaph/world-services, the only names the helper accepts.
+[world]
+helper = "/usr/local/sbin/epitaph-world"
+services = ["nfs-blkmap", "rpcbind", "cron", "bluetooth", "avahi-daemon"]

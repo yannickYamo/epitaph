@@ -27,8 +27,13 @@ Environment=PYTHONUNBUFFERED=1
 # The full clock before every start and after every stop, even after a crash (ADR-025).
 # "+" runs the helper as root without sudo.
 ExecStartPre=+/usr/local/sbin/epitaph-clock reset
+# The world back as at birth (the dread plan): the services, the radio and the lights a life
+# took. "-": a restore that fails (NetworkManager not up yet at boot) must not keep the piece
+# from starting; the body restores again at every start and every death.
+ExecStartPre=-+/usr/local/sbin/epitaph-world restore
 ExecStart=/opt/epitaph/venv/bin/epitaph run
 ExecStopPost=+/usr/local/sbin/epitaph-clock reset
+ExecStopPost=-+/usr/local/sbin/epitaph-world restore
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
@@ -38,7 +43,7 @@ Delegate=yes
 OOMPolicy=continue
 # Core 0 for the controller; the creature re-pins itself to cores 1-3 (taskset in wrap_spawn).
 CPUAffinity=0
-# No NoNewPrivileges: the controller reaches the clock helper through sudo.
+# No NoNewPrivileges: the controller reaches the clock and world helpers through sudo.
 
 [Install]
 WantedBy=multi-user.target
