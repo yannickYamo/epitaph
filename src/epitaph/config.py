@@ -388,6 +388,9 @@ def reading_tokens(cfg: Config, form: str) -> int:
     return int(table.get(form, 45))
 
 
+CREATURE_NETWORK = ("blocked", "allowed")  # body.creature_network (ADR-005)
+
+
 def validate_config(cfg: Config) -> None:
     """Fail fast on impossible settings (BUILD_PLAN 5.4). Thought counts are costmodel's job."""
     p = cfg.profile
@@ -419,6 +422,10 @@ def validate_config(cfg: Config) -> None:
         profile_rules(p.settings)
     except ConfigError as e:
         problems.append(str(e))
+    network = cfg.get("body.creature_network", "blocked")
+    if network not in CREATURE_NETWORK:
+        # Anything but "blocked" used to leave the network open: a typo must not (ADR-005).
+        problems.append(f"body.creature_network must be one of {CREATURE_NETWORK}, not {network!r}")
     if cfg.get("prompt.readings_material", False) and not cfg.get("prompt.readings_quiet", False):
         problems.append("prompt.readings_material needs prompt.readings_quiet (quotes ride on it)")
 

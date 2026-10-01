@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from epitaph.body.base import Body
 from epitaph.body.cpuclock import MAX_MHZ, CpuClock
-from epitaph.body.netblock import BLOCKED, NetBlock, NetBlockError
+from epitaph.body.netblock import ALLOWED, BLOCKED, NetBlock, NetBlockError
 from epitaph.body.thermal import ThermalGuard, ThermalSettings
 from epitaph.body.vitals import (
     DEFAULT_PATHS,
@@ -77,6 +77,15 @@ class CgroupSettings:
     creature_network: str = BLOCKED
     netblock_helper: str = ""
     thermal: ThermalSettings = dataclasses.field(default_factory=ThermalSettings)
+
+    def __post_init__(self) -> None:
+        """Refuse a creature_network that is neither blocked nor allowed (config validates it
+        too): a typo must never leave the network open."""
+        if self.creature_network not in (BLOCKED, ALLOWED):
+            raise ValueError(
+                f"body.creature_network must be {BLOCKED!r} or {ALLOWED!r}, "
+                f"not {self.creature_network!r}"
+            )
 
     @classmethod
     def from_config(cls, cfg: Config) -> CgroupSettings:

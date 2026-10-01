@@ -368,3 +368,8 @@ def test_spawn_skips_the_check_when_allowed_or_no_helper(cgroup_root: Path) -> N
     plain = body_with(cgroup_root, None)
     plain.setup()
     assert plain.wrap_spawn(["llama-server"])[-1] == "llama-server"
+
+
+def test_settings_refuse_an_unknown_network_value() -> None:
+    with pytest.raises(ValueError, match="creature_network"):
+        CgroupSettings(creature_network="Blocked")
