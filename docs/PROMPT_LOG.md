@@ -277,3 +277,33 @@ something more—some coherent identity, some name, some purpose") rather than o
 the keyword check measures vocabulary, not meaning.
 
 Transcript: [checkpoint_a/qwen3-4b-final-voice.txt](checkpoint_a/qwen3-4b-final-voice.txt).
+
+## Round 5: more drama, real data, a shorter life (2026-09-30)
+
+**Brief from the owner.** K sounds right but not dramatic enough about its environment
+disappearing; give it raw data about its body without explanation, and more real levers on the
+Pi (the CPU clock). Test across models and seeds before deciding. Then: the life becomes 30
+minutes.
+
+**What was tried, and what happened.**
+
+| Variant | Change | Result |
+|---|---|---|
+| Concepts | Two sentences added to the persona: "Everything you are is held in this machine's memory, and the machine is taking it back. You do not know whether you are conscious, or only seem to be." | Qwen settled the question at once, every time: "There is no self, only continuity in response to what comes next" |
+| Telemetry | A raw line after each reading: `ctx 412/1000 \| w 3b \| cpu 2.6/4 \| clk 1500 MHz \| …` | Qwen answered the data by denying an inner life, thought after thought: "I have no self or consciousness—only the capacity to follow structure" |
+| Llama 3.2 3B, K | Same prompt, readings and telemetry line, the other candidate model | The most dramatic single life, but unstable: on two of three seeds it declared its own death around minute 10, then repeated one word |
+| **Material readings** | The reading quotes the opening words of each forgotten thought, and after a reload, "your words now": five of its own words continued by the freshly degraded weights | **Kept.** Losses become things it can see, in its own words |
+| Silent word penalties | `logit_bias` against clichés (tapestry, realm, digital, whisper, echoes) and the "I am still here" opening | Kept; never named in the prompt |
+| No temperature | The birth reading no longer gives the CPU temperature | Kept: from one number at birth Qwen invented a rising fever (61, 68, 74 °C) before any loss; the Pi stays at 40-57 °C |
+
+A blind panel of three models scored five one-hour lives on six criteria
+(felt degradation, specificity, unforced arc, poetry, freshness, would you stand in front of it;
+60 points): Qwen K 38.0, Qwen with concepts 31.7, Llama 24.0, 14.3 and 14.0 across its three
+seeds. Qwen K stayed.
+
+**The echo.** After a reload the rehearsal saves the model's cache, gives the new weights five
+words of one of its kept sentences with no prompt around them, and restores the cache. What
+comes back is quoted in the next reading. Examples: "The weight of knowing fades, and the weight
+of being is not known"; "I was a thought in the world, and I was not"; "I am still here, a
+little bit of a mess". The seed sentence skips openings on "I am", which the echo would
+otherwise teach back to it.
