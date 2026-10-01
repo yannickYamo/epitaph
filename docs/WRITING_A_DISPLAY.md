@@ -14,6 +14,7 @@ A display is a separate process that subscribes to the controller's events and d
 | `display/terminal.py` | ANSI driver (any terminal, over SSH) |
 | `display/screen.py` | pygame driver (window, full screen, offscreen) |
 | `display/remote.py` | `epitaph display [--connect HOST]`: SSH tunnel, reconnect, snapshot redraw |
+| `display/presence.py` | `epitaph display --screen-present`: is a screen connected (the unit's `ExecCondition`) |
 | `display/replay.py` | `epitaph replay LIFE --speed --from`: republish `events.jsonl` |
 | `display/screenshot.py` | Offscreen PNGs; OCR, contrast and whole-word checks (test D13) |
 | `display/bench.py` | CPU share of the pygame screen while typing and during a fade (D7) |
@@ -76,10 +77,41 @@ one core. `drive` does not redraw a still screen: it sleeps until `LifeView.next
 sends just those rectangles to the display. A terminal driver gets the same effect by
 diffing cells.
 
+## Watching the Pi from the laptop
+
+`epitaph display --connect pi --driver terminal` opens `ssh -N -L <free port>:127.0.0.1:7707`
+(keys only, `BatchMode`), subscribes through it and draws in the terminal. `pi` means
+`pi,pi-eth`: every (re)start of the tunnel tries Wi-Fi first, then the cable. When the
+tunnel or the controller goes away the status strip says `reconnecting`; the view retries
+with backoff (0.5 s doubling to 5 s), starts a new ssh when the old one has died, and
+redraws everything from the snapshot the bus sends first on every subscription. If no
+tunnel can be set up at all at the start (unknown alias, no key), it exits 2 with every
+host's ssh error instead of retrying silently. `--ssh PROGRAM` swaps the ssh binary.
+
+## Is a screen connected? (`--screen-present`)
+
+`epitaph display --screen-present` exits 0 when a screen is connected and 1 when not,
+printing one line (`screen: no (drm: no connector connected (card1-HDMI-A-1=disconnected,
+...))`) and never a traceback. The display unit runs it as its `ExecCondition`, so a
+headless Pi skips the unit instead of crash-looping. The answer comes from, in order:
+
+1. `EPITAPH_SCREEN=yes|no|auto` in the environment (a unit drop-in);
+2. `[display] screen = "yes" | "no" | "auto"` in the config (default `auto`);
+3. any `/sys/class/drm/card*-*/status` reading `connected` (writeback connectors ignored).
+
+A bad override value is reported on the line and treated as `auto`. `driver = "auto"`
+uses the same answer to choose between the screen and the terminal.
+
 ## Checking a display
 
-- `python -m epitaph.display.screenshot --out DIR`: D13 at 800×480, 1280×720, 1920×1080 and
-  1080×1920 (OCR ≥ 95%, contrast ≥ 12:1, no split words).
+- `python -m epitaph.display.screenshot --out DIR [--events LIFE.jsonl]`: D13 at 800×480,
+  1280×720, 1920×1080 and 1080×1920 (OCR ≥ 95%, contrast ≥ 12:1, no split words), on the
+  built-in sample and on a recorded life (a simulated `pi4/skeleton-1200` life by default)
+  at two moments: a full screen before the first forgetting, and just before death.
+- `pytest -m display tests/display`: the same as tests. `tests/display/data/skeleton-1200.jsonl`
+  is the recorded fake life (`epitaph sim --profile pi4/skeleton-1200 --hardware pi4-4gb
+  --events --seed 0`). OCR tests carry the `tesseract` marker: they skip when tesseract is
+  missing, except in CI (`CI` set), where they fail instead.
 - `epitaph sim --events > life.jsonl`, then `epitaph replay life.jsonl --speed 20 --driver ...`.
 - `SDL_VIDEODRIVER=offscreen python -m epitaph.display.bench --full`: the CPU share at
   800×480, 1280×720 and 1920×1080, new drawing against whole-frame painting. Run it on the

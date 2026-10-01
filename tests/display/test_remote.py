@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -265,9 +266,9 @@ def test_screen_present(tmp_path: Path) -> None:
 
 
 def test_main_screen_present_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(remote, "screen_present", lambda: False)
+    monkeypatch.setenv("EPITAPH_SCREEN", "no")
     assert remote.main(["--screen-present"]) == 1
-    monkeypatch.setattr(remote, "screen_present", lambda: True)
+    monkeypatch.setenv("EPITAPH_SCREEN", "yes")
     assert remote.main(["--screen-present"]) == 0
 
 
@@ -359,3 +360,186 @@ def test_display_config_unreadable(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
     assert display_config("dev") == {}
+
+
+# -- `epitaph display --connect pi --driver terminal` end to end (gate G1.2) ---------------
+
+FAKE_SSH = r"""
+import os, sys
+args = sys.argv[1:]
+host = args[-1]
+lport, _, rest = args[args.index("-L") + 1].partition(":")
+rhost, _, rport = rest.partition(":")
+with open(os.environ["FAKE_SSH_LOG"], "a") as f:
+    f.write(f"{host} {os.getpid()} {' '.join(args[:-1])}\n")
+if host in os.environ.get("FAKE_SSH_FAIL", "").split(","):
+    sys.stderr.write(f"ssh: Could not resolve hostname {host}\n")
+    sys.exit(255)
+assert rhost == "127.0.0.1" and "-N" in args and "BatchMode=yes" in args
+sys.argv = [sys.argv[0], lport, rport]
+"""
+
+
+def fake_ssh_program(tmp_path: Path) -> Path:
+    """An executable that takes ssh's arguments and forwards -L like the real tunnel."""
+    prog = tmp_path / "ssh"
+    prog.write_text(f"#!{sys.executable}\n{FAKE_SSH}\n{PROXY}")
+    prog.chmod(0o755)
+    return prog
+
+
+def ssh_log(tmp_path: Path) -> list[tuple[str, int]]:
+    log = tmp_path / "ssh.log"
+    if not log.exists():
+        return []
+    return [(ln.split()[0], int(ln.split()[1])) for ln in log.read_text().splitlines()]
+
+
+class ThreadBus:
+    """The controller's real `EventBus`, run on its own loop in a thread."""
+
+    def __init__(self, words: list[str]) -> None:
+        import threading
+
+        self.words = words
+        self.ready = threading.Event()
+        self.port = 0
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.thread = threading.Thread(target=lambda: asyncio.run(self._run()), daemon=True)
+        self.thread.start()
+        assert self.ready.wait(5)
+
+    def snapshot(self) -> dict[str, Any]:
+        words = [{"turn": 1, "i": i, "text": w} for i, w in enumerate(self.words)]
+        return make_event("snapshot", 7, t=60.0, words=words, mode="living", open_turn=1)
+
+    async def _run(self) -> None:
+        self.stop = asyncio.Event()
+        bus = EventBus(port=0, snapshot=self.snapshot)
+        await bus.start()
+        self.port, self.loop = bus.port, asyncio.get_running_loop()
+        self.ready.set()
+        await self.stop.wait()
+        await bus.stop()
+
+    def close(self) -> None:
+        assert self.loop is not None
+        self.loop.call_soon_threadsafe(self.stop.set)
+        self.thread.join(5)
+
+
+def terminal_spy(monkeypatch: pytest.MonkeyPatch, on_render) -> list[TerminalDriver]:
+    """Make `epitaph display` draw into a string; `on_render(driver, text)` after each frame."""
+    import epitaph.display.app as app
+
+    real = app.make_driver
+    created: list[TerminalDriver] = []
+
+    def spy(name: str, cfg: dict[str, Any], **opts: Any) -> Any:
+        assert name == "terminal"
+        d = real(name, cfg, out=io.StringIO(), size=(40, 8), color="none", **opts)
+        created.append(d)  # type: ignore[arg-type]
+        orig = d.render
+
+        def render(now: float | None = None) -> None:
+            orig(now)
+            cells = sorted(d.last_cells.items())  # type: ignore[attr-defined]
+            on_render(d, "".join(ch for _, (ch, _) in cells))
+
+        d.render = render  # type: ignore[method-assign]
+        return d
+
+    monkeypatch.setattr(app, "make_driver", spy)
+    return created
+
+
+def test_connect_pi_reconnects_through_a_new_tunnel_and_redraws(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`epitaph display --connect pi --driver terminal` against the real bus: mDNS fails, so
+    the tunnel goes over `pi-eth`; the tunnel dies mid-life, the view says `reconnecting`,
+    starts a new ssh and redraws from the fresh snapshot."""
+    import signal
+
+    bus = ThreadBus(["first", "words"])
+    monkeypatch.setenv("FAKE_SSH_LOG", str(tmp_path / "ssh.log"))
+    monkeypatch.setenv("FAKE_SSH_FAIL", "pi")
+    seen: list[str] = []
+
+    def on_render(d: TerminalDriver, text: str) -> None:
+        status = (d.last_frame.status if d.last_frame else "") or ""
+        if "words" in text and not seen:
+            bus.words.append("again")  # what the next snapshot holds
+            os.kill(ssh_log(tmp_path)[-1][1], signal.SIGKILL)  # the tunnel dies
+            seen.append("killed")
+        if "reconnecting" in status and seen == ["killed"]:
+            seen.append("reconnecting")
+        if "again" in text and seen[-1:] == ["reconnecting"]:
+            seen.append("redrawn")
+            d.closed = True
+
+    created = terminal_spy(monkeypatch, on_render)
+    argv = ["--connect", "pi", "--ssh", str(fake_ssh_program(tmp_path))]
+    argv += ["--driver", "terminal", "--port", str(bus.port), "--fps", "60"]
+    try:
+        assert remote.main(argv) == 0
+    finally:
+        bus.close()
+    assert seen == ["killed", "reconnecting", "redrawn"]
+    hosts = [h for h, _ in ssh_log(tmp_path)]
+    assert hosts == ["pi", "pi-eth", "pi", "pi-eth"]  # every restart tries Wi-Fi first
+    assert created[0].closed and created[0].view.life == 7
+    log = (tmp_path / "ssh.log").read_text()
+    assert f":127.0.0.1:{bus.port}" in log  # the remote end is the bus on the Pi's loopback
+
+
+def test_connect_fails_fast_when_no_tunnel_can_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("FAKE_SSH_LOG", str(tmp_path / "ssh.log"))
+    monkeypatch.setenv("FAKE_SSH_FAIL", "pi,pi-eth")
+    terminal_spy(monkeypatch, lambda d, text: None)
+    argv = ["--connect", "pi", "--ssh", str(fake_ssh_program(tmp_path)), "--driver", "terminal"]
+    assert remote.main(argv) == 2
+    err = capsys.readouterr().err
+    assert "Could not resolve hostname pi" in err and "pi-eth" in err
+    assert [h for h, _ in ssh_log(tmp_path)] == ["pi", "pi-eth"]
+
+
+async def test_reconnecting_fail_fast_only_before_the_first_event() -> None:
+    bus = EventBus(port=0, snapshot=lambda: make_event("snapshot", 2, words=[]))
+    await bus.start()
+    calls = 0
+
+    async def connect() -> tuple[str, int]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "127.0.0.1", bus.port
+        raise ConnectionError("tunnel gone")
+
+    got: list[dict[str, Any]] = []
+    states: list[bool] = []
+    stop = asyncio.Event()
+
+    async def reader() -> None:
+        async for e in remote.reconnecting(
+            connect, states.append, backoff=(0.01, 0.02), stop=stop, fail_fast=True
+        ):
+            got.append(e)
+
+    task = asyncio.create_task(reader())
+    await wait_for(lambda: len(got) == 1)
+    await bus.stop()  # the drop: later tunnel failures are retried, not raised
+    await wait_for(lambda: calls >= 4)
+    assert not task.done()
+    stop.set()
+    await asyncio.wait_for(task, 2)
+    assert states[0] is True and states[-1] is False
+
+    async def never() -> tuple[str, int]:
+        raise ConnectionError("no route")
+
+    with pytest.raises(ConnectionError, match="no route"):
+        async for _ in remote.reconnecting(never, fail_fast=True):
+            pass
