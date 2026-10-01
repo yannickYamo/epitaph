@@ -34,3 +34,15 @@
 - The local display starts only when a screen is connected; the remote view works over SSH.
 - Gate G1 passed on the Pi: a smoke life, two 20-minute lives, the remote view live, a headless
   reboot (docs/process/reports/1-L.md).
+
+## Phase 2 closed, phase 3 and offline (2026-10-01)
+- Gate G2 on the Pi: three consecutive 30-minute lives pass at the full level; the fault
+  matrix (network block, crash, hang, controller killed, two controllers) passes.
+- Fixes from real lives: each keyframe's clock and CPU share applied on time; the last words
+  on screen within the display limit after a death; a letter ceiling at 2-bit.
+- Offline: the Pi boots and lives with no network; a screen plugged in later starts the
+  display; each life's last words are kept on disk for future posts (docs/AFTERLIFE.md).
+- Exhibition hours; the arm64 install test; the soak tools; user docs (README, CONFIG,
+  INSTALLATION, CONTRIBUTING).
+- The original persona keeps its knowledge of its end to the last erosion step (ADR-011);
+  no 25-hour soak (ADR-029).
