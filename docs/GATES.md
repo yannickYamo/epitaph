@@ -145,24 +145,50 @@ summary lines and names the folders.
 
 ## G3: hardening, checkpoint C = acceptance (BUILD_PLAN 8.4, 11)
 
+**How the soak runs (A2, A4).** The soak is the installed service itself, on Wi-Fi with the
+laptop's cable unplugged, for at least 25 hours; nothing is deployed and nothing takes the Pi
+lock meanwhile. Three read-only steps, none of which stops the service:
+
+1. At the start, on the laptop: `nohup tools/soak_sample.sh --out logs/pi/soak-<stamp>/samples.tsv
+   2>logs/pi/soak-<stamp>/sample.log &`. Every 10 minutes it appends the controller's pid, RSS
+   and NRestarts, the CPU temperature, `vcgencmd get_throttled` and the disk use of
+   `/var/lib/epitaph` and `/` (over SSH, Wi-Fi; a sample the Pi does not answer is skipped and the
+   report lists the hole). It reads only `/proc`, `/sys`, `systemctl show`, `du` and `df`. The
+   laptop stays on the Wi-Fi network, off the Pi's cable; if it cannot stay awake for a day,
+   `tools/soak_sample.sh --local` takes the same samples on the Pi itself.
+2. At the end: `tools/collect_lives.sh --lives <N> --include-interrupted --out
+   logs/pi/soak-<stamp>/collect`, with N the lives since the soak began (a life and its silence
+   take about 34 minutes, so about 45 for 25 hours). It copies and judges every finished life of
+   the soak, keeping interrupted ones so the report can count them. Then
+   `ssh pi journalctl -u epitaph-controller -o short-iso --since '<soak start>' >
+   logs/pi/soak-<stamp>/journal.txt`, `ssh pi journalctl -k -o short-iso --since '<soak start>'
+   >> logs/pi/soak-<stamp>/journal.txt` (kernel under-voltage lines) and
+   `ssh pi cat /var/lib/epitaph/status.json > logs/pi/soak-<stamp>/status.json`.
+3. `$PY tools/soak_report.py logs/pi/soak-<stamp>/collect --journal logs/pi/soak-<stamp>/journal.txt
+   --status logs/pi/soak-<stamp>/status.json --samples logs/pi/soak-<stamp>/samples.tsv
+   --first <first life> --out logs/pi/soak-<stamp>/report.md` exits 0 when every row below
+   passes; its table goes into the phase 3 report, and the life count is reported, not
+   required. A criterion without its input reads `no data` and fails.
+
 | # | Item (section 11) | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
 | A1 | `make check` green on the laptop and in CI; coverage met; every Pi 4 profile passes `estimate` on measured costs | `make check`; CI run; coverage step (80% overall, 90% per strict module and `verify.py`) | open | |
-| A2 | Every life in the soak passes `verify-life --level full` | `for d in /var/lib/epitaph/lives/*/; do epitaph verify-life "$d" --level full; done` on the Pi (or copied lives); `tools/soak_report.py` summary | open | E7 (P3) |
+| A2 | Every life in the soak passes `verify-life --level full` | `soak_report.py` row "Every life passes `verify-life`": every finished life's `verify.json` (written by `collect_lives.sh`) is `ok` | open | |
 | A3 | The fault matrix passes on the Pi (applicable rows) | the fault table below | open | |
-| A4a | Soak ≥ 25 h on Wi-Fi, laptop disconnected: no missed life (every `death_shown` → next birth within silence + load + 5 min) | `tools/soak_report.py` (uses verify-life's `next_birth`) | open | |
-| A4b | Zero controller crashes | `journalctl -u epitaph-controller` restarts = 0; `systemctl show epitaph-controller -p NRestarts` | open | |
-| A4c | Controller memory growth < 20 MB; disk < 100 MB/day | `soak_report.py` from `status.json` / `ps` samples and `du -s /var/lib/epitaph` | open | |
-| A4d | No under-voltage bits; throttling or thermal pauses < 10% of the time | `soak_report.py` over logged `vcgencmd get_throttled` | open | |
+| A4a | Soak ≥ 25 h on Wi-Fi, laptop disconnected: no missed life (every `death_shown` → next birth within silence + load + 5 min) | `soak_report.py` rows "Soak of at least 25 hours" and "No missed life" (the rule of verify-life's `next_birth` over every consecutive pair; a life number missing from the copy fails it) | open | |
+| A4b | Zero controller crashes | `soak_report.py` row "Zero controller crashes": no `Failed with result` or abnormal main-process exit and no `Scheduled restart` in the journal, NRestarts constant and one controller pid in the samples, no life closed `interrupted` (a deliberate `Stopping` line excuses a pid change, but a stop during the soak is reported) | open | |
+| A4c | Controller memory growth < 20 MB; disk < 100 MB/day | `soak_report.py` rows: median RSS of the last 3 samples minus the first 3 within one controller pid; growth of the root filesystem's used space per day (the state directory beside it) | open | |
+| A4d | No under-voltage bits; throttling or thermal pauses < 10% of the time | `soak_report.py` rows: no sample with `get_throttled` bit 0 or 16 and no kernel under-voltage line; samples with bit 1, 2 or 3 set plus the controller's `thermal` pauses, over the soak | open | |
 | A5 | Power on to first shown word ≤ `first_word_after_boot_s` (240 s) | reboot test: boot time from `journalctl --list-boots`, first `word` event `ts` | open | |
 | A6 | `install.sh` idempotent on the Pi and in a clean arm64 Debian container | `deploy/install.sh` twice on the Pi (second run changes nothing); `podman run --arch arm64 debian:trixie ... install.sh` | open | |
-| A7 | `epitaph sim` and `epitaph run --backend fake --display terminal` work with no model | `$PY -m epitaph sim --profile pi4/default --hardware pi4-4gb`; `$PY -m epitaph run --backend fake --display terminal --lifespan 2:00` | open | `sim` passes today; `run` is B's P1 |
+| A7 | `epitaph sim` and `epitaph run --backend fake --display terminal` work with no model | `$PY -m epitaph sim --profile pi4/default`; `$PY -m epitaph run --backend fake --display terminal --clock fake --profile pi4/default --lives 1` (and in real time with `--profile pi4/smoke-300`) | pass (2026-10-01, laptop) | both exit 0 on the laptop (hardware `dev`): `sim` 31 thoughts, `cause=oom` at 1770 s; `run` one life typed in the terminal, transcripts in the state dir. `--profile` is needed: `dev` has no profiles of its own, so a bare `epitaph sim` stops with "profile 'default' not found for class 'dev'" (README and CONTRIBUTING give the flag) |
 | A8 | `pi4/unbounded` and the Pi 5 profiles pass simulation; `pi4/unbounded` passes one real life | CI step "Pi 5 and unbounded profiles pass simulation"; one Pi life + `verify-life --level full` | open | simulation passes today (see below) |
 | A9 | D13 passes at every tested resolution | `$PY -m pytest -m display tests/display` (CI step "Headless display tests") | open | D5 (P1) |
 | A10 | `sd_restore.sh` has restored an image at least once | C's log in PI_CHANGES / report | open | |
 | A11 | Checkpoint B read on the remote view | Yannick | open | |
-| A12 | Checkpoint C: soak report acceptable | Yannick | open | |
+| A12 | Checkpoint C: soak report acceptable | Yannick reads `logs/pi/soak-<stamp>/report.md` | open | |
 | A13 | `/code-review high` done | integrator | open | |
+| A14 | Docs: README (laptop quickstart, then the Pi), CONFIG, INSTALLATION, CONTRIBUTING, model licenses (card E8) | `tests/unit/test_config_doc.py` (every key in `config/` documented, defaults equal); the README quickstart commands run on the laptop | pass (2026-10-01, laptop) | README quickstart commands each exit 0 on the laptop; `test_config_doc.py` passes; INSTALLATION's "Install on a Pi" section belongs to the installer card (C) |
 | later | S5 and checkpoint B's physical part when a screen is connected | D8 | pending | no screen (10.2) |
 
 ---

@@ -4,8 +4,9 @@
 
 Over its life, the machine takes its resources away: the memory it can hold, the precision of its
 weights, its share of the CPU and its clock speed and, at the very end, its RAM. Each time, it is
-told exactly what it has lost, down to the words it forgot. Its thoughts appear on a screen one letter at a time, with a rhythm that falters
-as it fails. When it dies, the screen goes dark. Ninety seconds later a new one is born.
+told exactly what it has lost, down to the words it forgot. Its thoughts appear on a screen one
+letter at a time, with a rhythm that falters as it fails. When it dies, the screen goes dark.
+Ninety seconds later a new one is born.
 
 ```
 [host] t+08:57 · health: degrading · memory 220 tokens (was 900) · forgotten: "I am a thinking entity
@@ -18,18 +19,19 @@ as it fails. When it dies, the screen goes dark. Ninety seconds later a new one 
 
 Nothing on the screen is staged. Each loss happens to the model before it is told about it: the
 context is really cut, the weights are really reloaded at a lower precision, the kernel really
-throttles its CPU and, at 59:30, really kills it for lack of memory.
+throttles its CPU and its clock and, at 29:30, really kills it for lack of memory.
 
-> **Status: under construction.** The foundations are built and measured on the target hardware
-> (phases 0a and 0b). The first full life on the Pi comes in phase 1. See [Roadmap](#roadmap).
+> **Status: running.** The installation lives on a Raspberry Pi 4 around the clock as a set of
+> systemd services, one 30-minute life after another (phases 0-2). Phase 3, hardening and the
+> 25-hour soak, is in progress. See [Roadmap](#roadmap).
 
 ## Contents
 
 - [Why](#why)
 - [How a life works](#how-a-life-works)
 - [Architecture](#architecture)
-- [Quick start (no Pi needed)](#quick-start-no-pi-needed)
-- [Running on a Raspberry Pi](#running-on-a-raspberry-pi)
+- [Run it on a laptop](#run-it-on-a-laptop)
+- [Run it on a Pi](#run-it-on-a-pi)
 - [Engineering notes](#engineering-notes)
 - [Repository layout](#repository-layout)
 - [Roadmap](#roadmap)
@@ -46,17 +48,18 @@ memory runs out.
 
 Where Latent Reflection ends in a single crash, *epitaph* makes the decline itself the piece:
 
-- **Every loss is real and specific.** The model is told what changed ("memory 512 tokens (was
-  1000)"), and what it writes can trace back to it.
+- **Every loss is real and specific.** The model is told what changed ("memory 220 tokens (was
+  900)"), and what it writes can trace back to it.
 - **It notices.** The schedule guarantees enough thoughts after each loss for the model to react,
-  and the rehearsal measures whether it does.
+  and every recorded life is checked for it.
 - **It is readable.** Whole words, a slow and steady rhythm, strong contrast, from a few metres away.
 - **The art lives in the configuration.** Prompt, schedule, models, pacing and display are all
-  config; the code is plumbing.
+  config; the code is plumbing ([docs/CONFIG.md](docs/CONFIG.md)).
 
 ## How a life works
 
-One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The default schedule:
+One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The default schedule
+(`config/profiles/pi4/default.toml`):
 
 | Time | What the machine does | What the model is told |
 |---|---|---|
@@ -66,22 +69,24 @@ One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The d
 | 13:00 | **Second loss:** reloads at 2-bit on 2 cores; memory 130 tokens | `health: critical`, and the same |
 | 19:30 to 27:30 | **Erosion:** its instructions are removed in two steps, the knowledge of its death last; the CPU clock falls from 1800 to 600 MHz | Shorter readings, then almost nothing |
 | 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
-| 30:00 | Silence for 90 seconds, then a new model is born | |
+| then | Its last words finish on screen, then 90 seconds of silence, then a new model is born | |
 
-Its letters start at 165 ms each and slow to 720 ms with growing hesitation near the end, never
-faster than the model can actually produce them.
+Its letters start at 165 ms each and slow to about 720 ms with growing hesitation near the end,
+never faster than the model can actually produce them. A life holds about a dozen thoughts.
 
 The whole arc is configuration. A profile is a list of keyframes; values between them interpolate
 or step:
 
 ```toml
 [[keyframe]]
-at = "end-17:00"      # anchored to the end of life, so reload costs are respected
+at = "13:00"          # a plain time scales with the lifespan; "end-7:30" is anchored to the end
 phase = "failing"
 health = "critical"
-recall = 200          # past-turn memory budget, in tokens
-step = 2              # ladder step: 0 = Q6_K, 1 = Q4_K_M, 2 = Q2_K for this model
-letter_ms = 270       # the slowest the letters may go when the model is fast
+recall = 130          # past-turn memory budget, in tokens
+step = 2              # ladder step: 0 = Q4_K_M, 1 = Q3_K_M, 2 = Q2_K for Qwen3 4B
+threads = 2
+cpu_share = 1.6       # cores' worth of CPU time (cgroup cpu.max)
+letter_ms = 270       # the fastest the letters may go when the model is fast
 ```
 
 ## Architecture
@@ -93,7 +98,7 @@ flowchart LR
         clock[life clock] --> sched[schedule]
         sched --> mind[mind: memory, prompt, readings]
         mind --> pace[pacer: words and letter cadence]
-        body[body: cgroups, vitals]
+        body[body: cgroups, clock, vitals]
     end
     ctl -- HTTP --> creature["llama-server (the creature)<br>own cgroup, cores 1-3, no network"]
     body -. limits .-> creature
@@ -110,56 +115,76 @@ flowchart LR
   the memory carries over, and exactly what it forgets is decided in code.
 - **Displays are separate processes** subscribed to a local JSON event stream, so a display crash
   never ends a life, and anyone can write a new display ([WRITING_A_DISPLAY](docs/WRITING_A_DISPLAY.md)).
+- **The controller is a systemd service** with a watchdog that tracks the life loop's progress,
+  not only that the process is alive; a power cut or a crash closes the life in progress and the
+  next one is born.
 
-## Quick start (no Pi needed)
+## Run it on a laptop
 
-Everything runs on a laptop with a fake model on a virtual clock.
+No Pi and no model needed: a fake model writes canned sentences, and a virtual clock runs a whole
+life in seconds. Python 3.11+ on Linux.
 
 ```sh
 git clone https://github.com/yannickYamo/epitaph && cd epitaph
-make venv                                  # Python 3.11+
-make check                                 # lint, types, ~600 tests, a simulated life, the cost model
+make venv                                  # .venv with the dev and display extras
+make check                                 # lint, types, ~1,200 tests, a simulated life, the cost model
 
-# Simulate a whole 45-minute life in under a second, then watch it replayed 20x faster:
-.venv/bin/epitaph sim --profile pi4/compressed-2700 --hardware pi4-4gb --events > life.jsonl
+# A whole 30-minute life on the virtual clock, every event printed:
+.venv/bin/epitaph sim --profile pi4/default
+
+# The real controller with the fake model, typed in this terminal on the virtual clock:
+.venv/bin/epitaph run --backend fake --display terminal --clock fake --profile pi4/default --lives 1
+
+# The same in real time (30 minutes), or a 5-minute life:
+.venv/bin/epitaph run --backend fake --display terminal --profile pi4/smoke-300 --lives 1
+```
+
+On a laptop the hardware is `dev`, which has no profiles of its own, so `--profile` names a Pi 4
+profile. Lives, transcripts and the life counter go to `~/.local/share/epitaph`.
+
+Record a life, watch it again at any speed and check it the way a real life is checked:
+
+```sh
+.venv/bin/epitaph sim --profile pi4/default --hardware pi4-4gb --events > life.jsonl
 .venv/bin/epitaph replay life.jsonl --speed 20 --driver terminal     # or --driver screen
-
-# Check it the way a real life is checked:
-.venv/bin/epitaph verify-life life.jsonl --profile pi4/compressed-2700 --hardware pi4-4gb
+.venv/bin/epitaph verify-life life.jsonl --profile pi4/default --hardware pi4-4gb
 
 # Will a schedule give the model enough thoughts to notice each loss?
 .venv/bin/epitaph estimate --profile pi4/default --hardware pi4-4gb
 ```
 
-The fake model writes canned sentences, so voice metrics on a simulated life are only indicative.
+The fake model's sentences are canned, so the voice metrics of a simulated life mean little; the
+timing, the memory budgets and the checks are the real ones.
 
-## Running on a Raspberry Pi
+## Run it on a Pi
 
-Target: Raspberry Pi 4 (4 GB) or Pi 5, Raspberry Pi OS 64-bit, the official power supply, any screen
-(or none: watch it remotely with `epitaph display --connect <host>`).
+Target: Raspberry Pi 4 (4 GB), Raspberry Pi OS 64-bit, the official 5.1 V / 3 A power supply, a
+screen or none (watch it from a laptop with `epitaph display --connect <host>`).
+[docs/INSTALLATION.md](docs/INSTALLATION.md) covers the installation: placement, power, cooling,
+network, exhibition hours, the wall label, and the install itself.
 
-The Pi setup is scripted and idempotent (`tools/pi_bootstrap.sh`): memory cgroups, console boot,
-watchdog, persistent journal, key-only SSH. llama.cpp is built on the Pi at a pinned tag
-(`tools/build_llamacpp.sh --pi`) and models are downloaded with pinned sha256
-(`tools/download_models.py`). A one-command installer and systemd services arrive in phases 1-3;
-until then, see [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) section 8.6.
+In short: `tools/pi_bootstrap.sh` prepares the Pi (memory cgroups, console boot, watchdog, key-only
+SSH), `tools/build_llamacpp.sh --pi` builds llama.cpp at the pinned tag, `tools/download_models.py`
+fetches the model with a pinned sha256, and `deploy/install.sh` installs the services; it is
+idempotent, and a second run changes nothing.
 
 **Power matters.** On an under-rated supply the Pi 4 browns out and reboots under three-core load;
-use the official 5.1 V / 3 A supply.
+use the official supply.
 
 ## Engineering notes
 
 Every risky assumption was tested on the real Pi 4 before code depended on it
-([docs/SPIKE.md](docs/SPIKE.md)). Some results:
+([docs/SPIKE.md](docs/SPIKE.md), [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). Some results:
 
 | Question | Measured on a Pi 4 | Consequence |
 |---|---|---|
-| How fast do 3-4B models read and write? | Reading 2.3-2.7 tok/s, writing 1.0-1.4 tok/s; a first thought takes 2.5-3 min | Qwen3 1.7B leads (6.0 / 1.8 tok/s); the rehearsal decides the voice |
+| How fast do 3-4B models read and write? | Reading 2.3-2.7 tok/s, writing 1.0-1.4 tok/s; a first thought takes 2.5-3 min | Qwen3 4B was chosen for its voice at about one token a second; its schedule is fitted to that speed (ADR-022, ADR-024) |
 | Does cache reuse survive forgetting? | Trims and erosion re-read 2-8% of the prompt; a marker in front of kept turns re-reads 80% | The "earlier memory lost" marker goes in the reading instead |
 | Can RAM be squeezed gradually? | 1% eviction cuts speed to 23%: the model streams every weight per token and the SD card cannot keep up | RAM is taken only at death |
-| Is the RAM death reliable? | With `--load-mode dio`: 5 kills out of 5, in 0.35 s. With mmap: it thrashes instead of dying | The Pi 4 profile uses direct I/O |
+| Is the RAM death reliable? | Weights loaded by direct I/O: every kill in calibration (7 of 7) within 0.27-0.38 s. With mmap it thrashes instead of dying | The Pi 4 loads by direct I/O; the death level is calibrated per precision |
 | Does a CPU-share limit slow it smoothly? | Speed follows `cpu.max` within 6%, worst token gap 2.8 s | The late slowdown uses CPU share, not restarts |
-| Heat and power over 30 minutes? | 56.5 °C max, no throttling, no under-voltage (official supply) | No fan needed |
+| Does a clock cap? | Speed is linear in the CPU clock within 3%, 600-1800 MHz | The clock is a second, independent loss (ADR-025) |
+| Heat and power over 30 minutes? | 40-57 °C, no throttling, no under-voltage (official supply) | No fan needed |
 
 Other pieces worth a look:
 
@@ -167,23 +192,29 @@ Other pieces worth a look:
   life thought by thought from measured costs and enforces a rule: every loss must be followed by
   enough thoughts to notice it. It caught two schedules that looked fine on paper.
 - **The life checker** ([`verify.py`](src/epitaph/verify.py), `epitaph verify-life`) replays a
-  recorded life and checks timing, memory budgets, the one-thought-at-a-time rule, typing speed and
-  voice metrics (does it notice each loss, does it turn toward its end, is it specific).
-  `epitaph verify-life compare DIR...` ranks many rehearsal lives by those metrics in a Markdown
-  table, so choosing a model starts from numbers and ends with reading the transcripts.
+  recorded life and checks timing, memory budgets, the one-thought-at-a-time rule, typing speed,
+  the death and the next birth, and voice metrics (does it notice each loss, does it turn toward
+  its end, is it specific). On a real life the voice metrics advise and the machine checks decide
+  (ADR-028). `epitaph verify-life compare DIR...` ranks many rehearsal lives in a Markdown table,
+  so choosing a model starts from numbers and ends with reading the transcripts.
 - **The pacer** ([`pacing.py`](src/epitaph/pacing.py)) holds back only words that could start a
   banned phrase, and types at 88% of the real generation rate so letters neither burst nor starve.
 - **Readability is tested:** OCR on rendered screens at four resolutions reads 100% of the words;
   contrast is 16.9:1.
+- **The soak report** ([`tools/soak_report.py`](tools/soak_report.py)) turns a day of collected
+  lives, the controller's journal and machine samples into the acceptance table: every life
+  verified, no missed birth, no crash, memory, disk, power and heat.
 
 ## Repository layout
 
 ```
 config/          default.toml, hardware overlays, life profiles, models (the art lives here)
 src/epitaph/     controller, mind, pacing, backend, body, display, verify, cost model
-tools/           Pi bootstrap, SD backup/restore, llama.cpp build, model downloads, spikes
+deploy/          install.sh, systemd units, the clock and network helpers
+tools/           Pi bootstrap and deploy, SD backup/restore, llama.cpp build, model downloads,
+                 Pi checks, soak report, spikes
 tests/           unit, simulation, fault, display and Pi tests
-docs/            build plan, spike results, architecture, gates, decisions
+docs/            design, decisions, configuration, installation, performance, gates
 bench/           measured costs per model, precision step and thread count
 ```
 
@@ -194,10 +225,10 @@ Key documents (index: [docs/README.md](docs/README.md)):
 - [DECISIONS.md](docs/DECISIONS.md): why it is built this way, as decision records with evidence
   and trade-offs
 - [PERFORMANCE.md](docs/PERFORMANCE.md): what was measured on the Pi 4 and what each change bought
+- [CONFIG.md](docs/CONFIG.md): every configuration key, its default and what it does
+- [INSTALLATION.md](docs/INSTALLATION.md): setting the piece up in a room
 - [BUILD_PLAN.md](docs/BUILD_PLAN.md): the full specification, schedule, contracts, test strategy
   and review record
-- [SPIKE.md](docs/SPIKE.md): what was measured on the Pi, and the decisions it forced
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md), [WRITING_A_DISPLAY.md](docs/WRITING_A_DISPLAY.md)
 - [GATES.md](docs/GATES.md): every acceptance criterion and the command that proves it
 - [docs/process/](docs/process/): phase reports, open questions and contract proposals from the
   agents that built it
@@ -206,22 +237,22 @@ Key documents (index: [docs/README.md](docs/README.md)):
 
 | Phase | Content | Status |
 |---|---|---|
-| 0a | Contracts, configuration, simulator, cost model | Done |
-| 0b | Backend, mind, body, display, QA; spikes on the Pi 4 | Done |
-| 0c | Profiles rebased on measured costs; rehearsal with real models; model and prompt choice | In progress |
-| 1 | Walking skeleton: real lives on the Pi, services, watchdogs, remote view | |
-| 2 | Full decline: reloads, CPU share, erosion, RAM death, fault matrix | |
-| 3 | Hardening: full lives, installer, 25-hour soak | |
+| 0 | Contracts, simulator, cost model; spikes on the Pi 4; profiles rebased on measured costs; model and prompt chosen by rehearsal | Done |
+| 1 | Walking skeleton: real lives on the Pi, services, watchdogs, remote view | Done |
+| 2 | Full decline: reloads, CPU share and clock, erosion, RAM death, network block, fault matrix | Done |
+| 3 | Hardening: installer, exhibition hours, docs, the 25-hour soak | In progress |
 | V1.5 | The afterlife: each life's last line passed to the next, and to a public feed | |
 | V2 | The senses: a camera, and senses that decay with the body | |
 
 ## Credits
 
 - **Latent Reflection**, the piece that inspired this one: a Raspberry Pi 4 running Llama 3.2 3B on
-  a 96-character 16-segment display, generating until its memory runs out.
+  a 96-character 16-segment display, generating until its memory runs out. The `unbounded`
+  profile and the `segment16` theme are an homage to it.
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) runs the models.
 - Models are downloaded at install time and are not part of this repository. Each keeps its own
-  license (Llama 3.2 Community License, Apache 2.0, Gemma Terms of Use, MIT); see
+  license: Qwen3 4B Instruct, the installation's model, is Apache 2.0; the other candidates are
+  under the Llama 3.2 Community License, the Gemma Terms of Use and MIT. See
   [config/models.toml](config/models.toml).
 - Font: IBM Plex Mono (SIL Open Font License), in [assets/fonts](assets/fonts).
 

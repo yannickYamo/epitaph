@@ -1,0 +1,358 @@
+# Configuration
+
+Everything that shapes a life is configuration, so the piece can change without touching code
+(DESIGN, "the art lives in the configuration"). This page lists every key, what it does and its
+default. `tests/unit/test_config_doc.py` keeps it honest: every key in `config/default.toml`, the
+hardware overlays, the profiles and `config/models.toml` must have a row here, every row must
+name a key that exists, and a default written as a single TOML value must equal the one in
+`config/default.toml`.
+
+## How the files combine
+
+| Order | File | Holds |
+|---|---|---|
+| 1 | `config/default.toml` | Every setting, with the installation's values |
+| 2 | `config/hardware/<overlay>.toml` | Machine settings: cgroups, load mode, verify thresholds, estimated costs. `life.hardware = "auto"` picks `pi4-4gb`, `pi5-8gb` or `pi5-16gb` from the board, else `dev` |
+| 3 | `config/profiles/<class>/<name>.toml` | The life itself: lifespan, death, keyframes, thought-count minimums. A profile may also set `ctx` |
+| 4 | Command-line flags | `--profile`, `--hardware`, `--lifespan`, `--backend`, `--model`, `--display`, `--clock` |
+
+Tables merge key by key; any other value replaces the one before it. Validation runs before
+anything starts and names the file and the problem (`epitaph sim` or `epitaph estimate` is the
+quickest check). Machine costs live in `bench/` and feed the cost model and the pacer; the
+language pack `config/lang/<language>.toml` holds every string the machine writes (readings,
+health labels) and the word lists of the voice metrics.
+
+Times are `"mm:ss"`. In a profile, a keyframe at `"7:00"` scales with the lifespan; one at
+`"end-2:30"` keeps its distance from the end.
+
+A row marked *reserved* is in the file for a feature that does not read it yet.
+
+## `[life]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `profile` | `"default"` | The life schedule, resolved in `config/profiles/<class>/`. A name with a slash (`pi4/default`) names the class too; on a laptop (`dev`) pass `--profile pi4/default` |
+| `hardware` | `"auto"` | Hardware overlay: `auto`, `dev`, `pi4-4gb`, `pi5-8gb`, `pi5-16gb` |
+| `silence_seconds` | `90` | Darkness between `death_shown` and the next load |
+| `rotation` | `"round_robin"` | How each life picks from `models`: `round_robin`, `random` (seeded), `fixed` (the first) |
+| `models` | `["qwen3-4b-instruct-2507"]` | The models that live here, by their name in `config/models.toml` (chosen at checkpoint A) |
+| `reveal_deadline` | `false` | *Reserved.* Tell the model when it will die |
+| `reveal_life_number` | `false` | The birth card names the life number |
+| `min_reload_gap_s` | `120` | A ladder step or thread change waits at least this long after the previous reload |
+| `load_timeout_s` | `300` | A model load that takes longer ends the life as a hang |
+| `seed` | `0` | Base seed for sampling and cadence; `0` derives it from the life number |
+
+## `[prompt]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `mode` | `"chat"` | `chat` (system prompt and turns) or `diary` (one raw text continued) |
+| `language` | `"en"` | Language pack in `config/lang/` |
+| `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
+| `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
+| `persona_original` | The owner's persona, after Latent Reflection | The installation's persona (ADR-023) |
+| `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
+| `persona_facts` | `false` | Add `persona_facts_line` to the persona |
+| `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
+| `mechanics` | Four sentences on the readings and one invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
+| `memory_gap_marker` | `"[host] earlier memory lost"` | Marks forgotten turns when readings are not quiet |
+| `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
+| `readings_material` | `true` | Forgotten thoughts are quoted by their opening words, and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
+| `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
+| `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023) |
+| `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
+| `bare_mode` | `"raw"` | How it speaks once persona and mechanics are gone: `chat`, or `raw` (a raw completion, no system text) |
+| `raw_prefix` | `"I"` | A raw thought starts with this word, so it stays in the first person |
+
+Optional keys read by the code, not set in the file: `readings_quiet_time` (default true: a
+quiet reading with no change still gives the time), `readings_cores_step` (0.2),
+`readings_speed_step` (0.2) and `readings_memory_step` (0.05), the smallest changes a reading
+reports.
+
+## `[output]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `lookahead` | `"prefix"` | *Reserved.* The lookahead strategy; prefix lookahead is the one implemented |
+| `lookahead_words` | `8` | At most this many words are held back while they could still start a banned phrase |
+| `max_regenerations` | `2` | Regenerations of a thought that opens with a banned phrase before it is cut instead |
+| `trim_to` | `0.85` | When the memory is over its budget, it is trimmed to this share of the budget, so cache reuse is not broken on every turn |
+
+## `[reveal]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `mode` | `"letter"` | *Reserved.* Letters are always typed one at a time |
+| `adaptive` | `true` | Letters follow the measured generation rate, never faster; off, they follow the profile's `letter_ms` alone |
+| `rate_margin` | `0.88` | Typing runs at this share of the generation rate, so letters neither burst nor starve |
+| `rate_window_s` | `60` | The generation rate is averaged over this many seconds |
+| `word_gap_ms` | `270` | Pause after a word |
+| `comma_pause_ms` | `750` | Pause after a comma or similar |
+| `sentence_pause_ms` | `2100` | Pause after a sentence |
+| `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
+
+Optional: `min_rate_sample_s` (3.0), the generation measured before the rate is trusted;
+`hesitation_inside_from` (0.1), the `hesitation` from which a pause may fall inside a word.
+
+## `[sampling]`
+
+Temperature, `min_p` and `max_tokens` follow the profile's keyframes.
+
+| Key | Default | What it does |
+|---|---|---|
+| `logit_bias` | Seven `[piece, bias]` pairs against the clichés small models reach for (" digital", " tape", " realm", ...) | Silent penalties, never named in the prompt (ADR-026). A string is biased token by token, so a word the tokenizer splits is named by its first piece |
+| `top_p` | `1.0` | Nucleus sampling (1.0: off) |
+| `repeat_penalty` | `1.1` | llama.cpp repeat penalty |
+| `dry_multiplier` | `0.8` | DRY repetition penalty strength |
+| `latin_only` | `true` | Only Latin-script tokens may be sampled (Qwen3 once wrote Chinese at full precision) |
+| `dry_penalty_last_n` | `256` | DRY window in tokens |
+
+Optional: `latin_only_from_step`, Latin only from this ladder step on.
+
+## `[backend]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `kind` | `"llama_server"` | `llama_server` (the real creature) or `fake` (canned text, no model) |
+| `bin` | `"~/llama.cpp/build/bin/llama-server"` | The llama-server binary (built at the tag pinned in `config/models.toml`) |
+| `models_dir` | `"auto"` | Where the GGUF files are; `auto` is `<state_dir>/models` |
+| `port` | `8081` | llama-server's local port |
+| `ctx` | `2048` | Context window in tokens; a profile may set its own `ctx` |
+| `cache_reuse` | `32` | llama-server `--cache-reuse`: the smallest chunk of the cache reused after an edit to the memory (spike S2) |
+| `threads_batch` | `3` | Prompt-processing threads; they stay at 3 when generation drops to 2 |
+| `mmap` | `true` | Memory-map the weights (used when `load_mode` is `auto`) |
+| `load_mode` | `"auto"` | `auto`, `mmap`, `none` or `dio` (direct I/O into anonymous memory, so the RAM death is a clean kill; the Pi 4 uses `dio`, spike S3) |
+| `swa_full` | `"auto"` | Full sliding-window cache: `auto` turns it on for sliding-window models |
+| `cache_type_k` | `"f16"` | KV cache type for keys |
+| `cache_type_v` | `"f16"` | KV cache type for values |
+| `creature_cpus` | `"1-3"` | The cores the creature may use; core 0 is the controller's. Empty: no pinning |
+
+Optional: `slot_timeout_s` (30), `slot_save_path` (`/dev/shm/epitaph-slots`), for the cache
+carried across a reload. `reload_handover` is set by the overlays (below).
+
+## `[body]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `clock_helper` | `""` | The root helper that caps the CPU clock (`deploy/sbin/epitaph-clock`, ADR-025). Empty: the clock is not touched |
+| `cgroups` | `"auto"` | `auto` (the creature in its own cgroup on a Pi) or `off` |
+| `death_mode` | `"oom"` | `oom`: the kernel kills it when its RAM limit drops below its working set; `deadline`: the controller kills it at the death time |
+| `squeeze` | `"death_only"` | When RAM is taken: `death_only` (at death; ADR-008) or `off`. `gradual` is accepted and behaves as `death_only` (spike S3: eviction thrashes on an SD card) |
+| `death_fraction` | `0.5` | The death limit is this share of the creature's anonymous memory, unless a calibration sets it |
+| `cpu_period_us` | `100000` | The `cpu.max` period |
+| `cpu_share` | `true` | Apply the profile's CPU share through `cpu.max` |
+| `progress_signals` | `["cpu", "io", "majfault", "tokens"]` | *Reserved.* Hang detection always watches all four |
+| `token_gap_timeout_s` | `90` | A creature that makes no progress for this long is dead (`hang`) |
+| `creature_network` | `"blocked"` | `blocked` or `allowed`; anything else is refused (ADR-005) |
+| `netblock_helper` | `""` | The root helper that loads the network block (`deploy/sbin/epitaph-netblock`). Empty: nothing is blocked, and the log says so |
+| `netblock_probe` | `"1.1.1.1:443"` | `epitaph selftest`: the outbound connection the creature must not make |
+| `thermal_limit_c` | `80` | Pause between thoughts at or above this CPU temperature |
+| `thermal_resume_c` | `75` | ... until the CPU is back at this |
+| `thermal_poll_s` | `15` | Each pause step waits this long before reading again |
+| `watchdog` | `true` | *Reserved.* The controller pings systemd's watchdog whenever systemd sets one |
+
+## `[events]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `host` | `"127.0.0.1"` | The event bus and control channel listen here, local only |
+| `port` | `7707` | Their port |
+| `subscriber_queue` | `2000` | Events queued per display; on overflow the queue is cleared and a fresh snapshot sent |
+
+## `[display]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `screen` | `"auto"` | Is a screen connected: `auto` (from DRM), `yes` or `no`. The display unit is skipped when there is none |
+| `driver` | `"auto"` | `screen` or `terminal`; `auto` takes the screen when one is connected, the terminal otherwise and for a remote view |
+| `remote_host` | `"pi"` | *Reserved.* `epitaph display --connect HOST` takes the host |
+| `layout` | `"flow"` | `flow` (running text) or `grid` |
+| `grid` | `[6, 16]` | Rows and columns of the grid layout |
+| `orientation` | `"landscape"` | `landscape` or `portrait` |
+| `theme` | `"plain"` | `plain` or `segment16` (16-segment cells, after Latent Reflection; implies the grid) |
+| `charset` | `"unicode"` | Characters the display can draw |
+| `line_chars` | `48` | Characters per line in the flow layout |
+| `min_font_px` | `36` | The screen never draws text smaller than this |
+| `cursor` | `"block"` | *Reserved.* The cursor is a block |
+| `cursor_blink_ms` | `530` | Cursor blink period |
+| `fade_seconds` | `8` | Forgotten words fade through grey, then are gone |
+| `status_strip` | `true` | The top line: life, time, health, precision, cores, speed |
+| `reload_dim_text` | `false` | During a reload only the cursor dims; true dims the text too |
+| `birth_card` | `true` | Show a card at birth |
+| `birth_card_model` | `true` | The birth card names the model |
+| `birth_card_seconds` | `4` | How long the birth card stays |
+| `card_char_ms` | `165` | Cards are typed at this letter interval (the death card at the life's last one, if slower) |
+| `death_fade` | `true` | At death the last words fade before the death card |
+| `death_card_seconds` | `8` | How long the death card stays |
+| `silence_style` | `"dark"` | The silence: `dark`, `last_words`, `death_card` or `idle` (a mark that moves) |
+| `idle_step_seconds` | `4` | In the `idle` silence, the mark moves this often |
+| `screenshot_on` | `["birth", "reload_done", "death_shown"]` | *Reserved.* Screenshots are taken on request (`epitaph ctl screenshot`) |
+
+Optional: `card_word_gap_ms` and `card_line_pause_ms` (default: `[reveal]` `word_gap_ms` and
+`comma_pause_ms`).
+
+## `[exhibit]`
+
+Exhibition hours (BUILD_PLAN 5.10).
+
+| Key | Default | What it does |
+|---|---|---|
+| `hours` | `""` | *Reserved.* Opening hours such as `"10:00-18:00"`; empty means always on. Wall-clock time comes from NTP; without synced time, hours are off |
+| `outside` | `"unseen"` | *Reserved.* Outside the hours: `unseen` (lives go on, the screen dark) or `pause` (the life finishes, then nothing until opening) |
+
+## `[verify]`
+
+Thresholds of `epitaph verify-life` (BUILD_PLAN 10.3). The hardware overlay sets the ones that
+depend on the machine. Every other threshold in `verify.py` (`DEFAULT_THRESHOLDS`) can be set
+here too.
+
+| Key | Default | What it does |
+|---|---|---|
+| `advisory_at_full` | `["notice_rate", "demise_rate", "cliches", "complete_sentences", "specific", "sentence_length"]` | Voice metrics that only advise at the `full` level; they still fail a rehearsal (ADR-028) |
+| `max_reload_silence_s` | `120` | Longest silence of a reload |
+| `wpm_birth_range` | `[40, 60]` | Typing speed after birth, words per minute |
+| `wpm_writing_range` | `[10, 75]` | Typing speed over the life |
+| `max_bright_words_last_2min` | `40` | Words at full brightness in the last two minutes (flow layout) |
+| `max_speed_ratio_end_vs_start` | `0.4` | Tokens/s of the last five minutes over the first five |
+| `speed_monotonic_tolerance` | `0.05` | Speed after a reload may be this much over the speed before (noise) |
+| `speed_monotonic_thoughts` | `2` | Thoughts averaged on each side of a reload |
+| `min_notice_rate` | `0.6` | Share of losses the next thoughts mention |
+| `min_demise_rate_after_erosion` | `0.4` | Share of thoughts after erosion starts that turn toward the end |
+| `min_specific_ratio_before_erosion` | `0.5` | Share of thoughts with a concrete reference |
+| `max_cliches_per_200_words` | `1` | Stock phrases allowed |
+| `min_complete_sentence_ratio_before_erosion` | `0.8` | Share of complete sentences |
+| `sentence_words_range_before_erosion` | `[6, 20]` | Mean sentence length, in words |
+| `max_non_latin_ratio_before_erosion` | `0.01` | Share of letters outside the Latin script |
+| `min_distinct_4gram_ratio_before_erosion` | `0.5` | Distinct word 4-grams: repetition |
+| `max_empty_thought_ratio` | `0.1` | Thoughts with no words |
+| `max_death_display_delay_s` | `60` | From the death to `death_shown`; the pacer flushes the last words within 80% of it |
+| `max_kill_delay_s` | `10` | From the death squeeze (or the deadline) to the death |
+| `min_ocr_word_accuracy` | `0.95` | *Reserved.* The screenshot check takes `--min-ocr` |
+| `first_word_after_boot_s` | `180` | *Reserved.* Power on to the first shown word, judged by the boot test (G3) |
+
+## `[estimate]`
+
+Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not machine costs.
+
+| Key | Default | What it does |
+|---|---|---|
+| `fill` | `0.85` | Share of `max_tokens` a thought actually uses |
+| `reading_tokens` | `{ full = 45, short = 28, minimal = 10 }` | Size of a reading in each form |
+| `system_tokens_per_group` | `30` | Size of one persona group |
+| `mechanics_tokens` | `70` | Size of the mechanics |
+| `letters_per_token` | `3.5` | Letters per token (English), for the typing time |
+| `letters_per_word` | `4.7` | Letters per word |
+| `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
+| `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
+
+## `[paths]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `state_dir` | `"auto"` | Lives, counter, status, calibration and models: `auto` is `/var/lib/epitaph` on a Pi, `~/.local/share/epitaph` elsewhere |
+
+## Hardware overlays
+
+`config/hardware/{dev,pi4-4gb,pi5-8gb,pi5-16gb}.toml` override the keys above for one machine
+(the Pi 4 overlay: `load_mode = "dio"`, `mmap = false`, the clock and network helpers, a 120 s
+token gap, a 180 s reload silence, a 240 s boot budget). Keys that only overlays set:
+
+### Top level of an overlay
+
+| Key | Default | What it does |
+|---|---|---|
+| `class` | `dev`, `pi4` or `pi5` | The hardware class: which profile folder and which model ladder apply |
+
+### `[backend]` in an overlay
+
+| Key | Default | What it does |
+|---|---|---|
+| `reload_handover` | `"slot"` on the Pi 4; `reread` elsewhere | `slot` carries the KV cache across a reload (saved to RAM and restored, spike S4b); `reread` re-reads the memory in the new server (ADR-014) |
+
+### `[costs]`
+
+Estimated machine costs, used where `bench/` has no measured file for a model and step.
+
+| Key | Default | What it does |
+|---|---|---|
+| `estimated` | `true` | Marks the figures as estimates in every report |
+| `tg_tok_s` | Per overlay | Generation speed, tokens/s at full CPU share, keyed `"<step>-<threads>"` |
+| `pp_tok_s` | Per overlay | Prompt-processing speed, same keys |
+| `load_s` | Per overlay | Load time per ladder step, seconds |
+
+## Profiles
+
+`config/profiles/<class>/<name>.toml`. The Pi 4 profiles: `default` (the installation, 30
+minutes), `smoke-300`, `skeleton-1200`, `compressed-2700`, `unbounded` (the homage to Latent
+Reflection: never forgets, dies when its context is full) and `default-qwen3-1.7b` (the one-hour
+schedule of the faster model). [PROFILES.md](PROFILES.md) explains how each was fitted.
+
+### Top level of a profile
+
+| Key | Default | What it does |
+|---|---|---|
+| `lifespan` | Required | Nominal length, `"30:00"`; `--lifespan` rescales plain times |
+| `death` | `"none"` | When RAM is taken, `"end-0:30"`; `"none"` lets it run to the deadline (or, unbounded, to a full context) |
+| `extends` | | Another profile to inherit keyframes from; this one may change `lifespan`, `death` and settings |
+| `unbounded` | `false` | Never forget; the life ends when the context is full (`cause=full`) |
+| `ctx` | `backend.ctx` | Context window for this profile |
+| `verify_level` | `"full"` | How `verify-life` judges its lives: `smoke`, `skeleton` or `full` |
+
+### `[[keyframe]]`
+
+The first keyframe is at `"0:00"` and sets every field; later ones set what changes. Stepped
+fields change at the keyframe; interpolated ones move linearly to the next keyframe. A keyframe
+takes effect when the thought in flight ends.
+
+| Key | Default | What it does |
+|---|---|---|
+| `at` | Required | `"mm:ss"` or `"end-mm:ss"` |
+| `phase` | Required (stepped) | A label for the status strip and the logs |
+| `health` | Required (stepped) | The health label in the readings: `nominal`, `stable`, `degrading`, `failing`, `critical`, `terminal` |
+| `recall` | Required | Past-turn memory budget in tokens; older turns are forgotten to fit |
+| `step` | Required (stepped) | Ladder step of the model: 0 is the healthiest precision. A change is a reload |
+| `threads` | Required (stepped) | Generation threads, 1-3 (core 0 is the controller's). A change is a reload |
+| `cpu_share` | Required | CPU share in cores (`cpu.max`), above 0 and at most `threads`; it never rises after a loss (ADR-010) |
+| `cpu_mhz` | `1800` (stepped) | CPU clock cap, 600-1800 MHz (ADR-025) |
+| `temperature` | Required | Sampling temperature |
+| `min_p` | Required | Sampling `min_p` |
+| `max_tokens` | Required | Longest thought, in tokens |
+| `pause_s` | Required | Least pause between thoughts |
+| `persona_groups` | Required (stepped) | Persona groups left; each removal is an erosion step, the knowledge of its death last |
+| `mechanics` | Required (stepped) | Whether the mechanics are still in the system prompt |
+| `readings` | Required (stepped) | Reading form: `full`, `short` or `minimal` |
+| `letter_ms` | Required | The fastest a letter may be typed, ms; slower when the model is slower |
+| `jitter` | Required | Random spread of each letter's interval, as a share of it |
+| `hesitation` | Required | Chance of a hesitation (`[reveal] hesitation_ms`) at each word, before it or, late in life, inside it |
+
+### `[rules]`
+
+Thought-count minimums the cost model and `verify-life` enforce (BUILD_PLAN 5.3, ADR-024). The
+defaults are for a one-hour life; the 30-minute `pi4/default` sets 2, 1, 1, 3.
+
+| Key | Default | What it does |
+|---|---|---|
+| `between_health` | `3` | Thoughts between two health labels |
+| `after_reload` | `2` | Thoughts after each reload, before the next loss |
+| `per_erosion_step` | `1` | Thoughts after each erosion step |
+| `after_erosion_start` | `4` | Thoughts from the first erosion step to death |
+
+## `config/models.toml`
+
+| Key | Default | What it does |
+|---|---|---|
+| `llamacpp_tag` | `"b11277"` | The llama.cpp release built on every machine |
+
+### `[models."<name>"]`
+
+| Key | Default | What it does |
+|---|---|---|
+| `source` | Required | Hugging Face repository of the GGUF files |
+| `file` | Required | File name pattern; `{quant}` is replaced by the quant |
+| `sources` | | A different repository for some quants |
+| `license` | Required | The model's license, shown in the docs; weights are never in this repository |
+| `ladder` | Required | Quants per class (`ladder.pi4 = ["Q4_K_M", "Q3_K_M", "Q2_K"]`), step 0 first |
+| `sliding_window` | `false` | A sliding-window model (Gemma 3): see `swa_full` |
+| `thinking` | `false` | *Reserved.* The model has a thinking mode; thinking tags are caught by the sanitizer and the life checker whatever this says |
+
+The sha256 of every file is pinned in `config/models.lock.toml` by `tools/download_models.py`.
