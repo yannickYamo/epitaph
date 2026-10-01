@@ -38,7 +38,7 @@ from typing import Any, Protocol, TypeVar
 
 from epitaph.backend.base import Backend, BackendError, ContextFull, CreatureDied
 from epitaph.body.base import Body
-from epitaph.clock import LifeClock, Schedule
+from epitaph.clock import LifeClock, Schedule, VirtualClock
 from epitaph.config import Config
 from epitaph.costmodel import Costs
 from epitaph.events import Event, make_event
@@ -1123,6 +1123,7 @@ class Controller:
         self._register(inner)
         self.kill_cause = None
         self.squeezed = False
+        self._wake.clear()  # a new_life asked from now on cuts the next silence short
         died = asyncio.Event()
         watch = HangWatch(self._loop_time)
         holder: list[Life] = []
@@ -1197,11 +1198,17 @@ class Controller:
             round(life.death_t or 0.0, 1),
             cur.words,
         )
-        if transcript is not None:
-            transcript.close(asdict(rec) | {"last_line": cur.last_line})
         self.records.append(rec)
         self.body.reset_creature_cgroup()
         return rec
+
+    def _close_transcript(self, rec: LifeRecord) -> None:
+        cur = self.cur
+        if cur is not None and cur.transcript is not None:
+            try:
+                cur.transcript.close(asdict(rec) | {"last_line": cur.last_line})
+            except OSError as e:
+                log.error("life %d: could not write the death record: %s", rec.life, e)
 
     async def _stop_creature(self, backend: Backend) -> None:
         """Nothing is left running after a death."""
@@ -1210,15 +1217,17 @@ class Controller:
         except Exception as e:
             log.error("stopping the creature failed: %s", e)
 
-    async def silence(self, n: int, t: float, sleep: bool) -> None:
-        """The silence between lives; `ctl new_life` cuts it short."""
+    async def silence(self, rec: LifeRecord, sleep: bool) -> None:
+        """The silence between lives (the life's last event, then its death record);
+        `ctl new_life` cuts it short."""
         seconds = float(self.cfg.get("life.silence_seconds", 90))
         style = str(self.cfg.get("display.silence_style", "dark"))
+        t = self.cur.life.lived() if self.cur is not None else rec.lived_s
         self._set_state("silence")
-        self._event("silence", n, t, seconds=seconds, style=style)
+        self._event("silence", rec.life, t, seconds=seconds, style=style)
+        self._close_transcript(rec)
         if not sleep:
             return
-        self._wake.clear()
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self._wake.wait(), seconds)
 
@@ -1237,8 +1246,7 @@ class Controller:
                 rec = await self.live_one(index)
                 index += 1
                 more = self.lives is None or index < self.lives
-                t = self.cur.life.lived() if self.cur is not None else rec.lived_s
-                await self.silence(rec.life, t, sleep=more)
+                await self.silence(rec, sleep=more)
             self._set_state("stopped")
             return self.records
         finally:
@@ -1247,3 +1255,60 @@ class Controller:
                 await sup
             if self.cur is not None:
                 self.cur.guard.close()
+
+
+# ---------------------------------------------------------------------------------------
+# wiring for `epitaph run`
+
+
+def make_controller(
+    cfg: Config,
+    clock: LifeClock,
+    *,
+    backend_kind: str = "llama_server",
+    publish: Emit | None = None,
+    state_dir: Path | None = None,
+    lives: int | None = None,
+    reconfigure: Reconfigure | None = None,
+    notify: Callable[[str], object] | None = None,
+    watchdog_s: float = WATCHDOG_MAX_S,
+) -> Controller:
+    """The controller for `epitaph run`: the real creature (`llama-server` in the creature
+    cgroup on a Pi, pinned only on the laptop) or, with `backend_kind` "fake", the
+    simulator's fakes (on any clock)."""
+    if backend_kind == "fake":
+        from epitaph.sim import make_controller as make_fake
+
+        if not isinstance(clock, VirtualClock):
+            raise ValueError("the fake creature runs on the virtual clock: use --clock fake")
+        ctl = make_fake(cfg, clock, lives=lives, state_dir=state_dir)
+        ctl.publish = publish
+        ctl.reconfigure = reconfigure
+        ctl.notify = notify
+        ctl.watchdog_s = min(WATCHDOG_MAX_S, watchdog_s)
+        return ctl
+
+    from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
+    from epitaph.body.cgroup import make_body
+    from epitaph.costmodel import load_costs
+
+    body = make_body(cfg)
+    settings = ServerSettings.from_config(cfg)
+    server = LlamaServerBackend(settings, body)
+    action: SlotAction = getattr(server, "_slot_action")  # noqa: B009 - A's slot API
+    slots = ServerSlots(action, settings.slot_save_path)
+
+    return Controller(
+        cfg,
+        clock=clock,
+        backend_for=lambda _n, _model: server,
+        body=body,
+        costs_for=lambda model: load_costs(cfg, model.name),
+        publish=publish,
+        state_dir=state_dir,
+        lives=lives,
+        slots_for=lambda _backend: slots,
+        notify=notify,
+        watchdog_s=watchdog_s,
+        reconfigure=reconfigure,
+    )

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -18,7 +19,6 @@ from epitaph.config import ConfigError, load_config, parse_duration
 
 # Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
 PLANNED: dict[str, tuple[str, str]] = {
-    "run": ("run lives with the real controller", "phase 1"),
     "selftest": ("check cgroups, limits and the network block on this machine", "phase 2"),
     "calibrate": ("measure working sets and set the death limit per model", "phase 2"),
     "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
@@ -67,6 +67,134 @@ def cmd_sim(args: argparse.Namespace) -> int:
     for n, (cause, thoughts) in enumerate(zip(result.causes, result.thoughts, strict=True), 1):
         print(f"life {n}: {thoughts} thoughts, cause={cause}")
     return 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """`epitaph run`: the controller, life after life (BUILD_PLAN 5.8).
+
+    Serves the event bus and the control channel on 127.0.0.1, writes transcripts under the
+    state dir, and with `--display terminal` draws the lives in this terminal. Exits 1 when
+    another controller holds the state dir.
+    """
+    from epitaph.state import AlreadyRunning, InstanceLock
+
+    cfg = _load(args)
+    if args.clock == "fake" and str(cfg.get("backend.kind")) != "fake":
+        print(
+            "--clock fake needs --backend fake (a real creature lives in real time)",
+            file=sys.stderr,
+        )
+        return 2
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else cfg.state_dir
+    lock = InstanceLock(state_dir)
+    try:
+        lock.acquire()
+    except AlreadyRunning as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    try:
+        if args.clock == "fake":
+            from epitaph.clock import run_virtual
+
+            run_virtual(lambda clock: _serve(args, cfg, state_dir, clock))
+        else:
+            asyncio.run(_serve(args, cfg, state_dir, None))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        lock.release()
+    return 0
+
+
+async def _serve(args: argparse.Namespace, cfg: Any, state_dir: Path, clock: Any) -> None:
+    """Run the controller with its bus, and the terminal display when asked."""
+    import contextlib
+    import signal
+    from collections.abc import AsyncIterator
+
+    from epitaph.clock import RealClock, VirtualClock
+    from epitaph.controller import make_controller, sd_notify, watchdog_interval
+    from epitaph.display.layout import LifeView
+    from epitaph.events import EventBus
+
+    loop = asyncio.get_running_loop()
+    kind = str(cfg.get("backend.kind", "llama_server"))
+    if clock is None:
+        clock = VirtualClock(loop) if kind == "fake" else RealClock()  # type: ignore[arg-type]
+    mirror = LifeView()
+    port = args.port if args.port is not None else int(cfg.get("events.port", 7707))
+    bus = EventBus(
+        host=str(cfg.get("events.host", "127.0.0.1")),
+        port=port,
+        queue_size=int(cfg.get("events.subscriber_queue", 2000)),
+        snapshot=lambda: mirror.snapshot(loop.time()),
+    )
+    display = str(cfg.get("display.driver", "none"))
+    queue: asyncio.Queue[dict[str, Any] | None] | None = (
+        asyncio.Queue() if display == "terminal" else None
+    )
+
+    def publish(e: dict[str, Any]) -> None:
+        mirror.handle(e, loop.time())
+        bus.publish(e)
+        if queue is not None:
+            queue.put_nowait(e)
+
+    def reconfigure(profile: str | None, lifespan: float | None) -> Any:
+        return _load(
+            argparse.Namespace(
+                **{**vars(args), "profile": profile or args.profile, "lifespan": lifespan}
+            )
+        )
+
+    systemd = bool(os.environ.get("NOTIFY_SOCKET"))
+    ctl = make_controller(
+        cfg,
+        clock,
+        backend_kind=kind,
+        publish=publish,
+        state_dir=state_dir,
+        lives=args.lives,
+        reconfigure=reconfigure,
+        notify=sd_notify if systemd else None,
+        watchdog_s=watchdog_interval(),
+    )
+    await bus.start()
+    ctl.attach(bus)
+    print(f"epitaph run: events on {bus.host}:{bus.port}, lives in {state_dir}", file=sys.stderr)
+
+    shower: asyncio.Task[None] | None = None
+    if queue is not None:
+        from epitaph.display.app import display_config, drive, make_driver
+
+        driver = make_driver("terminal", display_config(cfg.hardware), clock=loop.time)
+
+        async def source() -> AsyncIterator[dict[str, Any]]:
+            while (e := await queue.get()) is not None:
+                yield e
+
+        fps = 2.0 if args.clock == "fake" else 30.0
+        shower = asyncio.ensure_future(drive(driver, source(), fps=fps, clock=loop.time))
+
+    main = asyncio.current_task()
+    if args.clock != "fake" and main is not None:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with contextlib.suppress(NotImplementedError, RuntimeError):
+                loop.add_signal_handler(sig, main.cancel)
+    try:
+        await ctl.run()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        if ctl.cur is not None:
+            with contextlib.suppress(Exception):
+                await ctl.cur.guard.inner.stop(hard=True)
+        if queue is not None:
+            queue.put_nowait(None)
+        if shower is not None:
+            with contextlib.suppress(Exception):
+                await shower
+        await bus.stop()
 
 
 def cmd_estimate(args: argparse.Namespace) -> int:
@@ -135,6 +263,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache-reuse", action="store_true")
     p.add_argument("--bench", help="directory of measured cost files (default: bench/)")
     p.set_defaults(fn=cmd_estimate)
+
+    p = sub.add_parser("run", help="run lives with the real controller")
+    _common(p)
+    p.add_argument(
+        "--lives", type=int, default=None, help="stop after this many lives (default: forever)"
+    )
+    p.add_argument("--state-dir", help="counter, transcripts and status (default: from config)")
+    p.add_argument("--port", type=int, help="event bus and control port (default: config, 7707)")
+    p.add_argument(
+        "--clock",
+        choices=["real", "fake"],
+        default="real",
+        help="fake: virtual time, a whole life in seconds (fake backend only)",
+    )
+    p.set_defaults(fn=cmd_run)
 
     p = sub.add_parser("ctl", help="talk to the running controller")
     p.add_argument("action", choices=["status", "new-life", "screenshot"])
