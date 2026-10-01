@@ -5,8 +5,8 @@ PROFILES_PI4 := pi4/default pi4/smoke-300 pi4/skeleton-1200 pi4/unbounded
 # Pi 5: simulated and estimated only, on both overlays (BUILD_PLAN 3.2, 11.8).
 PROFILES_PI5 := pi5/default pi5/skeleton-600 pi5/unbounded
 
-.PHONY: check lint type test sim sim-profiles estimate venv faults pi-deploy pi-smoke pi-life pi-boot-check \
-	pi-collect pi-faults
+.PHONY: check lint type test sim sim-profiles estimate venv faults pi-deploy pi-smoke pi-life \
+	pi-boot-check pi-collect pi-faults install-test-arm64
 
 venv:
 	python3 -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
@@ -76,3 +76,9 @@ pi-collect:
 # table goes to logs/pi/faults-<stamp>.md. ROWS=a,b runs only those (tools/fault_matrix_pi.sh --list).
 pi-faults:
 	tools/fault_matrix_pi.sh --agent $${AGENT:-L} $${ROWS:+--rows $$ROWS}
+
+# deploy/install.sh in a clean arm64 Debian trixie container under qemu (podman), run twice:
+# the second run must change nothing (BUILD_PLAN 9 C10, 11 item 6). Laptop only, not CI: the
+# emulated apt and pip make it slow (see tools/test_install_arm64.sh for the time).
+install-test-arm64:
+	tools/test_install_arm64.sh
