@@ -571,3 +571,18 @@ def test_next_change_is_the_next_letter_then_the_cursor_blink() -> None:
     assert next_frame(v, 1.4, fps=30, max_idle_s=0.25) == pytest.approx(1.65)  # at least 4/s
     v.handle(ev("death", cause="oom"), 5.0)
     assert v.next_change(5.0) == math.inf  # no cursor, nothing typed: only the idle redraw
+
+
+def test_closed_hours_outlive_a_new_life_and_a_reconnect() -> None:
+    """The screen stays dark across a birth and through a snapshot (BUILD_PLAN 5.10)."""
+    v = LifeView()
+    v.handle({"type": "exhibit", "life": 1, "open": False}, 0.0)
+    v.handle({"type": "birth_loading", "life": 2}, 1.0)
+    assert v.exhibit_open is False
+    snap = v.snapshot(2.0)
+    assert snap["exhibit_open"] is False
+    fresh = LifeView()
+    fresh.handle(snap, 3.0)
+    assert fresh.exhibit_open is False
+    v.handle({"type": "exhibit", "life": 2, "open": True}, 4.0)
+    assert "exhibit_open" not in v.snapshot(5.0)

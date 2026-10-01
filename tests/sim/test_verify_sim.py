@@ -86,6 +86,7 @@ def test_unbounded_life(recorded_life) -> None:
     assert res.by_name("speed_decline").status == "skip"
     assert res.by_name("persona_groups_at_death").status == "skip"
     assert res.by_name("reload_noticing").status == "skip"
+    assert res.by_name("bright_words_last_2min").status == "skip"  # it never forgets
 
 
 # -- crafted from a recorded full life ----------------------------------------------------

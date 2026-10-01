@@ -231,7 +231,8 @@ class LifeView:
         self.reload_info: dict[str, Any] = {}
         self.death: dict[str, Any] = {}
         self.groups_left: int | None = None
-        self.exhibit_open = True
+        # the opening hours outlive a life: a new life outside them stays dark (BUILD_PLAN 5.10)
+        self.exhibit_open: bool = getattr(self, "exhibit_open", True)
         self.tail = 0.0  # display time when the typing queue is empty
         self.loading_at: float | None = None
         self.birth_at: float | None = None
@@ -264,6 +265,7 @@ class LifeView:
             self.t_life, self.t_at = float(e["t"]), now
         self.model = str(e.get("model", "") or "")
         self.phase = str(e.get("phase", "") or "")
+        self.exhibit_open = bool(e.get("exhibit_open", True))
         vit = e.get("vitals")
         if isinstance(vit, dict):
             self.vitals = dict(vit)  # type: ignore[arg-type]
@@ -716,6 +718,8 @@ class LifeView:
             snap["reload"] = dict(self.reload_info)
         if self.groups_left is not None:
             snap["groups_left"] = self.groups_left
+        if not self.exhibit_open:
+            snap["exhibit_open"] = False
         if self.death:
             snap["death"] = dict(self.death)
         if self.death_shown_at is not None:
