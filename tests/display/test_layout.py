@@ -527,7 +527,11 @@ def test_a_simulated_life_plays_through_the_view(sim_events: list[dict[str, Any]
     assert split == 0
     assert v.mode == "silence" and v.death.get("cause") == "oom"
     last_t = float(sim_events[-1].get("t", 0.0))
-    assert v.card(last_t + 1e4) is None and v.dark(last_t + 1e4)
+    if v.s.silence_style == "vigil":  # the installation's silence: the vigil holds
+        card = v.card(last_t + 1e4)
+        assert card is not None and card.kind == "vigil" and not v.dark(last_t + 1e4)
+    else:
+        assert v.card(last_t + 1e4) is None and v.dark(last_t + 1e4)
 
 
 def test_only_visible_thoughts_are_laid_out_and_the_screen_is_the_same() -> None:
