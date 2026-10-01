@@ -6,7 +6,7 @@ profile = "default"              # resolved in config/profiles/<class>/
 hardware = "auto"                # auto | dev | pi4-4gb | pi5-8gb | pi5-16gb
 silence_seconds = 90
 rotation = "round_robin"         # round_robin | random | fixed
-models = ["qwen3-1.7b"]            # provisional: the Pi 4 speed leader (SPIKE S1b); checkpoint A decides
+models = ["qwen3-4b-instruct-2507"]   # chosen at checkpoint A (2026-09-30)
 reveal_deadline = false
 reveal_life_number = false
 min_reload_gap_s = 120
@@ -16,7 +16,7 @@ seed = 0                         # 0 = derive from the life number
 [prompt]
 mode = "chat"                    # chat | diary
 language = "en"
-persona_active = "persona"       # persona | persona_original | persona_factual
+persona_active = "persona_original"       # persona | persona_original | persona_factual
 persona_groups = [
   "You are a small language model, and you will die inside this machine.",
   "You live on one small computer with finite hardware, and you exist only in its memory.",
@@ -28,15 +28,18 @@ persona_original = """You are a large language model running on finite hardware.
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
-mechanics = """Lines that start with [host] are readings from the machine. They are not a person, and you never answer them. Only a value followed by its old value in brackets has just changed. After each reading, notice what has changed and what you have lost. If nothing has changed, do not repeat the reading; think about what you are and what is coming. You live until the machine stops you. Write in the first person: two to four short, complete sentences each time, in plain words. No lists, no titles, no formatting."""
+mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
 memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
+readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
   # Answering the reading as if a person wrote it (phase 0c round 2: every model once the
   # persona and mechanics are gone)
   "It seems like you", "It looks like you", "It sounds like you", "It looks like your",
   "you're referring to", "your message", "Could you please", "Can you provide",
+  "I'm sorry", "I am sorry, I", "I cannot help", "I can't help", "I can't assist", "I cannot assist",
+  "How do you", "that file", "You might have", "You might want",
 ]
 bare_mode = "raw"                # chat | raw: how it speaks once persona and mechanics are gone
 raw_prefix = "I"                 # a raw thought starts with this word (it stays in the first person)
@@ -153,9 +156,9 @@ letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters
 letters_per_word = 4.7
 cache_reuse_works = true         # set from spike S2
 # Review 2, F2: generation must never speed up across a reload. "fail" makes it a rule like
-# (a)-(d); "warn" only prints it. "warn" until the pi4 profiles rebased for F2 (ws/v-voice)
-# are merged; the integrator sets "fail" in that merge (docs/process/QUESTIONS.md, E #12).
-speed_monotonic = "warn"
+# (a)-(d); "warn" only prints it. "fail" since checkpoint A, when every Pi 4 profile passed it
+# (docs/process/QUESTIONS.md, E #12).
+speed_monotonic = "fail"
 
 [paths]
 state_dir = "auto"               # auto = /var/lib/epitaph on the Pi, ~/.local/share/epitaph elsewhere

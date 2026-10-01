@@ -58,6 +58,7 @@ async def run_life(
         seed=seed + n,
         ctx=cfg.ctx,
         cache_reuse_min=int(cfg.get("backend.cache_reuse", 32)) or 32,
+        reload_handover=str(cfg.get("backend.reload_handover", "reread")),
     )
     body = FakeBody()
     model = cfg.model()

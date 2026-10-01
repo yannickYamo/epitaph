@@ -1,7 +1,7 @@
-# Phase 2 and checkpoint B (BUILD_PLAN 5.3): 45 min with both reloads, CPU share, group
-# erosion and the RAM death. Reload 2 and erosion are end-anchored because reload and re-read
-# costs do not scale with the lifespan. Rebased on measured Qwen3 1.7B costs in phase 0c, the
-# same way as pi4/default (docs/PROFILES.md).
+# Phase 2 and checkpoint B on a Pi 4 (BUILD_PLAN 5.3): the installation's schedule for Qwen3 4B
+# (pi4/default) with its calm early phase compressed into 45 minutes. The late phase (erosion and
+# death) keeps its full length, because a late thought takes about 3 minutes on the Pi 4. The
+# calm phase is too short for the "stable" label, so health goes from nominal to degrading.
 lifespan = "45:00"
 death = "end-0:30"
 verify_level = "full"
@@ -10,7 +10,7 @@ verify_level = "full"
 at = "0:00"
 phase = "birth"
 health = "nominal"
-recall = 1280
+recall = 1000
 step = 0
 threads = 3
 cpu_share = 3.0
@@ -27,49 +27,47 @@ hesitation = 0.0
 
 [[keyframe]]
 at = "6:30"
-phase = "loosening"
-health = "stable"
-recall = 1000
-temperature = 0.80
+phase = "prime"
+temperature = 0.75
 
 [[keyframe]]
-at = "11:15"
+at = "11:00"
 phase = "first loss"
 health = "degrading"
-recall = 220                     # the re-read at share 2.0 fits the 180 s silence (S4)
+recall = 400
 step = 1
-cpu_share = 2.0                  # review 2, F2: Q4_K_M at 2.0 cores is no faster than Q8_0 at 3
+threads = 3
+cpu_share = 2.6
 temperature = 0.85
 min_p = 0.06
-max_tokens = 70
+max_tokens = 75
 pause_s = 4
 letter_ms = 180
 jitter = 0.15
 hesitation = 0.02
 
 [[keyframe]]
-at = "20:00"
+at = "16:00"
 phase = "decline"
-health = "failing"
-recall = 190
+recall = 320
 temperature = 1.00
-max_tokens = 60
+max_tokens = 65
 pause_s = 5
 letter_ms = 210
 jitter = 0.20
 hesitation = 0.05
 
 [[keyframe]]
-at = "end-20:30"
+at = "20:00"
 phase = "failing"
 health = "critical"
-recall = 100                     # keeps the reload-2 silence under 180 s at share 1.5
+recall = 200
 step = 2
-threads = 2                      # the thread drop comes with reload 2 (see docs/PROFILES.md)
-cpu_share = 1.5                  # F2: Q2_K at 1.5 cores is no faster than Q4_K_M at 2.0
-temperature = 1.15
+threads = 2
+cpu_share = 1.6
+temperature = 1.10
 min_p = 0.04
-max_tokens = 45
+max_tokens = 40
 pause_s = 6
 readings = "short"
 letter_ms = 270
@@ -77,22 +75,22 @@ jitter = 0.25
 hesitation = 0.08
 
 [[keyframe]]
-at = "end-13:00"
+at = "end-17:00"
 phase = "eroding"
-recall = 100
+recall = 170
 cpu_share = 1.4
-temperature = 1.25
-max_tokens = 35
+temperature = 1.20
+max_tokens = 32
 pause_s = 7
 persona_groups = 4
 
 [[keyframe]]
-at = "end-10:30"
+at = "end-14:00"
 health = "terminal"
-recall = 90
-cpu_share = 1.1
-temperature = 1.35
-max_tokens = 28
+recall = 140
+cpu_share = 1.2
+temperature = 1.30
+max_tokens = 26
 pause_s = 8
 persona_groups = 3
 letter_ms = 360
@@ -100,19 +98,19 @@ jitter = 0.30
 hesitation = 0.12
 
 [[keyframe]]
-at = "end-8:00"
-recall = 80
-cpu_share = 0.8
-temperature = 1.45
-max_tokens = 22
+at = "end-11:00"
+recall = 110
+cpu_share = 1.0
+temperature = 1.40
+max_tokens = 20
 pause_s = 9
 persona_groups = 2
 
 [[keyframe]]
-at = "end-5:30"
-recall = 70
-cpu_share = 0.6
-temperature = 1.50
+at = "end-8:00"
+recall = 80
+cpu_share = 0.8
+temperature = 1.45
 max_tokens = 16
 pause_s = 10
 persona_groups = 1
@@ -122,11 +120,11 @@ jitter = 0.35
 hesitation = 0.16
 
 [[keyframe]]
-at = "end-3:00"
+at = "end-4:00"
 phase = "end"
 recall = 48
-cpu_share = 0.4                  # verify-life: the last 5 min under 40% of the first 5 (Q2_K is fast)
-temperature = 1.60
+cpu_share = 0.6
+temperature = 1.50
 min_p = 0.02
 max_tokens = 12
 pause_s = 12

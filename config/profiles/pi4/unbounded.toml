@@ -1,10 +1,15 @@
 # Homage to Latent Reflection (BUILD_PLAN 5.3): never forgets; dies when the context is
 # full (cause=full). Ladder step 1 because step 0 plus a large KV cache does not fit in
-# 4 GB. ctx is sized from spike S1a's free RAM; the deadline is only a safety net.
+# 4 GB. The deadline is only a safety net.
+# ctx: 5120 was sized from spike S1a's free RAM for Qwen3 1.7B, which filled it at about
+# 54 min. At Qwen3 4B speed (checkpoint A) 5120 does not fill in 90 min, so the life would end
+# at the deadline; 3072 fills at about 59 min in the cost model (64 min in the sim), and the
+# 4B's larger KV cache per token (36 layers against 28) needs less RAM at 3072 than the
+# 1.7B's did at 5120.
 lifespan = "90:00"
 death = "none"
 unbounded = true
-ctx = 5120
+ctx = 3072
 verify_level = "full"
 
 [[keyframe]]

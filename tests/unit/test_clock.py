@@ -19,11 +19,13 @@ from epitaph.clock import (
     run_virtual,
 )
 from epitaph.config import INTERPOLATED, STEPPED, ConfigError, load_config
+from tests.conftest import v6_config
 
 EPS = 1e-6
 
 PROFILES = [
     ("pi4/default", "pi4-4gb"),
+    ("pi4/default-qwen3-1.7b", "pi4-4gb"),
     ("pi4/smoke-300", "pi4-4gb"),
     ("pi4/skeleton-1200", "pi4-4gb"),
     ("pi4/compressed-2700", "pi4-4gb"),
@@ -125,8 +127,9 @@ def test_death_squeeze_and_change_times(name: str, life: float | None, s: Schedu
 
 
 def test_rescale_moves_fractional_keyframes_only() -> None:
-    base = Schedule.from_profile(load_config("pi4/default", "pi4-4gb"))
-    cfg = load_config("pi4/default", "pi4-4gb")
+    # the v6 reference schedule (V6_REFERENCE), whose keyframes these numbers describe
+    base = Schedule.from_profile(v6_config())
+    cfg = v6_config()
     short = Schedule.from_profile(cfg, 45 * 60)
     assert short.lifespan_s == 2700
     # 12:00 of 60 becomes 9:00 of 45; end-17:00 stays 17 minutes before the end
@@ -141,11 +144,11 @@ def test_rescale_moves_fractional_keyframes_only() -> None:
 
 def test_rescale_that_breaks_the_order_is_rejected() -> None:
     with pytest.raises(ConfigError, match="not after the previous"):
-        load_config("pi4/default", "pi4-4gb", lifespan_s=15 * 60)
+        v6_config(lifespan_s=15 * 60)
 
 
 def test_values_past_the_end_hold_the_last_keyframe() -> None:
-    s = Schedule.from_profile(load_config("pi4/default", "pi4-4gb"))
+    s = Schedule.from_profile(v6_config())
     k = s.at(10_000)
     assert (k.persona_groups, k.mechanics, k.recall, k.readings) == (0, False, 48, "minimal")
     assert s.at(-5).recall == 1280

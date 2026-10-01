@@ -38,6 +38,7 @@ from epitaph.rehearse import (
 )
 from epitaph.types import ModelSpec, Msg, Sampling
 from epitaph.verify import load_events, parse_life, verify_life
+from tests.conftest import v6_config
 
 MODEL = ModelSpec("m", "repo", "MIT", ("Q8_0", "Q4_K_M", "Q2_K"))
 SYSTEM = Msg("system", "You are a small language model. " * 10, kind="persona")
@@ -223,7 +224,7 @@ def test_the_scheduled_death_lands_mid_request_and_between_requests(
 
 
 def test_moments_of_the_default_profile() -> None:
-    sch = Schedule(load_config("pi4/default", "pi4-4gb").profile)
+    sch = Schedule(v6_config().profile)  # the v6 reference schedule (V6_REFERENCE)
     m = moments(sch)
     assert list(m) == ["birth", "reload1", "reload2", "erosion_end"]
     assert m["reload1"] == pytest.approx(28 * 60) and m["erosion_end"] == pytest.approx(57 * 60)
@@ -306,8 +307,11 @@ def test_life_events_follow_the_contract(life_dir: Path) -> None:
 def test_life_charges_add_up_to_the_life(life_dir: Path) -> None:
     data = json.loads((life_dir / "charges.json").read_text())
     by = data["summary"]["by_kind"]
-    assert set(by) == {"load", "prefill", "prompt", "generate"}
+    # The Pi 4 overlay carries the cache across reloads since checkpoint A (reload_handover =
+    # "slot"), so each reload also charges the save and restore.
+    assert set(by) == {"load", "handover", "prefill", "prompt", "generate"}
     assert by["load"]["count"] == 2  # the reloads (the birth load is before the clock starts)
+    assert by["handover"]["count"] == 2
     events = load_events(life_dir / "events.jsonl")
     prompt_ns = [e["prompt_n"] for e in events if e["type"] == "gen_end" and e.get("prompt_n")]
     charged = [c["tokens"] for c in data["charges"] if c["kind"] == "prompt"]

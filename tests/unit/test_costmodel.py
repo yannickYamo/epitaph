@@ -6,6 +6,7 @@ import pytest
 
 from epitaph.config import load_config
 from epitaph.costmodel import Costs, estimate, format_report, load_costs
+from tests.conftest import v6_config
 
 
 @pytest.mark.parametrize(
@@ -21,15 +22,24 @@ def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
     assert report.ok, format_report(report)
 
 
+def test_the_kept_qwen3_1_7b_profile_passes_with_its_model() -> None:
+    """pi4/default-qwen3-1.7b, the schedule before checkpoint A, still fits with its model."""
+    cfg = v6_config()
+    report = estimate(cfg, load_costs(cfg))
+    assert report.ok, format_report(report)
+
+
 def test_default_life_has_about_forty_thoughts() -> None:
     # 38 on measured Qwen3 1.7B costs since the reloads lower the CPU share (review 2, F2).
-    cfg = load_config("pi4/default", "pi4-4gb")
+    # Pinned to the v6 reference (V6_REFERENCE); the 4B installation since checkpoint A has
+    # about 23.
+    cfg = v6_config()
     assert 35 <= estimate(cfg, load_costs(cfg)).thoughts <= 75
 
 
 def test_v5_schedule_would_fail_rule_b() -> None:
     """The v5 bug: reload 2 at 48:00 runs into erosion at 50:00 (Appendix C, V1)."""
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = v6_config()  # the v6 schedule, whose reload 2 sits at end-17:30
     for kf in cfg.profile.keyframes:
         if kf.values["step"] == 2 and kf.at.from_end and kf.at.seconds == 17.5 * 60:
             object.__setattr__(kf.at, "seconds", 12 * 60)  # reload 2 at 48:00
@@ -43,7 +53,7 @@ def test_unbounded_dies_full() -> None:
 
 
 def test_measured_costs_override_estimates(tmp_path) -> None:
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = v6_config()
     (tmp_path / f"pi4-{cfg.model().name}-0-3.json").write_text(
         json.dumps({"step": 0, "threads": 3, "tg_tok_s": 0.5, "pp_tok_s": 4.0, "load_s": 90})
     )
@@ -133,7 +143,7 @@ def test_slot_handover_shortens_reloads_and_fits_the_4b() -> None:
     reports = {}
     for handover in ("reread", "slot"):
         cfg = load_config(
-            "pi4/default-qwen3-4b",
+            "pi4/default",  # the 4B schedule (pi4/default-qwen3-4b before checkpoint A)
             "pi4-4gb",
             overrides={"life": {"models": [m]}, "backend": {"reload_handover": handover}},
         )

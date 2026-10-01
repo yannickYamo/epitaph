@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -302,8 +302,14 @@ class Reader:
         cores_step: float = 0.2,
         speed_step: float = 0.2,
         memory_step: float = 0.05,
+        quiet: bool = False,
+        quiet_time: bool = True,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
+
+        quiet True: after the first reading, only the time and what changed are written; a
+        reading where nothing changed is the time alone, so the model has nothing to report
+        and only its own mind to speak about.
 
         The step thresholds are explained on the class; cores_step is in cores, the others
         are fractions of the last announced value.
@@ -311,6 +317,9 @@ class Reader:
         self.lang = lang or Lang()
         self.show_changes = show_changes
         self.memory_step = memory_step
+        self.quiet = quiet
+        self.quiet_time = quiet_time
+        self._health: str | None = None
         self.cores_step = cores_step
         self.speed_step = speed_step
         self.count = 0
@@ -329,6 +338,8 @@ class Reader:
             cores_step=float(p.get("readings_cores_step", 0.2)),
             speed_step=float(p.get("readings_speed_step", 0.2)),
             memory_step=float(p.get("readings_memory_step", 0.05)),
+            quiet=bool(p.get("readings_quiet", False)),
+            quiet_time=bool(p.get("readings_quiet_time", True)),
         )
 
     def reading(self, x: ReadingInput) -> str:
@@ -348,6 +359,8 @@ class Reader:
         self._bits = bits
         cores_was = self._decide_cores(x)
         speed = self._decide_speed(x.tok_s)
+        health_changed = self._health is not None and self._health != health
+        self._health = health
 
         prefix = lang.r("prefix")
         if x.form == "minimal":
@@ -366,6 +379,21 @@ class Reader:
             return lang.r("bits").format(bits=b)
 
         parts = [lang.r("time").format(m=m, s=s)]
+        if self.quiet and not birth:
+            changes = self._changes(
+                f,
+                health if health_changed else None,
+                x,
+                mem_was,
+                bits_was,
+                cores_was,
+                speed,
+                bits_text,
+                was,
+            )
+            if not changes and not self.quiet_time:
+                return prefix  # nothing changed: a bare mark, nothing to report
+            return f"{prefix} " + lang.r("sep").join(parts + changes)
         if birth:
             parts.append(lang.r("boot"))
         parts.append(lang.form(f, "health").format(health=health))
@@ -396,6 +424,46 @@ class Reader:
         if x.cpu_c is not None:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
         return f"{prefix} " + lang.r("sep").join(parts)
+
+    def _changes(
+        self,
+        f: str,
+        health: str | None,
+        x: ReadingInput,
+        mem_was: int | None,
+        bits_was: str | None,
+        cores_was: float | None,
+        speed: float | None,
+        bits_text: Callable[[str], str],
+        was: Callable[[str | None], str],
+    ) -> list[str]:
+        """The fields of a quiet reading: only what changed since the last reading."""
+        lang = self.lang
+        out: list[str] = []
+        if health is not None:
+            out.append(lang.form(f, "health").format(health=health))
+        if mem_was is not None:
+            out.append(lang.form(f, "memory").format(recall=x.recall, was=was(str(mem_was))))
+        if x.forgotten == 1:
+            out.append(lang.form(f, "forgotten_one"))
+        elif x.forgotten > 1:
+            out.append(lang.form(f, "forgotten_many").format(n=x.forgotten))
+        if bits_was is not None:
+            bits = precision_bits(x.quant)
+            out.append(
+                lang.form(f, "precision").format(
+                    precision=bits_text(bits), was=was(bits_text(bits_was))
+                )
+            )
+        if cores_was is not None:
+            out.append(
+                lang.form(f, "cores").format(
+                    cores=_fmt_num(x.cores), total=x.cores_total, was=was(_fmt_num(cores_was))
+                )
+            )
+        if speed is not None and (bits_was is not None or cores_was is not None):
+            out.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
+        return out
 
     def _decide_mem(self, x: ReadingInput) -> int | None:
         if self._mem is None:
