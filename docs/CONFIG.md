@@ -332,6 +332,14 @@ token gap, a 180 s reload silence, a 240 s boot budget). Keys that only overlays
 The Pi 4 overlay sets `helper = "/usr/local/sbin/epitaph-world"`: the world is taken for real
 there, and restored at every death and every controller start.
 
+The dread plan (2026-10-01): what a life may lose around it. Only the Pi 4 overlay sets these;
+elsewhere the world is simulated.
+
+| Key | Default | What it does |
+|---|---|---|
+| `helper` | none | The root helper that stops and starts the allowed services, switches the Wi-Fi radio and the board's LEDs, and restores them all (`deploy/sbin/epitaph-world`); the body calls its `restore` at every death and start |
+| `services` | none | The services a life may stop, outermost first: what runs on this image and can stop without harm (docs/PI_FACTS.md "The world"). `install.sh` writes them to `/etc/epitaph/world-services`, the only names the helper accepts; protected ones (systemd, journald, udev, ssh, NetworkManager, timesyncd, the epitaph units) are refused anyway |
+
 ### `[costs]`
 
 Estimated machine costs, used where `bench/` has no measured file for a model and step.

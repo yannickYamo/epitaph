@@ -1,0 +1,226 @@
+#!/bin/sh
+# epitaph-world: take the creature's surroundings away, and give them back (the dread plan,
+# 2026-10-01). Installed root-owned, mode 0755, as /usr/local/sbin/epitaph-world by
+# deploy/install.sh. The service user may run exactly these commands through sudo without a
+# password (deploy/sudoers/epitaph-world).
+#
+#   epitaph-world stop <service>    stop <service>.service (and <service>.socket, if any, so
+#                                   nothing starts it again); only names listed in
+#                                   /etc/epitaph/world-services, never a protected one
+#   epitaph-world start <service>   start it again
+#   epitaph-world radio off|on      the Wi-Fi radio (nmcli radio wifi)
+#   epitaph-world light off|restore the board's ACT and PWR LEDs dark, or back as they were
+#   epitaph-world restore           everything this helper took, back
+#
+# It accepts nothing else: no options, no paths, no environment. What it changes is kept so
+# that `restore` can undo it: the services taken (masked for the runtime as well as stopped, so
+# that nothing activates them again) and the LEDs' trigger and brightness in /run/epitaph-world (a reboot brings those back by itself), the radio's state in
+# /var/lib/epitaph-world (NetworkManager keeps a radio off across reboots). One call at a time
+# (flock). The allowlist must be root-owned and writable by root only.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+ALLOW=/etc/epitaph/world-services
+RUN=/run/epitaph-world
+KEEP=/var/lib/epitaph-world
+LEDS=/sys/class/leds
+LED_NAMES="ACT PWR"
+LOCK=/run/lock/epitaph-world.lock
+
+usage() {
+  echo "usage: epitaph-world stop|start <service> | radio off|on | light off|restore | restore" >&2
+  exit 2
+}
+
+# Never these, whatever the allowlist says: the machine must stay reachable, keep its clock and
+# journal, and keep running the piece.
+protected() {
+  case "$1" in
+    systemd* | dbus* | ssh | sshd | NetworkManager* | wpa_supplicant | epitaph* | *getty* | \
+      user@* | user-runtime-dir@* | polkit | udev* | init) return 0 ;;
+  esac
+  return 1
+}
+
+valid_name() {
+  case "$1" in
+    "" | -* | *[!A-Za-z0-9@._-]*) return 1 ;;
+  esac
+  return 0
+}
+
+allowed() {
+  [ -f "$ALLOW" ] || { echo "epitaph-world: no $ALLOW" >&2; return 1; }
+  # root-owned and not writable by anyone else (mode bits: group and other without w)
+  owner=$(stat -c %u "$ALLOW")
+  mode=$(stat -c %a "$ALLOW")
+  if [ "$owner" != 0 ] || [ $((0$mode & 022)) -ne 0 ]; then
+    echo "epitaph-world: $ALLOW must be root-owned and writable by root only" >&2
+    return 1
+  fi
+  sed -e 's/#.*//' -e 's/[[:space:]]//g' "$ALLOW" | grep -qxF -- "$1"
+}
+
+units_of() {
+  if systemctl cat "$1.socket" >/dev/null 2>&1; then echo "$1.socket $1.service"
+  else echo "$1.service"; fi
+}
+
+# $RUN/taken: one line per service a life took, "<name> <was active 1|0> <units...>".
+taken_line() {
+  [ -f "$RUN/taken" ] || return 0
+  awk -v n="$1" '$1 == n { print; exit }' "$RUN/taken"
+}
+
+forget() {
+  [ -f "$RUN/taken" ] || return 0
+  awk -v n="$1" '$1 != n' "$RUN/taken" > "$RUN/taken.new"
+  mv "$RUN/taken.new" "$RUN/taken"
+}
+
+# Masked for the runtime (/run, gone at reboot) as well as stopped: D-Bus or socket activation
+# would start some of them again within a second (bluetooth did on the Pi).
+svc_stop() {
+  mkdir -p "$RUN"
+  units=$(units_of "$1")
+  if [ -z "$(taken_line "$1")" ]; then
+    was=0
+    systemctl is-active --quiet "$1.service" && was=1
+    echo "$1 $was $units" >> "$RUN/taken"
+  fi
+  # shellcheck disable=SC2086  # two plain unit names at most
+  systemctl -q mask --runtime $units
+  # shellcheck disable=SC2086
+  systemctl stop $units
+}
+
+# svc_start <name> always|if-was [--no-block]
+svc_start() {
+  name=$1 when=$2 block=${3:-}
+  line=$(taken_line "$name")
+  if [ -n "$line" ]; then
+    # shellcheck disable=SC2086
+    set -- $line
+    was=$2
+    shift 2
+    units="$*"
+  else
+    was=1
+    units=$(units_of "$name")
+  fi
+  # shellcheck disable=SC2086
+  systemctl -q unmask --runtime $units || return 1
+  if [ "$when" = always ] || [ "$was" = 1 ]; then
+    # shellcheck disable=SC2086
+    systemctl $block start $units || return 1
+  fi
+  forget "$name"
+}
+
+radio_set() {
+  mkdir -p "$KEEP"
+  if [ ! -f "$KEEP/radio" ]; then
+    state=$(nmcli radio wifi)
+    case "$state" in enabled | disabled) echo "$state" > "$KEEP/radio" ;; esac
+  fi
+  nmcli radio wifi "$1"
+}
+
+radio_restore() {
+  [ -f "$KEEP/radio" ] || return 0
+  case "$(cat "$KEEP/radio")" in
+    enabled) nmcli radio wifi on || return 1 ;;
+    disabled) nmcli radio wifi off || return 1 ;;
+  esac
+  rm -f "$KEEP/radio"
+}
+
+light_off() {
+  mkdir -p "$RUN"
+  for led in $LED_NAMES; do
+    d="$LEDS/$led"
+    [ -f "$d/trigger" ] && [ -f "$d/brightness" ] || continue
+    if [ ! -f "$RUN/led-$led" ]; then
+      trig=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' "$d/trigger")
+      echo "${trig:-none} $(cat "$d/brightness")" > "$RUN/led-$led"
+    fi
+    echo none > "$d/trigger"
+    echo 0 > "$d/brightness"
+  done
+}
+
+light_restore() {
+  r=0
+  for led in $LED_NAMES; do
+    f="$RUN/led-$led"; d="$LEDS/$led"
+    [ -f "$f" ] && [ -f "$d/trigger" ] || continue
+    read -r trig bright < "$f" || true
+    case "$trig" in "" | *[!A-Za-z0-9:_-]*) trig=none ;; esac
+    case "$bright" in "" | *[!0-9]*) bright=0 ;; esac
+    echo "$trig" > "$d/trigger" || { r=1; continue; }
+    # Writing brightness 0 would clear a trigger again: only a trigger-less LED gets it.
+    if [ "$trig" = none ]; then echo "$bright" > "$d/brightness" || { r=1; continue; }; fi
+    rm -f "$f"
+  done
+  return "$r"
+}
+
+# Every service back in two systemctl calls (each mask or unmask reloads systemd: about 2 s
+# apiece on the Pi 4, too slow one by one). --no-block: at boot this runs in the controller's
+# ExecStartPre, inside the boot transaction; waiting there for another unit's start could
+# hold both.
+restore_services() {
+  [ -s "$RUN/taken" ] || { rm -f "$RUN/taken"; return 0; }
+  all=""; again=""
+  while read -r name w units; do
+    valid_name "$name" && ! protected "$name" || continue
+    for u in $units; do
+      case "$u" in "$name.service" | "$name.socket") ;; *) continue ;; esac
+      all="$all $u"
+      if [ "$w" = 1 ]; then again="$again $u"; fi
+    done
+  done < "$RUN/taken"
+  if [ -n "$all" ]; then
+    # shellcheck disable=SC2086
+    systemctl -q unmask --runtime $all || return 1
+  fi
+  if [ -n "$again" ]; then
+    # shellcheck disable=SC2086
+    systemctl --no-block start $again || return 1
+  fi
+  rm -f "$RUN/taken"
+}
+
+restore_all() {
+  rc=0
+  restore_services || rc=1
+  radio_restore || rc=1
+  light_restore || rc=1
+  return "$rc"
+}
+
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
+case "$1:$#" in
+  stop:2 | start:2)
+    valid_name "$2" || usage
+    if protected "$2"; then echo "epitaph-world: $2 is protected" >&2; exit 2; fi
+    allowed "$2" || { echo "epitaph-world: $2 is not in $ALLOW" >&2; exit 2; }
+    ;;
+  radio:2) case "$2" in off | on) ;; *) usage ;; esac ;;
+  light:2) case "$2" in off | restore) ;; *) usage ;; esac ;;
+  restore:1) ;;
+  *) usage ;;
+esac
+
+exec 9> "$LOCK"
+flock -w 30 9 || { echo "epitaph-world: busy" >&2; exit 1; }
+
+case "$1" in
+  stop) svc_stop "$2" ;;
+  start) svc_start "$2" always ;;
+  radio) radio_set "$2"; [ "$2" = on ] && rm -f "$KEEP/radio" ;;
+  light) if [ "$2" = off ]; then light_off; else light_restore; fi ;;
+  restore) restore_all ;;
+esac
+echo "epitaph-world: $*"

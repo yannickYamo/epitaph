@@ -75,22 +75,12 @@ at = "11:00"
 phase = "something is wrong"
 world = ["service:avahi-daemon"]
 
-[[keyframe]]
-at = "12:45"
-phase = "something is wrong"
-world = ["service:triggerhappy"]
-
 # III. The world is disappearing: a loss about every 90 seconds.
 [[keyframe]]
 at = "14:00"
 phase = "the world is disappearing"
 health = "failing"
 world = ["radio:off"]
-
-[[keyframe]]
-at = "15:30"
-phase = "the world is disappearing"
-world = ["service:rsyslog"]
 
 [[keyframe]]
 at = "17:00"
@@ -107,7 +97,6 @@ recall = 200                     # a deeper cut
 [[keyframe]]
 at = "20:00"
 phase = "the world is disappearing"
-world = ["service:systemd-timesyncd"]
 cpu_share = 2.4
 
 [[keyframe]]

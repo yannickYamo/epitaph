@@ -1,0 +1,6 @@
+# epitaph (the dread plan, 2026-10-01): the controller runs unprivileged and may take the
+# creature's surroundings away and give them back, and nothing else, without a password.
+# Installed by deploy/install.sh as /etc/sudoers.d/022_epitaph-world (mode 0440, checked with
+# visudo -cf); @USER@ is the service user. The helper itself also refuses any service that is
+# not in /etc/epitaph/world-services, and every protected one.
+@USER@ ALL=(root) NOPASSWD: /usr/local/sbin/epitaph-world restore, /usr/local/sbin/epitaph-world ^(stop|start) [A-Za-z0-9][A-Za-z0-9@._-]*$, /usr/local/sbin/epitaph-world ^radio (off|on)$, /usr/local/sbin/epitaph-world ^light (off|restore)$

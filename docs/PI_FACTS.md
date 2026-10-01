@@ -44,6 +44,25 @@ or selftest steps); about 10-12 minutes, outside CI.
 | Thermal | `body/thermal.py`: temperature from `thermal_zone0`, firmware bits from `vcgencmd get_throttled` (no sysfs `get_throttled` on this kernel). A pause hook at `thermal_limit_c` 80 °C, resuming at 75 °C; the Pi runs 40-57 °C, so it never fires in normal use |
 | Selftest | `epitaph selftest [--user pi]` relaunches itself as a transient `Delegate=yes` unit for the service user (`sudo systemd-run --uid … --pipe --wait --collect`) and checks the controllers, the leaves, limits set and cleared, `cgroup.kill`, the progress counters, the creature's network (the rule names its cgroup id; an outbound connect from inside is refused, 127.0.0.1 answers), the clock round trip and the llama-server binary; exit 0 or 1. `install.sh` runs it last |
 
+## The world (the dread plan, 2026-10-01)
+
+A life loses its surroundings from the outside in, for real: services around it, its radio,
+its lights, its screen (`[world]` in `config/hardware/pi4-4gb.toml`, `body/pi_world.py`,
+`deploy/sbin/epitaph-world`). Tried on the Pi under the lock, then everything put back (Pi
+changes, 2026-10-01).
+
+| Item | Value |
+|---|---|
+| Services running on this image (console boot, `systemctl list-units --type=service --state=running`) | avahi-daemon, bluetooth, cron, dbus, epitaph-controller, getty@tty1, NetworkManager, nfs-blkmap, rpcbind, ssh, systemd-journald, systemd-logind, systemd-timesyncd, systemd-udevd, user@1000, wpa_supplicant. About 32 user-space processes at birth (`/proc` entries with a command line; 159 with kernel threads) |
+| Allowed to stop, outermost first | **nfs-blkmap** (pNFS block layouts: nothing here mounts NFS), **rpcbind** (RPC port mapper for NFS; its socket too), **cron** (periodic jobs; at worst one hourly clock save is skipped while it is off), **bluetooth** (no Bluetooth device is paired), **avahi-daemon** (mDNS: the `.local` name, which is useless with the Wi-Fi radio off; the cable alias does not need it; its socket too). Each comes back at the death |
+| Never stopped | systemd and its units (journald, logind, udevd, timesyncd: the journal, the devices, the clock), dbus, ssh and NetworkManager (the machine must stay reachable over the cable), wpa_supplicant (the radio switch covers Wi-Fi), getty@tty1 (the console the screen shares), user@1000, the epitaph units. The helper refuses these by pattern even if the allowlist names them (`stop ssh`, `stop systemd-journald`, `stop NetworkManager`, `stop getty@tty1`, `stop wpa_supplicant`, `stop epitaph-controller`: rc 2 on the Pi) |
+| Stopping for real | `systemctl mask --runtime` (a link in `/run/systemd/system`, gone at reboot), then `stop`, for the service and its socket. A plain stop does not hold: bluetooth was started again within a second (D-Bus activation). Masked, it stayed off. About 1 s per service (the mask reloads systemd); a full restore (one unmask and one `start --no-block` for all) 1.2 s |
+| Radio | `nmcli radio wifi off`: 0.8 s; `nmcli radio wifi` reads `enabled`/`disabled` without root. NetworkManager keeps a radio off across reboots, so its state at the first loss is kept in `/var/lib/epitaph-world/radio` and put back by every restore |
+| Lights | `ACT` (trigger `mmc0`: the card's activity) and `PWR` (trigger `default-on`, 255); other LED entries (`default-on`, `mmc0`, `mmc0::`) are not the board's lights. Off = trigger `none`, brightness 0; restore writes the saved trigger back (and the brightness only for a trigger-less LED: writing a brightness clears a trigger). Readable without root |
+| Screen | Dimmed by the display on the `world` event. The body only checks that a DRM connector reports `connected` (none is connected now, so a `screen:<pct>` loss is not performed and no reading says it) |
+| Restore | `epitaph-world restore`: at every death and every controller start (the body's `reset_creature_cgroup`), and in the unit's `ExecStartPre` and `ExecStopPost` (`-+`: a failed restore does not keep the piece from starting). What it took lives in `/run/epitaph-world` (services, lights; a reboot restores those by itself) and `/var/lib/epitaph-world` (radio) |
+| Allowlist | `/etc/epitaph/world-services` (root, 0644), written by `install.sh` from `[world] services`; the helper refuses a file that is not root-owned or is writable by others |
+
 ## Offline operation (2026-10-01, from the laptop; Pi checks pending)
 
 The installed piece runs with no network at all ([INSTALLATION.md](INSTALLATION.md) "Offline").
