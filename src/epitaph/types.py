@@ -204,9 +204,14 @@ class StreamEstimate:
     """The cost model's replay of a stream life (ADR-030): generation written ahead of one
     constant screen, with every machine cost `margin` slower."""
 
-    letter_ms: float
-    wpm: float
+    letter_ms: float  # at birth
+    wpm: float  # at birth
     margin: float
+    letter_ms_end: float = 0.0
+    wpm_middle: float = 0.0
+    wpm_end: float = 0.0
+    gamma: float = 0.0
+    lead_s: float = 0.0
     buffer: list[tuple[float, int]] = field(default_factory=lambda: [])  # (t, letters waiting)
     stalls: list[tuple[float, float]] = field(default_factory=lambda: [])  # (ready at, seconds)
     backlog_letters: int = 0  # generated, not yet shown at death

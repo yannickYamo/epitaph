@@ -71,9 +71,10 @@ One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The d
 | 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
 | then | The stream stops where it is, the screen goes dark, 90 seconds of silence, then a new model is born | |
 
-Every letter is typed at the same pace, 542 ms (about 19 words a minute), from the first word to
-the death, with no pause longer than the end of a sentence. The model writes ahead of the screen,
-so its slowing machine shows in what it says, never as a stalled screen. A life shows about
+The letters come at about 34 words a minute at birth and slow smoothly as the machine shrinks,
+to about 13 at the end, never faster again and never stopping. The model writes ahead of the
+screen, so its slowing machine shows in what it says and in how fast its words come, never as a
+stalled screen. A life shows about
 eleven thoughts. The previous life, with reloads to lower precision and its instructions eroded,
 is kept as `pi4/default-reloads` ([ADR-030](docs/DECISIONS.md)).
 

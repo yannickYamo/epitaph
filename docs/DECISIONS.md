@@ -447,3 +447,23 @@ the previous 30-minute life is kept as `pi4/default-reloads`.*
   cadence (the stream's pace never changes); the sync rule (the display no longer waits for the
   model, except at birth). Rules (b)-(d) of the thought-count rule have nothing to count; rule
   (a) keeps one thought per health label.
+- **Amended the same day: a dynamic pace.** Watching the constant stream, the owner found it
+  too slow ("speed it up by at least 50%") and allowed it to move: start at a normal pace and
+  slow as the machine shrinks, "a better artistic flow". The model rule is unchanged, and so is
+  the stream's: no stop between the first word and the death, the stream stopping where it is.
+  - **The curve.** At birth 255 ms a letter (about 34 words a minute, against 19). The
+    interval then aims at `255 x (compute at birth / compute(t + 8 min)) ^ 0.75`, compute being
+    the CPU share times the clock, and moves toward it by at most 15% a minute; it never speeds
+    up again. All pauses scale with it. It ends at 666 ms (about 13 words a minute). The
+    8-minute lead is there because the screen shows text the model wrote minutes earlier: the
+    pace slows as the text from the slower machine arrives.
+  - **Why.** The slowing is the hardware's, shown a second way: in what the model reads, and in
+    how fast its words come. A constant pace had to be the slowest the dying machine could
+    feed; a curve lets the young machine be read at a natural pace.
+  - **How it was fitted.** `epitaph estimate --fit-pace` tries curve shapes (gamma 0 to 1.25,
+    lead 0 to 10 minutes), finds for each the fastest birth pace, not under 165 ms, that never
+    starves with every cost 15% slower, and keeps those that leave at most 8 words unshown at
+    the death at the measured costs; the fastest birth wins. The buffer now holds at most two
+    thoughts (three made the backlog at death a whole thought), which also halves the lag.
+  - `verify-life` checks every letter against the curve at the moment it is typed, its pauses
+    scaled with it, and that the pace never speeds up.

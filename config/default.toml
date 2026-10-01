@@ -67,11 +67,19 @@ word_gap_ms = 270
 comma_pause_ms = 750
 sentence_pause_ms = 2100
 hesitation_ms = [1200, 3600]
-# The stream mode (ADR-030): every letter at stream_letter_ms (within stream_jitter), the
-# word, comma and sentence pauses above, and stream_thought_pause_ms between thoughts, from
-# the first word to the death. The model writes ahead into a buffer of at most
-# stream_max_thoughts thoughts and fewer than stream_max_letters letters.
+# The stream mode (ADR-030): letters at stream_letter_ms at birth (within stream_jitter), the
+# word, comma and sentence pauses above, and stream_thought_pause_ms between thoughts. The
+# pace slows with the hardware: stream_letter_ms x (compute at birth / compute(t +
+# stream_lead_s)) ^ stream_gamma, by at most stream_max_slowdown_per_min a minute, never
+# faster again; the pauses scale with it. stream_gamma = 0 keeps one pace. The model writes
+# ahead into a buffer of at most stream_max_thoughts thoughts and fewer than
+# stream_max_letters letters.
 stream_letter_ms = 165
+stream_gamma = 0.0
+stream_lead_s = 0
+stream_max_slowdown_per_min = 0.15
+stream_max_letter_ms = 2000
+stream_min_letter_ms = 165       # the fastest a stream may type at birth (readability)
 stream_jitter = 0.10
 stream_thought_pause_ms = 3000
 stream_max_thoughts = 3
@@ -214,6 +222,7 @@ speed_monotonic = "fail"
 # The stream mode (ADR-030): the estimate replays generation ahead of a constant screen, with
 # every machine cost this much slower, and fails on any starvation.
 stream_margin = 0.15
+stream_max_backlog_words = 8     # --fit-pace: words unshown at death at the measured costs
 words_per_sentence = 9           # a sentence pause every this many words, on average
 words_per_clause = 9             # a comma pause every this many words, on average
 

@@ -4,7 +4,8 @@
 # the hardware shrinks, for real, and the readings tell it: the memory is cut (first at 5:00,
 # so it notices something by itself, then deeper), the CPU share (cpu.max) and the CPU clock
 # step down, and at end-0:30 the RAM is taken and the kernel kills it. The screen types one
-# constant stream from the first word to the death; the model writes ahead of it.
+# stream from the first word to the death, never stopping: fast at birth, slowing smoothly
+# with the machine (owner, 2026-10-01); the model writes ahead of it.
 lifespan = "30:00"
 death = "end-0:30"
 fixed_mind = true                # validation: step, threads, persona and sampling never change
@@ -12,10 +13,14 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 
 [reveal]
 mode = "stream"
-stream_letter_ms = 542           # the fastest that never starves (`epitaph estimate --fit-pace`)
+# fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
+stream_letter_ms = 255           # at birth; 632 ms at the end
+stream_gamma = 0.75              # the slowing follows the hardware's compute, to this power
+stream_lead_s = 480              # ... as it will be 8 minutes on: the text runs behind
+stream_max_slowdown_per_min = 0.15
 stream_jitter = 0.10
 stream_thought_pause_ms = 3000
-stream_max_thoughts = 3
+stream_max_thoughts = 2
 stream_max_letters = 900
 
 [[keyframe]]

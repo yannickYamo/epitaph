@@ -411,8 +411,10 @@ Per thought:
 **The stream mode** (`[reveal] mode = "stream"`, ADR-030; `pi4/default`) replaces steps 6-8:
 
 - **The display never waits except at birth.** One `StreamScreen` types every word of the life
-  at one constant pace (`stream_letter_ms`, a fixed `stream_jitter`, the fixed word, clause and
-  sentence pauses, `stream_thought_pause_ms` between thoughts; no hesitation). It waits once,
+  at the stream curve's pace at that moment (`stream_letter_ms` at birth, slowing with the
+  hardware by `stream_gamma` and `stream_lead_s`, at most `stream_max_slowdown_per_min`, never
+  faster again), a fixed `stream_jitter`, the word, clause, sentence and thought pauses scaled
+  with it; no hesitation. It waits once,
   until `stream_birth_thoughts` thoughts are written.
 - **The model writes ahead.** The request for thought n+1 starts as soon as thought n is
   generated, while fewer than `stream_max_thoughts` generated thoughts and `stream_max_letters`

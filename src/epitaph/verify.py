@@ -58,6 +58,7 @@ from typing import Any, Literal, Protocol, cast
 from epitaph.clock import Schedule
 from epitaph.config import CONFIG_DIR, Config, ConfigError, load_config, parse_duration
 from epitaph.costmodel import check_rules
+from epitaph.pacing import StreamCurve
 from epitaph.state import atomic_write_json
 from epitaph.types import RuleReport
 
@@ -1188,36 +1189,70 @@ class Verifier:
         death = self.life.death_t if self.life.death is not None else float("inf")
         return [e for e in self.life.of("word") if _t(e) <= death + 1e-6]
 
+    def stream_curve(self) -> StreamCurve:
+        """The stream's letter interval over the life, as the controller scheduled it."""
+        return StreamCurve.from_config(self.cfg, self.schedule)
+
     def check_stream_pace(self) -> list[Check]:
-        """Every letter from the first word to the death at the stream's one pace: within
-        `stream_letter_ms` x (1 +- `stream_jitter`), no hesitation, and the fixed pause after
-        each word (word gap, clause or sentence)."""
+        """Every letter from the first word to the death at the stream's pace at that moment:
+        within the curve's interval x (1 +- `stream_jitter`), no hesitation, the pause after
+        each word (word gap, clause or sentence) scaled with the curve; and the pace never
+        speeds up: the curve never falls, and no thought types faster on average than the
+        one before it, beyond the jitter."""
         rev = self.cfg.section("reveal")
-        letter = float(rev.get("stream_letter_ms", 165))
+        curve = self.stream_curve()
         jitter = float(rev.get("stream_jitter", 0.0))
         tol = float(self.th["stream_pace_tolerance_ms"])
-        lo, hi = letter * (1 - jitter) - tol, letter * (1 + jitter) + tol
-        pauses = {
+        bases = (
             int(rev.get("word_gap_ms", 270)),
             int(rev.get("comma_pause_ms", 750)),
             int(rev.get("sentence_pause_ms", 2100)),
-        }
+        )
         bad: list[str] = []
         words = self._stream_words()
+        means: list[tuple[int, float, int]] = []  # (turn, mean letter ms, letters)
+        last_interval = 0.0
         for e in words:
+            t = _t(e)
+            interval = curve.at(t)
+            if interval < last_interval - 1e-6:
+                bad.append(f"the pace speeds up at {t:.0f}s")
+            last_interval = interval
+            lo, hi = interval * (1 - jitter) - tol, interval * (1 + jitter) + tol
             chars = [float(x) for x in e.get("char_ms", [])]
             off = [c for c in chars if not lo <= c <= hi]
+            k = curve.scale(t)
+            pauses = {round(p * k) for p in bases}
+            pause = int(e.get("pause_after_ms", 0))
             if off or int(e.get("hesitate_before_ms", 0) or 0):
-                bad.append(f"turn {e.get('turn')} {e.get('text')!r}: {off[:3]} ms")
-            elif int(e.get("pause_after_ms", 0)) not in pauses:
-                bad.append(f"turn {e.get('turn')} {e.get('text')!r}: pause {e['pause_after_ms']}")
-        detail = "; ".join(bad[:5]) or (f"{len(words)} words" if words else "no word was typed")
+                bad.append(f"turn {e.get('turn')} {e.get('text')!r} at {t:.0f}s: {off[:3]} ms")
+            elif not any(abs(pause - p) <= tol for p in pauses):
+                bad.append(f"turn {e.get('turn')} {e.get('text')!r} at {t:.0f}s: pause {pause}")
+            if chars:
+                turn = int(e.get("turn", 0))
+                if means and means[-1][0] == turn:
+                    _, m, n = means[-1]
+                    means[-1] = (turn, (m * n + sum(chars)) / (n + len(chars)), n + len(chars))
+                else:
+                    means.append((turn, sum(chars) / len(chars), len(chars)))
+        timed = [(turn, m) for turn, m, n in means if n >= 20]
+        for (ta, ma), (tb, mb) in itertools.pairwise(timed):
+            if mb < ma * (1 - jitter / 2):
+                bad.append(f"turn {tb} types faster than turn {ta} ({mb:.0f} < {ma:.0f} ms)")
+        detail = "; ".join(bad[:5]) or (
+            f"{len(words)} words, {curve.at(_t(words[0])):.0f} -> "
+            f"{curve.at(_t(words[-1])):.0f} ms a letter"
+            if words
+            else "no word was typed"
+        )
+        first = curve.at(_t(words[0])) if words else curve.birth_ms
+        last = curve.at(_t(words[-1])) if words else curve.birth_ms
         return [
             Check(
                 "stream_pace",
                 _pf(bool(words) and not bad),
                 len(bad),
-                [round(lo, 1), round(hi, 1)],
+                [round(first, 1), round(last, 1)],
                 detail,
             )
         ]
@@ -1225,12 +1260,13 @@ class Verifier:
     def stream_stalls(self) -> list[tuple[float, float]]:
         """(life time the screen was ready, seconds it waited) for each word after the first
         that came later than the stream's pace allows, before the death."""
-        thought_pause = float(self.cfg.get("reveal.stream_thought_pause_ms", 3000)) / 1000
+        thought_pause = float(self.cfg.get("reveal.stream_thought_pause_ms", 3000))
+        curve = self.stream_curve()
         out: list[tuple[float, float]] = []
         for a, b in itertools.pairwise(self._stream_words()):
             typed = _t(a) + sum(int(x) for x in a.get("char_ms", [])) / 1000
             if b.get("turn") != a.get("turn"):
-                ready = typed + thought_pause
+                ready = typed + round(thought_pause * curve.scale(typed)) / 1000
             else:
                 ready = typed + int(a.get("pause_after_ms", 0)) / 1000
             if _t(b) > ready + 0.05:  # event times are rounded to the millisecond

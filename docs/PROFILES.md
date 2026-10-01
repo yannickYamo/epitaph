@@ -355,3 +355,49 @@ the first word at 2:01, no wait of the screen after it (0 s starved), 3 words un
 death; every letter in the 542 ms band; generation 1.03 tokens/s at birth, 0.29 at the end. The
 model meets its first cut by itself ("I am still here, though my memories have faded") and the
 clock steps in the readings.
+
+## A dynamic stream (2026-10-01, later)
+
+The owner found the constant stream too slow (at least 50% faster, he asked) and allowed the
+pace to move: normal at birth, slowing as the machine shrinks (ADR-030, amended). The model rule
+and the stream rule are unchanged.
+
+**The curve.** At birth 255 ms a letter. The interval aims at
+`255 x (compute at birth / compute(t + 480 s)) ^ 0.75` (compute = CPU share x clock / 1800),
+moves toward it by at most 15% a minute and never falls back; the word, clause, sentence and
+thought pauses scale with it. `[reveal]`: `stream_letter_ms = 255`, `stream_gamma = 0.75`,
+`stream_lead_s = 480`, `stream_max_slowdown_per_min = 0.15`, and the buffer down to
+`stream_max_thoughts = 2`.
+
+| Life time | 0:00 | 3:00 | 9:00 | 15:00 | 18:00 | 21:00 to death |
+|---|---|---|---|---|---|---|
+| ms a letter | 255 | 284 | 346 | 468 | 621 | 666 |
+
+About 34 words a minute at birth (75% faster than the constant 19.2), 18 in the middle, 13 at
+the end.
+
+**The fit.** `epitaph estimate --fit-pace` tries gamma 0, 0.25, ... 1.25 and leads of 0 to 10
+minutes. For each shape it finds the fastest birth interval, not under `stream_min_letter_ms`
+(165), at which the replayed life never starves with every cost 15% slower; it keeps the shapes
+that leave at most `estimate.stream_max_backlog_words` (8) words unshown at the death at the
+measured costs; the fastest birth wins. With three thoughts of buffer every fast curve left a
+thought or more unshown at the death, so the buffer is two thoughts; with leads over 10 minutes
+the pace would reach its slowest by mid-life, long before the machine does.
+
+```
+$ epitaph estimate --profile pi4/default --hardware pi4-4gb --fit-pace
+fastest curve that never starves: stream_letter_ms = 255, stream_gamma = 0.75, stream_lead_s = 480 (6 words unshown at death at the measured costs)
+profile pi4/default: 11 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.28 (limit < 0.40): 1.26 -> 0.35 tokens/s
+  note: stream 255 -> 666 ms/letter, 33.7 / 18.3 / 12.9 words/min at birth / middle / end (gamma 0.75, lead 480 s); costs 15% slower: never starves; letters waiting every 5 min: 0, 183, 118, 160, 164, 136 (max 202); backlog at death 0 words (0 s of typing)
+  note: 11 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
+```
+
+At the measured costs the buffer holds 150-235 letters (about a third of a thought) and 6 words
+die unshown.
+
+**Rehearsed on the real model at Pi costs** (`epitaph rehearse --stage life --profile
+pi4/default --seed 1`): 577 words shown, the first at 2:01; typed at 33 words a minute in the
+first three minutes, 21 in the middle, 13 in the last three; no wait of the screen after the
+first word (0 s starved); every letter within the curve's jitter band, the pace never speeding
+up; the death cut the thought on screen mid-sentence with nothing else waiting (0 words unshown).

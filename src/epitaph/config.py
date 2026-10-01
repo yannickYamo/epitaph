@@ -479,6 +479,13 @@ def validate_config(cfg: Config) -> None:
             problems.append("reveal.mode = 'stream' needs reveal.stream_letter_ms above 0")
         if not 0 <= float(rev.get("stream_jitter", 0.0)) < 1:
             problems.append("reveal.stream_jitter must be at least 0 and below 1")
+        floor = float(rev.get("stream_min_letter_ms", 165))
+        if float(rev.get("stream_letter_ms", 165)) < floor:
+            problems.append(f"reveal.stream_letter_ms must be at least {floor:g} (readability)")
+        if float(rev.get("stream_gamma", 0.0)) < 0 or float(rev.get("stream_lead_s", 0)) < 0:
+            problems.append("reveal.stream_gamma and stream_lead_s must be at least 0")
+        if float(rev.get("stream_max_slowdown_per_min", 0.15)) < 0:
+            problems.append("reveal.stream_max_slowdown_per_min must be at least 0")
         if int(rev.get("stream_max_thoughts", 1)) < 1 or int(rev.get("stream_max_letters", 1)) < 1:
             problems.append("reveal.stream_max_thoughts and stream_max_letters must be at least 1")
     if p.fixed_mind:

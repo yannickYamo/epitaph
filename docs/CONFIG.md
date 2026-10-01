@@ -92,9 +92,14 @@ the smallest changes a reading reports.
 | `comma_pause_ms` | `750` | Pause after a comma or similar |
 | `sentence_pause_ms` | `2100` | Pause after a sentence |
 | `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
-| `stream_letter_ms` | `165` | `stream` mode: every letter's interval, the same from birth to death (`pi4/default`: 542, fitted with `epitaph estimate --fit-pace`) |
+| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 255, fitted with `epitaph estimate --fit-pace`) |
+| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.75) |
+| `stream_lead_s` | `0` | `stream` mode: how far ahead the curve looks at the hardware, since the text on screen runs behind the model (`pi4/default`: 480) |
+| `stream_max_slowdown_per_min` | `0.15` | `stream` mode: the pace slows by at most this share a minute, so a hardware step is a gentle slope; it never speeds up again |
+| `stream_max_letter_ms` | `2000` | `stream` mode: the slowest the curve may go |
+| `stream_min_letter_ms` | `165` | `stream` mode: the fastest a birth pace may be (readability); validation and `--fit-pace` hold to it |
 | `stream_jitter` | `0.1` | `stream` mode: the fixed random spread of each letter, as a share of `stream_letter_ms` |
-| `stream_thought_pause_ms` | `3000` | `stream` mode: the pause between two thoughts |
+| `stream_thought_pause_ms` | `3000` | `stream` mode: the pause between two thoughts at birth; it and the word, clause and sentence pauses scale with the curve |
 | `stream_max_thoughts` | `3` | `stream` mode: the model starts a new thought only while fewer generated thoughts than this wait to be finished on screen |
 | `stream_max_letters` | `900` | `stream` mode: ... and while fewer letters than this wait to be typed |
 | `stream_birth_thoughts` | `1` | `stream` mode: the thoughts written before the screen starts, the only wait the stream allows (it also starts once the buffer is full) |
@@ -259,6 +264,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `letters_per_word` | `4.7` | Letters per word |
 | `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
 | `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
+| `stream_max_backlog_words` | `8` | `epitaph estimate --fit-pace`: a curve may leave at most this many words unshown at the death, at the measured costs |
 | `stream_margin` | `0.15` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate |
 | `words_per_sentence` | `9` | A sentence pause every this many words, on average (the stream's pace) |
 | `words_per_clause` | `9` | A comma pause every this many words, on average |
