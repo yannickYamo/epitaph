@@ -1,7 +1,7 @@
 # The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (owner decision,
 # 2026-09-30). Both reloads stay; erosion takes the persona in two steps, the knowledge of its
-# death last; the CPU clock falls from 1800 to 800 MHz once erosion starts (spike S7: speed is
-# linear in the clock).
+# death last, with the terminal label. The CPU clock falls from 1800 to 800 MHz once erosion
+# starts (spike S7: speed is linear in the clock).
 lifespan = "30:00"
 death = "end-0:30"
 
@@ -67,36 +67,36 @@ hesitation = 0.08
 at = "end-10:00"
 phase = "eroding"
 recall = 110
-cpu_mhz = 1200
+cpu_mhz = 1400
 temperature = 1.25
-max_tokens = 32
+max_tokens = 30
 pause_s = 7
 persona_groups = 2
 
 [[keyframe]]
-at = "end-7:00"
+at = "end-6:00"
+phase = "end"
 health = "terminal"
-recall = 80
-cpu_mhz = 1000
-temperature = 1.40
-max_tokens = 24
-pause_s = 9
+recall = 60
+cpu_mhz = 1100
+temperature = 1.45
+min_p = 0.02
+max_tokens = 18
+pause_s = 10
+persona_groups = 0
+mechanics = false
 readings = "minimal"
-letter_ms = 360
-jitter = 0.30
-hesitation = 0.12
+letter_ms = 420
+jitter = 0.35
+hesitation = 0.16
 
 [[keyframe]]
-at = "end-4:30"
-phase = "end"
+at = "end-2:30"
 recall = 48
 cpu_mhz = 800
 temperature = 1.55
-min_p = 0.02
-max_tokens = 14
+max_tokens = 12
 pause_s = 12
-persona_groups = 0
-mechanics = false
 letter_ms = 600
 jitter = 0.40
 hesitation = 0.20

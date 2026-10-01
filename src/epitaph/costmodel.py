@@ -57,6 +57,7 @@ HANDOVER_S = 1.0
 ECHO_PROMPT_TOKENS = 6
 ECHO_TOKENS = 18
 ECHO_READING_TOKENS = 30
+QUOTE_TOKENS = 15
 
 
 @dataclass
@@ -303,6 +304,8 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
         if not cfg.profile.unbounded and life.memory > k.recall:
             life.memory = int(k.recall * trim_to)
             extra += reread_cost(sys_tokens + life.memory)
+            if material:
+                reading += QUOTE_TOKENS  # the reading quotes what was forgotten
             if not life.marker:
                 # Decision A3: the marker rides on this reading; only its tokens are new.
                 life.marker = True
