@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,6 @@ from epitaph.display.themes import PLAIN, SEGMENT16, contrast_ratio, get_theme  
 from .test_layout import ev, word  # noqa: E402
 
 pytestmark = pytest.mark.display
-HAVE_TESSERACT = shutil.which("tesseract") is not None
 
 
 def pixels(path: Path) -> set[tuple[int, int, int]]:
@@ -35,7 +33,7 @@ def pixels(path: Path) -> set[tuple[int, int, int]]:
     }
 
 
-@pytest.mark.skipif(not HAVE_TESSERACT, reason="tesseract not installed")
+@pytest.mark.tesseract
 @pytest.mark.parametrize("size", shot.D13_SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
 def test_d13_readability(size: tuple[int, int], tmp_path: Path) -> None:
     r = shot.readability(size, tmp_path)
@@ -189,9 +187,9 @@ def test_screenshot_main(
 ) -> None:
     monkeypatch.setattr(shot, "D13_SIZES", [(800, 480)])
     monkeypatch.setattr(shot, "ocr_words", lambda p: shot.norm_words(" ".join(shot.SAMPLE)))
-    assert shot.main(["--out", str(tmp_path)]) == 0
+    assert shot.main(["--out", str(tmp_path), "--no-life"]) == 0
     assert '"pass": true' in capsys.readouterr().out
-    assert shot.main(["--out", str(tmp_path), "--min-contrast", "30"]) == 1
+    assert shot.main(["--out", str(tmp_path), "--no-life", "--min-contrast", "30"]) == 1
 
 
 def test_render_png_with_a_view(tmp_path: Path) -> None:
