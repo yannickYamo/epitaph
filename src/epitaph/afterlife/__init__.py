@@ -1,6 +1,9 @@
-"""The afterlife (V1.5, BUILD_PLAN 13): each dying model's last line passes to the next life.
+"""The afterlife (V1.5, BUILD_PLAN 13): what a life leaves behind.
 
-Planned: epitaph extraction from the shown words, inheritance at birth without explanation, a
-filter before anything goes public, and a one-way poster with an outbox. Nothing from the
-network ever reaches the model. Empty until V1.5.
+Part 1, built: each life's epitaph, taken from the words it showed (`epitaph.py`), filtered,
+and kept on this machine's disk in an append-only outbox (`outbox.py`) by the keeper the
+controller feeds (`keeper.py`). No network: posting comes later, from the outbox.
+
+Planned: inheritance at birth without explanation, and a one-way poster. Nothing from the
+network ever reaches the model.
 """

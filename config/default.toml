@@ -192,5 +192,14 @@ cache_reuse_works = true         # set from spike S2
 # (docs/process/QUESTIONS.md, E #12).
 speed_monotonic = "fail"
 
+[afterlife]
+# V1.5 part 1 (docs/AFTERLIFE.md): each life's last words are kept on this machine's disk, in
+# <state_dir>/outbox/epitaphs.jsonl, for posts made later. Nothing here uses the network.
+outbox = true                    # keep one epitaph per life at its death_shown
+epitaph_mode = "last_sentence"   # last_sentence | last_words | last_thought
+max_epitaph_chars = 240          # counted as X counts; a longer epitaph keeps its end, after "…"
+max_post_chars = 280             # X's limit for the epitaph plus post_suffix
+post_suffix = ""                 # added after the epitaph in post_text; "{life}" is the life number
+
 [paths]
 state_dir = "auto"               # auto = /var/lib/epitaph on the Pi, ~/.local/share/epitaph elsewhere
