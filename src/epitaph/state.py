@@ -119,12 +119,18 @@ def write_status(state_dir: Path, status: dict[str, Any]) -> None:
 
 
 def unfinished_lives(state_dir: Path) -> list[Path]:
-    """Life folders with events but no death record: closed as `interrupted` on recovery."""
+    """Life folders with no death record: closed as `interrupted` on recovery.
+
+    A folder counts once it has `meta.json` or events: a controller killed during the load
+    may leave only `meta.json` behind.
+    """
     root = state_dir / "lives"
     if not root.exists():
         return []
     out: list[Path] = []
     for d in sorted(root.iterdir()):
-        if d.is_dir() and (d / "events.jsonl").exists() and not (d / "death.json").exists():
+        if not d.is_dir() or (d / "death.json").exists():
+            continue
+        if (d / "events.jsonl").exists() or (d / "meta.json").exists():
             out.append(d)
     return out
