@@ -311,7 +311,8 @@ def test_allowlist_drops_protected_names(tmp_path: Path) -> None:
     (tmp_path / "hardware").mkdir()
     (tmp_path / "default.toml").write_text('[life]\nhardware = "x"\n[world]\nservices = []\n')
     (tmp_path / "hardware" / "x.toml").write_text(
-        '[world]\nservices = ["cron", "ssh", "NetworkManager", "cron", "bluetooth"]\n'
+        '[world]\nhelper = "/usr/local/sbin/epitaph-world"\n'
+        'services = ["cron", "ssh", "NetworkManager", "cron", "bluetooth"]\n'
     )
     assert allowed_services(tmp_path) == ["cron", "bluetooth"]
 
