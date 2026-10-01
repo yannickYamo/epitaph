@@ -77,6 +77,8 @@ def test_markup_emoji_non_latin() -> None:
     assert v.markup_hits("# Title")
     assert v.markup_hits("- item")
     assert v.markup_hits("1. first")
+    assert v.markup_hits("It is gone. 2. second")  # an item after a sentence
+    assert v.markup_hits("The processes dropped to 22. I remain.") == []  # a number, not a list
     assert v.markup_hits("<think> hmm </think>")
     assert v.markup_hits("sad 😢")
     assert v.non_latin_letters("Café ok") == (0, 6)

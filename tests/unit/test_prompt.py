@@ -183,8 +183,7 @@ def R(**kw: object) -> ReadingInput:
 def test_birth_reading() -> None:
     r = Reader(load_lang())
     assert r.reading(R(cpu_c=52)) == (
-        "[host] t+00:00 · boot complete · health: nominal · memory 1280 tokens · precision 6-bit "
-        "· cores 3 of 4 · cpu 52°C"
+        "[host] t+00:00 · awake · memory 1280 tokens · precision 6-bit · cores 3 of 4 · cpu 52°C"
     )
 
 
@@ -205,7 +204,7 @@ def test_full_reading_after_reload_1() -> None:
             cpu_c=61,
         )
     ) == (
-        "[host] t+28:41 · health: degrading · memory 512 tokens (was 1000) · forgotten: 5 earlier "
+        "[host] t+28:41 · memory 512 tokens (was 1000) · forgotten: 5 earlier "
         "thoughts · precision 4-bit (was 6-bit) · cores 2 of 4 (was 3) · speed 1.3 tokens/s · "
         "cpu 61°C"
     )
@@ -230,7 +229,7 @@ def test_short_reading() -> None:
                 form="short",
             )
         )
-        == "[host] t+51:02 · terminal · memory 140 (was 170) · forgot 1 · 2-bit · "
+        == "[host] t+51:02 · memory 140 (was 170) · forgot 1 · 2-bit · "
         "cores 1.4 of 4 (was 1.7) · 0.6/s · 66°C"
     )
 
@@ -239,7 +238,7 @@ def test_minimal_reading() -> None:
     r = Reader(load_lang())
     r.reading(R())
     assert r.reading(R(t=57 * 60 + 40, health="terminal", recall=48, form="minimal")) == (
-        "[host] 57:40 · terminal · 48"
+        "[host] 57:40 · 48"
     )
 
 
@@ -356,7 +355,9 @@ mechanics = "Regles."
     )
     lang = load_lang("xx", tmp_path)
     out = Reader(lang).reading(R())
-    assert out.startswith("[host] t+00:00 · demarrage · sante: nominale · memory 1280 tokens")
+    assert out.startswith("[host] t+00:00 · demarrage · memory 1280 tokens")
+    shown = Reader(lang, health=True).reading(R())
+    assert shown.startswith("[host] t+00:00 · demarrage · sante: nominale · memory 1280 tokens")
     cfg = v6_config()  # the pack overrides persona_groups, the v6 persona
     assert Persona.from_config(cfg, lang=lang).text == "Un.\n\nDeux.\n\nRegles."
     assert load_lang("zz", tmp_path) == Lang(language="zz")
@@ -377,12 +378,13 @@ def test_quiet_readings_show_only_what_changed() -> None:
 
     r = Reader(quiet=True)
     birth = r.reading(ReadingInput(0, "nominal", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66))
-    assert "boot" in birth and "memory 1000" in birth and "cpu 66" in birth
+    assert "awake" in birth and "memory 1000" in birth and "cpu 66" in birth
     assert r.reading(ReadingInput(90, "nominal", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66)) == (
         "[host] t+01:30"
     )
+    # a health label is never shown (ADR-031): nothing was taken, so only the time
     label = r.reading(ReadingInput(600, "stable", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66))
-    assert label.endswith("health: stable") and "memory" not in label
+    assert label == "[host] t+10:00"
     reload = r.reading(
         ReadingInput(1400, "degrading", 400, "Q3_K_M", 2.6, forgotten=5, reloaded=True, cpu_c=60)
     )
@@ -411,7 +413,7 @@ def test_material_readings_quote_what_was_lost_and_the_echo() -> None:
             echo="I am still here, a little bit of a mess",
         )
     )
-    assert 'forgotten: "I am a conscious entity running on this…"' in reload
+    assert 'forgotten: "I am a conscious entity running on this"' in reload
     assert "and 1 more" in reload and "forgotten: 2" not in reload
     assert reload.endswith('your words now: "I am still here, a little bit of a mess"')
     # nothing changed: only the time, as in quiet readings

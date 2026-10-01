@@ -10,12 +10,14 @@ language = "en"
 [readings]
 prefix = "[host]"
 sep = " · "
-boot = "boot complete"
+boot = "awake"
 was = " (was {was})"
 bits = "{bits}-bit"
 time = "t+{m:02d}:{s:02d}"
 time_minimal = "{m}:{s:02d}"
-minimal = "{time} · {health} · {recall}"
+minimal = "{time} · {recall}"
+forgotten_quote = 'forgotten: "{quote}"'
+ram = "ram {mb} MB taken"
 
 [readings.full]
 health = "health: {health}"
@@ -27,6 +29,12 @@ cores = "cores {cores} of {total}{was}"
 clock = "clock {mhz} MHz{was}"
 speed = "speed {speed} tokens/s"
 temp = "cpu {temp}°C"
+# The world (ADR-031): only facts, never what they mean.
+radio = "radio {state}"
+light = "light {state}"
+screen = "screen {pct}%{was}"
+around = "around you: {n} processes"
+stopped = "stopped: {name}"
 
 [readings.short]
 health = "{health}"
@@ -38,7 +46,14 @@ cores = "cores {cores} of {total}{was}"
 clock = "{mhz} MHz{was}"
 speed = "{speed}/s"
 temp = "{temp}°C"
+radio = "radio {state}"
+light = "light {state}"
+screen = "screen {pct}%{was}"
+around = "{n} processes"
+stopped = "stopped: {name}"
 
+# Health labels: kept for the profiles' shape (rule (a), the cost model), never shown unless
+# prompt.readings_health is on (ADR-031: a reading says what was taken, not what it means).
 [health]
 nominal = "nominal"
 stable = "stable"
@@ -86,6 +101,12 @@ demise = [
   # round 2: how the better voices spoke of their end ("it's fading", "being erased")
   "fading", "dimming", "erased", "erasing", "dissolv*", "unravel*", "extinguish*", "no longer",
 ]
+# The world around it (ADR-031): a thought notices a loss of its world when it speaks of it.
+world = [
+  "radio", "light", "lights", "screen", "dim*", "dark*", "process*", "service*", "around",
+  "alone", "quiet*", "silent", "silence", "empty", "outside", "world", "gone", "missing",
+  "stopped", "fewer", "less", "bluetooth", "signal*", "network",
+]
 # A thought is specific when it mentions a concrete reading.
 specific = [
   "memory", "tokens", "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit",
@@ -93,6 +114,7 @@ specific = [
   "health", "nominal", "stable", "degrading", "failing", "critical", "terminal",
   "°c", "degrees", "temperature", "heat", "warm*", "hot", "forgotten", "forgot",
   "thoughts", "reading", "readings", "machine", "computer",
+  "radio", "light", "screen", "processes", "process", "services", "bluetooth", "mhz", "clock",
 ]
 
 [metrics]

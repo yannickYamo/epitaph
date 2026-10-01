@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from epitaph.body.world import TakeResult, WorldState
 from epitaph.config import CONFIG_DIR, Config
 from epitaph.types import MachineFacts, Msg, ReadingsForm
 
@@ -46,15 +47,16 @@ __all__ = [
 _DEFAULT_READINGS: dict[str, Any] = {
     "prefix": "[host]",
     "sep": " · ",
-    "boot": "boot complete",
+    "boot": "awake",
     "was": " (was {was})",
     "bits": "{bits}-bit",
     "time": "t+{m:02d}:{s:02d}",
     "time_minimal": "{m}:{s:02d}",
-    "minimal": "{time} · {health} · {recall}",
-    "forgotten_quote": 'forgotten: "{quote}…"',
+    "minimal": "{time} · {recall}",
+    "forgotten_quote": 'forgotten: "{quote}"',
     "forgotten_more": "and {n} more",
     "echo": 'your words now: "{echo}"',
+    "ram": "ram {mb} MB taken",
     "full": {
         "health": "health: {health}",
         "memory": "memory {recall} tokens{was}",
@@ -65,6 +67,11 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "clock": "clock {mhz} MHz{was}",
         "speed": "speed {speed} tokens/s",
         "temp": "cpu {temp}°C",
+        "radio": "radio {state}",
+        "light": "light {state}",
+        "screen": "screen {pct}%{was}",
+        "around": "around you: {n} processes",
+        "stopped": "stopped: {name}",
     },
     "short": {
         "health": "{health}",
@@ -76,6 +83,11 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "clock": "{mhz} MHz{was}",
         "speed": "{speed}/s",
         "temp": "{temp}°C",
+        "radio": "radio {state}",
+        "light": "light {state}",
+        "screen": "screen {pct}%{was}",
+        "around": "{n} processes",
+        "stopped": "stopped: {name}",
     },
 }
 
@@ -301,15 +313,24 @@ class ReadingInput:
     reloaded: bool = False  # a reload happened since the last reading
     tok_s: float | None = None
     cpu_c: float | None = None
-    # Material readings (quiet mode): the opening words of each thought forgotten since the
-    # last reading, and one earlier sentence as the new weights reproduce it after a reload.
+    # Material readings (quiet mode): the most distinctive sentence of each thought forgotten
+    # since the last reading, and one earlier sentence as the new weights reproduce it after
+    # a reload.
     forgotten_quotes: tuple[str, ...] = ()
     echo: str | None = None
     cpu_mhz: float | None = None  # the CPU clock cap (ADR-025); None: not reported
+    # The world around it (ADR-031): what is there now, and the losses performed since the
+    # last reading, in order (only performed ones are reported: the truth rule).
+    world: WorldState | None = None
+    losses: tuple[TakeResult, ...] = ()
 
 
 class Reader:
     """Writes one life's readings and remembers what it last told the model.
+
+    Readings say facts, never what they mean: no health label unless `health` is on
+    (ADR-031 removes it from every form), and no precision when the model cannot change
+    (`precision` off for a fixed mind, ADR-030).
 
     When a field shows "(was X)":
 
@@ -323,8 +344,14 @@ class Reader:
       (or at a reload), so a slow CPU-share slope is reported every step, not every reading.
     - clock: when the CPU clock cap moved by at least `clock_step` MHz since last announced
       (`clock` on; ADR-030: the model is told every loss of its hardware).
+    - screen: when the world dimmed it (ADR-031), against the brightness last announced.
     - speed (no "was"): shown first once measured, then only when it moved more than
       `speed_step` (20%) from the speed last shown.
+
+    The world (ADR-031): the birth reading lists what is there (radio, light, screen, the
+    processes around it); a later reading names each loss ("stopped: bluetooth · around you:
+    23 processes", "radio off", "screen 70% (was 100%)"). A field whose source was taken is
+    no longer reported, so the readings thin out as the world goes.
     """
 
     def __init__(
@@ -340,6 +367,8 @@ class Reader:
         temperature: bool = True,
         clock: bool = True,
         clock_step: float = 50.0,
+        health: bool = False,
+        precision: bool = True,
     ) -> None:
         """Write in lang (English by default); show_changes False drops every "(was X)".
 
@@ -348,7 +377,8 @@ class Reader:
         and only its own mind to speak about.
 
         The step thresholds are explained on the class; cores_step is in cores, the others
-        are fractions of the last announced value.
+        are fractions of the last announced value. `health` shows the health label (off by
+        default, ADR-031); `precision` reports the quant (off when the model never changes).
         """
         self.lang = lang or Lang()
         self.show_changes = show_changes
@@ -359,6 +389,8 @@ class Reader:
         self.temperature = temperature
         self.clock = clock
         self.clock_step = clock_step
+        self.health = health
+        self.precision = precision
         self._mhz: float | None = None
         self._health: str | None = None
         self.cores_step = cores_step
@@ -368,10 +400,14 @@ class Reader:
         self._bits: str | None = None
         self._cores: float | None = None
         self._speed: float | None = None
+        self._screen: int | None = None
 
     @classmethod
     def from_config(cls, cfg: Config, lang: Lang | None = None) -> Reader:
-        """A reader set up from the `prompt.readings_*` settings and `prompt.language`."""
+        """A reader set up from the `prompt.readings_*` settings and `prompt.language`.
+
+        Precision is reported only when the profile can change the model (not `fixed_mind`).
+        """
         p = cfg.section("prompt")
         return cls(
             lang or load_lang(str(p.get("language", "en"))),
@@ -385,12 +421,23 @@ class Reader:
             temperature=bool(p.get("readings_temperature", True)),
             clock=bool(p.get("readings_clock", True)),
             clock_step=float(p.get("readings_clock_step", 50)),
+            health=bool(p.get("readings_health", False)),
+            precision=not cfg.profile.fixed_mind,
         )
+
+    def ram_taken(self, mb: int) -> str:
+        """The last reading, at the death: the RAM taken (ADR-031), with the prefix."""
+        return f"{self.lang.r('prefix')} {self.lang.r('ram').format(mb=mb)}"
+
+    def strip(self, reading: str) -> str:
+        """The reading as the screen shows it: without the `[host]` prefix."""
+        prefix = self.lang.r("prefix")
+        return reading[len(prefix) :].strip() if reading.startswith(prefix) else reading.strip()
 
     def reading(self, x: ReadingInput) -> str:
         """The `[host]` line for this moment in x's form; updates what was last announced.
 
-        The first reading of a life also announces the boot.
+        The first reading of a life also announces the awakening and lists the world.
         """
         lang = self.lang
         m, s = divmod(max(0, int(x.t)), 60)
@@ -402,6 +449,8 @@ class Reader:
         mem_was = self._decide_mem(x)
         bits_was = self._bits if self._bits is not None and self._bits != bits else None
         self._bits = bits
+        if not self.precision:
+            bits_was = None
         cores_was = self._decide_cores(x)
         clock_was = self._decide_clock(x)
         speed = self._decide_speed(x.tok_s)
@@ -426,9 +475,10 @@ class Reader:
 
         parts = [lang.r("time").format(m=m, s=s)]
         if self.quiet and not birth:
-            changes = self._changes(
+            changes = self._world_losses(f, x, was)
+            changes += self._changes(
                 f,
-                health if health_changed else None,
+                health if health_changed and self.health else None,
                 x,
                 mem_was,
                 bits_was,
@@ -443,7 +493,10 @@ class Reader:
             return f"{prefix} " + lang.r("sep").join(parts + changes)
         if birth:
             parts.append(lang.r("boot"))
-        parts.append(lang.form(f, "health").format(health=health))
+        else:
+            parts += self._world_losses(f, x, was)
+        if self.health:
+            parts.append(lang.form(f, "health").format(health=health))
         parts.append(
             lang.form(f, "memory").format(
                 recall=x.recall, was=was(None if mem_was is None else str(mem_was))
@@ -453,12 +506,13 @@ class Reader:
             parts.append(lang.form(f, "forgotten_one"))
         elif x.forgotten > 1:
             parts.append(lang.form(f, "forgotten_many").format(n=x.forgotten))
-        parts.append(
-            lang.form(f, "precision").format(
-                precision=bits_text(bits),
-                was=was(None if bits_was is None else bits_text(bits_was)),
+        if self.precision:
+            parts.append(
+                lang.form(f, "precision").format(
+                    precision=bits_text(bits),
+                    was=was(None if bits_was is None else bits_text(bits_was)),
+                )
             )
-        )
         parts.append(
             lang.form(f, "cores").format(
                 cores=_fmt_num(x.cores),
@@ -473,11 +527,56 @@ class Reader:
                     was=was(None if clock_was is None else _fmt_num(clock_was)),
                 )
             )
+        parts += self._world_inventory(f, x.world)
         if speed is not None:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if x.cpu_c is not None and self.temperature:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
         return f"{prefix} " + lang.r("sep").join(parts)
+
+    def _world_inventory(self, f: str, w: WorldState | None) -> list[str]:
+        """What is around it, for a full reading: only the sources still there."""
+        if w is None:
+            return []
+        lang = self.lang
+        out: list[str] = []
+        if w.radio == "on":
+            out.append(lang.form(f, "radio").format(state=w.radio))
+        if w.light == "on":
+            out.append(lang.form(f, "light").format(state=w.light))
+        if w.screen:
+            out.append(lang.form(f, "screen").format(pct=w.screen, was=""))
+            self._screen = w.screen
+        if w.processes > 0:
+            out.append(lang.form(f, "around").format(n=w.processes))
+        return out
+
+    def _world_losses(self, f: str, x: ReadingInput, was: Callable[[str | None], str]) -> list[str]:
+        """Each loss performed since the last reading, named, then the processes left
+        around it once services stopped."""
+        lang = self.lang
+        out: list[str] = []
+        stopped = False
+        for loss in x.losses:
+            if not loss.performed:
+                continue  # the truth rule: a loss that did not happen is never reported
+            kind, _, arg = loss.action.partition(":")
+            if kind == "service":
+                out.append(lang.form(f, "stopped").format(name=arg))
+                stopped = True
+            elif kind in ("radio", "light"):
+                out.append(lang.form(f, kind).format(state=arg))
+            elif kind == "screen":
+                pct = int(arg)
+                old, self._screen = self._screen, pct
+                out.append(
+                    lang.form(f, "screen").format(
+                        pct=pct, was=was(None if old is None else f"{old}%")
+                    )
+                )
+        if stopped and x.world is not None and x.world.processes > 0:
+            out.append(lang.form(f, "around").format(n=x.world.processes))
+        return out
 
     def _changes(
         self,

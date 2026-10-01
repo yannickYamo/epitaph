@@ -41,3 +41,8 @@ estimated = true
 tg_tok_s = { "0-3" = 1.35, "0-2" = 1.0, "1-3" = 1.7, "1-2" = 1.3, "2-2" = 1.6, "2-1" = 0.9 }
 pp_tok_s = { "0-3" = 10.0, "0-2" = 7.0, "1-3" = 11.0, "1-2" = 8.0, "2-2" = 9.0, "2-1" = 5.0 }
 load_s = [60.0, 45.0, 30.0]
+
+[world]
+# ADR-031: the world is taken for real through this root-owned helper (services, radio, light,
+# screen), restored at every death and at every controller start.
+helper = "/usr/local/sbin/epitaph-world"

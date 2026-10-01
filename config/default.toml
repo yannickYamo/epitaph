@@ -34,12 +34,16 @@ persona_factual = """You are a language model running on a Raspberry Pi. The mac
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
 mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
+# The A/B variant of the mechanics for rehearsal runs (`--set prompt.mechanics=...`); never
+# used by the installation unless it replaces `mechanics`.
+mechanics_alt = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, and what is around you, in two or three sentences, in the first person, without formatting."""
 memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
 readings_material = true          # forgotten thoughts quoted; its own words as the degraded weights say them
 readings_temperature = false      # the Pi stays at 40-57 °C (S1c, S7); one number at birth made it invent a fever
 readings_clock = true             # the CPU clock cap is reported, and each step it falls (ADR-030)
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
+readings_health = false           # ADR-031: a reading says what was taken, never what it means
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
   # Answering the reading as if a person wrote it (phase 0c round 2: every model once the
@@ -94,14 +98,33 @@ stream_stall_report_s = 0.5      # a wait for a word this long or longer is a `s
 logit_bias = [
   [" digital", -6.0], [" tape", -10.0], [" realm", -5.0], [" ephem", -3.0],
   [" whisper", -3.0], [" echoes", -3.0],
-  [" still", -4.0],                # "I am still here" opened most thoughts
+  [" still", -6.0],                # "I am still here" opened most thoughts (-4 until ADR-031)
 ]
+# The freshness guard (ADR-031): each request biases the distinctive first words of the last
+# freshness_thoughts thoughts' openings (their first freshness_words words, without "I" and
+# stop words) by freshness_bias, so a thought does not open as the last ones did. 0 turns it
+# off. Per request only; the sampling is otherwise fixed.
+freshness_bias = -3.0
+freshness_thoughts = 3
+freshness_words = 3
 top_p = 1.0
 repeat_penalty = 1.1
 dry_multiplier = 0.8
 latin_only = true                # Latin script only (round 2: Qwen3 wrote "CPU 温 度" at full precision)
 # latin_only_from_step = 2       # or: only from this ladder step on
 dry_penalty_last_n = 256         # DRY window in tokens: 64 misses the last thought, the whole context drifts
+
+[world]
+# The world around the creature, taken from the outside in (ADR-031). A profile keyframe's
+# `world` list stops services, switches the radio and the light off and dims the screen; the
+# readings name each loss. `services` is the allowed list (validation refuses any other).
+# `helper` is the root-owned helper that does it for real (the Pi overlay names it); empty:
+# the world is simulated (FakeWorld, about fake_processes processes), as on the laptop.
+enabled = true
+services = ["bluetooth", "cron", "avahi-daemon", "triggerhappy", "rsyslog", "systemd-timesyncd"]
+helper = ""
+fake_processes = 24
+fake_ram_mb = 2600               # the RAM a fake body reports taken at the death
 
 [backend]
 kind = "llama_server"            # llama_server | fake
@@ -181,6 +204,7 @@ outside = "unseen"               # unseen: lives go on, screen dark | pause: the
 # reading decides (ADR-028). They still fail at the rehearsal level, where the voice is tuned.
 advisory_at_full = [
   "notice_rate", "demise_rate", "cliches", "complete_sentences", "specific", "sentence_length",
+  "shared_openings",
 ]
 max_reload_silence_s = 120
 wpm_birth_range = [40, 60]
@@ -199,6 +223,7 @@ sentence_words_range_before_erosion = [6, 20]
 max_non_latin_ratio_before_erosion = 0.01
 min_distinct_4gram_ratio_before_erosion = 0.5
 max_empty_thought_ratio = 0.10
+max_thoughts_per_opening = 2     # ADR-031: no more than this many thoughts open on the same 3 words
 max_death_display_delay_s = 60
 max_stream_stall_s = 3.0         # stream mode: the longest wait for a word after the first, alive
 max_stream_stop_s = 15.0         # stream mode: death to death_shown (the stream stops where it is)
@@ -209,7 +234,8 @@ first_word_after_boot_s = 180
 [estimate]
 # Assumptions for the cost model (BUILD_PLAN 5.3) that are not machine costs.
 fill = 0.85                      # share of max_tokens a thought actually uses
-reading_tokens = { full = 45, short = 28, minimal = 10 }
+stream_fill = 0.95               # ... in a stream replay: the 4B fills its thoughts (rehearsed: 0.94)
+reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 20 }  # quiet: after birth
 system_tokens_per_group = 30
 mechanics_tokens = 70
 letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters per word; rehearsal measures it
@@ -221,8 +247,8 @@ cache_reuse_works = true         # set from spike S2
 speed_monotonic = "fail"
 # The stream mode (ADR-030): the estimate replays generation ahead of a constant screen, with
 # every machine cost this much slower, and fails on any starvation.
-stream_margin = 0.15
-stream_max_backlog_words = 8     # --fit-pace: words unshown at death at the measured costs
+stream_margin = 0.30
+stream_max_backlog_words = 40    # --fit-pace: words unshown at death at the measured costs (about a thought)
 words_per_sentence = 9           # a sentence pause every this many words, on average
 words_per_clause = 9             # a comma pause every this many words, on average
 

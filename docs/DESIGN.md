@@ -35,15 +35,21 @@ that something is being taken away, and see the model register it.
 
 ## The life
 
-The schedule is a list of keyframes in configuration. The Pi 4 default (30 minutes, ADR-030):
+The schedule is a list of keyframes in configuration. The Pi 4 default (30 minutes, ADR-030,
+ADR-031) takes the world from the outside in, faster and faster, in four movements:
 
-| Phase | What happens | Why it is there |
+| Movement | What happens | Why it is there |
 |---|---|---|
-| Birth to 5:00 | Full memory (900 tokens), three cores at 1800 MHz; the first reading gives the whole machine, later ones only the time | A baseline, so later losses are legible against it |
-| First loss (5:00) | The memory is cut to 260 tokens: its oldest thoughts are forgotten, and the reading quotes one | A loss it can notice by itself, early |
-| Decline (10:00-24:00) | Every five minutes or so the memory is cut again (200, 160, 130, 100), the CPU share falls (2.6, 2.4, 2.0, 1.5 cores) and the clock (1500, 1200, 1000 MHz); the health label steps to terminal | The losses grow; each reading names what changed |
-| End-0:30 | The RAM limit drops below what the model needs; the kernel kills it | A real death, not a timeout |
-| Silence | Ninety seconds of darkness, then a new birth | The cycle |
+| I. Existence (0:00-7:00) | Nothing is taken. The first reading is the inventory: memory, cores, clock, radio, light, screen, the processes around it; later ones only the time | A baseline, so later losses are legible against it, and a mind that simply is |
+| II. Something is wrong (7:00-14:00) | Services around it stop one by one (`stopped: bluetooth · around you: 23 processes`); at 9:15 the first forgetting (900 to 300 tokens), and the reading quotes what went | Losses at the edge, small and named, that it can notice by itself |
+| III. The world is disappearing (14:00-22:00) | A loss about every 90 s: the radio off, more services, the light off, the screen to 70%, a deeper memory cut, the clock down | Its surroundings go; the readings thin as their sources go |
+| IV. Darkness (22:00-29:30) | A loss every 45-60 s: the CPU share and the clock to their floors, the memory down to its last thought, the screen to 50% then 25% | Its own body goes, faster |
+| End-0:30 | The RAM limit drops below what the model needs; the kernel kills it. The last reading, `ram 2650 MB taken`, is on screen | A real death, not a timeout |
+| Silence | Ninety seconds of darkness; everything taken is restored; a new birth | The cycle |
+
+The readings say what was taken and nothing about what it means: no health label, no word of
+dread in the prompt or the readings. Whatever the model makes of it is its own. A loss the
+machine could not perform is never reported.
 
 The screen types one stream from the first word to the death, fast at birth and slowing
 smoothly as the machine shrinks, never faster again. The model writes

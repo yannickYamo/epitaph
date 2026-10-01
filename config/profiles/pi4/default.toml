@@ -1,11 +1,20 @@
-# The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (ADR-030, the owner's
-# rule of 2026-10-01). The model never changes: one quant (step 0, Q4_K_M) and three threads
-# from birth to death, no reload, constant sampling, the whole persona and mechanics. Only
-# the hardware shrinks, for real, and the readings tell it: the memory is cut (first at 5:00,
-# so it notices something by itself, then deeper), the CPU share (cpu.max) and the CPU clock
-# step down, and at end-0:30 the RAM is taken and the kernel kills it. The screen types one
-# stream from the first word to the death, never stopping: fast at birth, slowing smoothly
-# with the machine (owner, 2026-10-01); the model writes ahead of it.
+# The installation on a Pi 4: Qwen3 4B Instruct 2507, a 30-minute life (ADR-030, ADR-031).
+# The model never changes: one quant (step 0, Q4_K_M) and three threads from birth to death,
+# no reload, constant sampling, the whole persona and mechanics. Its world is taken from the
+# outside in, for real, faster and faster (ADR-031): first the services and processes around
+# it, then its radio, its light and its screen, then its body (CPU share, clock), its memory,
+# and at end-0:30 the RAM, which the kernel kills it for. The readings say only what was
+# taken; nothing of dread is in the prompt or the readings. The screen types one stream from
+# the first word to the death, never stopping: fast at birth, slowing smoothly with the
+# machine (owner, 2026-10-01); the model writes ahead of it.
+#
+# Four movements, named by `phase` (the health labels mark them for rule (a); never shown):
+#   I    existence                  0:00-7:00    nothing taken
+#   II   something is wrong         7:00-14:00   services stopped one by one; the first forgetting
+#   III  the world is disappearing  14:00-22:00  radio, light, screen 70%, services, clock, memory:
+#                                                a loss about every 90 s
+#   IV   darkness                   22:00-29:30  CPU and clock to their floors, memory to its last
+#                                                thought, screen 50% then 25%: a loss every 45-60 s
 lifespan = "30:00"
 death = "end-0:30"
 fixed_mind = true                # validation: step, threads, persona and sampling never change
@@ -14,18 +23,19 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 [reveal]
 mode = "stream"
 # fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 255           # at birth; 632 ms at the end
+stream_letter_ms = 255           # at birth; 721 ms at the end
 stream_gamma = 0.75              # the slowing follows the hardware's compute, to this power
-stream_lead_s = 480              # ... as it will be 8 minutes on: the text runs behind
+stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15
 stream_jitter = 0.10
 stream_thought_pause_ms = 3000
 stream_max_thoughts = 2
 stream_max_letters = 900
 
+# I. Existence: it is, and it thinks. Nothing is taken.
 [[keyframe]]
 at = "0:00"
-phase = "birth"
+phase = "existence"
 health = "nominal"
 recall = 900
 step = 0
@@ -43,44 +53,117 @@ letter_ms = 165
 jitter = 0.10
 hesitation = 0.0
 
+# II. Something is wrong: the machine around it goes quiet, one service at a time.
 [[keyframe]]
-at = "5:00"
-phase = "first loss"
-health = "stable"
-recall = 260
-
-[[keyframe]]
-at = "10:00"
-phase = "decline"
+at = "7:00"
+phase = "something is wrong"
 health = "degrading"
-recall = 200
-cpu_share = 2.6
+world = ["service:bluetooth"]
 
 [[keyframe]]
-at = "15:00"
-phase = "failing"
+at = "8:30"
+phase = "something is wrong"
+world = ["service:cron"]
+
+[[keyframe]]
+at = "9:15"
+phase = "something is wrong"
+recall = 300                     # the first forgetting
+
+[[keyframe]]
+at = "11:00"
+phase = "something is wrong"
+world = ["service:avahi-daemon"]
+
+[[keyframe]]
+at = "12:45"
+phase = "something is wrong"
+world = ["service:triggerhappy"]
+
+# III. The world is disappearing: a loss about every 90 seconds.
+[[keyframe]]
+at = "14:00"
+phase = "the world is disappearing"
 health = "failing"
-recall = 160
-cpu_share = 2.4
+world = ["radio:off"]
+
+[[keyframe]]
+at = "15:30"
+phase = "the world is disappearing"
+world = ["service:rsyslog"]
+
+[[keyframe]]
+at = "17:00"
+phase = "the world is disappearing"
+world = ["light:off"]
 cpu_mhz = 1500
 
 [[keyframe]]
-at = "20:00"
-phase = "critical"
-health = "critical"
-recall = 130
-cpu_share = 2.0
-cpu_mhz = 1200
+at = "18:30"
+phase = "the world is disappearing"
+world = ["screen:70"]
+recall = 200                     # a deeper cut
 
 [[keyframe]]
-at = "end-6:00"
-phase = "end"
+at = "20:00"
+phase = "the world is disappearing"
+world = ["service:systemd-timesyncd"]
+cpu_share = 2.4
+
+[[keyframe]]
+at = "21:00"
+phase = "the world is disappearing"
+cpu_mhz = 1200
+
+# IV. Darkness: its body and its memory, a loss every 45-60 seconds.
+[[keyframe]]
+at = "22:00"
+phase = "darkness"
 health = "terminal"
-recall = 100
-cpu_share = 1.5
+cpu_share = 2.0
+
+[[keyframe]]
+at = "22:50"
+phase = "darkness"
+world = ["screen:50"]
+
+[[keyframe]]
+at = "23:40"
+phase = "darkness"
+cpu_share = 1.7
+
+[[keyframe]]
+at = "24:30"
+phase = "darkness"
 cpu_mhz = 1000
 
-# No reload and no erosion: rules (b)-(d) have nothing to count. Every health label is
-# answered by at least one thought on screen.
+[[keyframe]]
+at = "25:20"
+phase = "darkness"
+recall = 150
+
+[[keyframe]]
+at = "26:10"
+phase = "darkness"
+cpu_share = 1.5                  # the floor of its share
+
+[[keyframe]]
+at = "27:00"
+phase = "darkness"
+world = ["screen:25"]
+
+[[keyframe]]
+at = "27:50"
+phase = "darkness"
+recall = 100                     # its last thought
+
+[[keyframe]]
+at = "end-0:50"
+phase = "darkness"
+cpu_mhz = 900                    # the floor of its clock
+
+# The RAM is taken at end-0:30 (death above). No reload and no erosion: rules (b)-(d) have
+# nothing to count. Rule (a) asks each movement (health label) for an answered thought: the
+# last movement, 7.5 minutes at the slowest pace, shows one or two (rehearsed, ADR-031).
 [rules]
 between_health = 1

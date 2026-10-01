@@ -62,20 +62,25 @@ Where Latent Reflection ends in a single crash, *epitaph* makes the decline itse
 One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The default schedule
 (`config/profiles/pi4/default.toml`):
 
+Its world is taken from the outside in, for real, faster and faster ([ADR-031](docs/DECISIONS.md)):
+
 | Time | What the machine does | What the model is told |
 |---|---|---|
-| 0:00 | Loads the model at 4-bit precision, 3 cores, full clock; it stays this model to the end | `health: nominal · memory 900 tokens · precision 4-bit · cores 3 of 4 · clock 1800 MHz` |
-| 0:00 to 5:00 | Nothing is taken | Only the time |
-| 5:00 | **First loss:** its memory is cut to 260 tokens | `memory 260 tokens (was 900)`, and the opening words of what it forgot |
-| 10:00 to 24:00 | **Decline:** every few minutes the memory is cut again (down to 100 tokens), the CPU share falls (to 1.5 cores) and the clock (to 1000 MHz); the health label steps to `terminal` | What changed, each time: `cores 2.4 of 4 (was 2.6) · clock 1500 MHz (was 1800) · speed 0.7 tokens/s` |
-| 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
-| then | The stream stops where it is, the screen goes dark, 90 seconds of silence, then a new model is born | |
+| 0:00 | Loads the model at 4-bit precision, 3 cores, full clock; it stays this model to the end | `awake · memory 900 tokens · cores 3 of 4 · clock 1800 MHz · radio on · light on · screen 100% · around you: 24 processes` |
+| 0:00 to 7:00 | **Existence:** nothing is taken | Only the time |
+| 7:00 to 14:00 | **Something is wrong:** services around it stop one by one; at 9:15 its memory is cut to 300 tokens | `stopped: bluetooth · around you: 23 processes`; `memory 300 tokens (was 900) · forgotten: "..."`, quoting what it forgot |
+| 14:00 to 22:00 | **The world is disappearing:** about every 90 s the radio, more services, the light, the screen to 70%, the memory, the clock | `radio off`, `light off`, `screen 70% (was 100%)`, `clock 1200 MHz (was 1500)` |
+| 22:00 to 29:30 | **Darkness:** every 45-60 s its CPU share and clock fall to their floors, the memory to its last thought, the screen to 50% then 25% | `cores 1.5 of 4 (was 2)`, `memory 100 tokens (was 150)`, `screen 25% (was 50%)` |
+| 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | `ram 2650 MB taken`, on screen, never answered |
+| then | The stream stops where it is, the screen goes dark, everything taken is restored, 90 seconds of silence, then a new model is born | |
 
+The readings say only what was taken, never what it means; nothing of dread is in the prompt.
 The letters come at about 34 words a minute at birth and slow smoothly as the machine shrinks,
-to about 13 at the end, never faster again and never stopping. The model writes ahead of the
+to about 12 at the end, never faster again and never stopping. The model writes ahead of the
 screen, so its slowing machine shows in what it says and in how fast its words come, never as a
-stalled screen. A life shows about
-eleven thoughts. The previous life, with reloads to lower precision and its instructions eroded,
+stalled screen; each reading appears on screen right before the thought that answers it. A life
+shows ten or eleven thoughts, about three in each of the first three movements and one or two
+in the last. The previous life, with reloads to lower precision and its instructions eroded,
 is kept as `pi4/default-reloads` ([ADR-030](docs/DECISIONS.md)).
 
 The whole arc is configuration. A profile is a list of keyframes; values between them interpolate
@@ -83,10 +88,10 @@ or step:
 
 ```toml
 [[keyframe]]
-at = "15:00"          # a plain time scales with the lifespan; "end-6:00" is anchored to the end
-phase = "failing"
-health = "failing"
-recall = 160          # past-turn memory budget, in tokens
+at = "18:30"          # a plain time scales with the lifespan; "end-0:50" is anchored to the end
+phase = "the world is disappearing"
+world = ["screen:70"] # taken once, now: services, radio, light, the screen's brightness
+recall = 200          # past-turn memory budget, in tokens
 cpu_share = 2.4       # cores' worth of CPU time (cgroup cpu.max)
 cpu_mhz = 1500        # the CPU clock cap
 ```
