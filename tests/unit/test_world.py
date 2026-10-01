@@ -309,3 +309,28 @@ def test_the_pi_overlay_takes_the_real_world() -> None:
 
     assert isinstance(make_world(load_config("pi4/default", "pi4-4gb").section("world")), PiWorld)
     assert isinstance(make_world(load_config("pi4/default", "dev").section("world")), FakeWorld)
+
+
+def test_spare_readings_leave_less_to_recite() -> None:
+    """A short birth, losses without service names, no speed (dread plan, voice round 2)."""
+    from epitaph.body.world import TakeResult, WorldState
+    from epitaph.mind.prompt import Reader, ReadingInput
+
+    w = WorldState(services=("cron",), processes=24, radio="on", light="on", screen=100)
+    r = Reader(quiet=True, spare_birth=True, names=False, speed=False)
+    birth = r.reading(ReadingInput(51, "nominal", 900, "Q4_K_M", 3.0, tok_s=1.2, world=w))
+    assert birth == "[host] t+00:51 · awake · around you: 24 processes"
+    later = r.reading(
+        ReadingInput(
+            430,
+            "nominal",
+            900,
+            "Q4_K_M",
+            3.0,
+            tok_s=0.6,
+            world=WorldState(processes=22),
+            losses=(TakeResult("service:cron", True), TakeResult("service:bluetooth", True)),
+        )
+    )
+    assert "something stopped" in later and "cron" not in later and "tokens/s" not in later
+    assert later.count("something stopped") == 1 and "around you: 22 processes" in later

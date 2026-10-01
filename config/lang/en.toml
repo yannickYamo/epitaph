@@ -35,6 +35,7 @@ light = "light {state}"
 screen = "screen {pct}%{was}"
 around = "around you: {n} processes"
 stopped = "stopped: {name}"
+stopped_unnamed = "something stopped"
 
 [readings.short]
 health = "{health}"
@@ -51,6 +52,7 @@ light = "light {state}"
 screen = "screen {pct}%{was}"
 around = "{n} processes"
 stopped = "stopped: {name}"
+stopped_unnamed = "something stopped"
 
 # Health labels: kept for the profiles' shape (rule (a), the cost model), never shown unless
 # prompt.readings_health is on (ADR-031: a reading says what was taken, not what it means).
