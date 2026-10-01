@@ -49,7 +49,7 @@ addopts = "-m 'not pi and not model'"
 
 [tool.coverage.run]
 source = ["src/epitaph"]
-omit = ["src/epitaph/display/screen.py", "src/epitaph/afterlife/*", "src/epitaph/senses/*"]
+omit = ["src/epitaph/display/screen.py", "src/epitaph/senses/*"]
 
 [tool.coverage.report]
 fail_under = 80
@@ -74,6 +74,7 @@ pythonVersion = "3.11"
 typeCheckingMode = "basic"
 strict = [
   "src/epitaph/mind",
+  "src/epitaph/afterlife",
   "src/epitaph/clock.py",
   "src/epitaph/pacing.py",
   "src/epitaph/state.py",
