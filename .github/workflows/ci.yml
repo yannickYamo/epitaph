@@ -3,7 +3,8 @@
 # The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
 # CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,
 # the Pi 5 and sim profiles, verify-life and the rehearsal tools on simulated lives, the cost
-# model on the measured Pi 4 costs, the headless display tests, and the Pi gate tools' dry runs.
+# model on the measured Pi 4 costs, the headless display tests, and the Pi gate tools' dry runs
+# (smoke and lives, the boot check, collecting the service's lives, the fault matrix).
 #
 # Nothing here needs a model file, llama.cpp or the Pi: `make test` runs every test under
 # tests/ except those marked `pi` (tests/pi) or `model` (tests/templates), which pyproject's
@@ -118,6 +119,10 @@ jobs:
             $PY -m epitaph sim --profile pi4/$p --hardware pi4-4gb --lives 2 --events > ci-lives/$p.jsonl
             $PY -m epitaph.verify ci-lives/$p.jsonl --profile pi4/$p --hardware pi4-4gb --out ci-lives/$p.verify.json
           done
+          # The installation (ADR-024) at level full: the first of two lives, so next_birth is judged.
+          $PY -m epitaph sim --profile pi4/default --hardware pi4-4gb --lives 2 --events > ci-lives/default.jsonl
+          $PY -m epitaph.verify ci-lives/default.jsonl --life 1 --profile pi4/default --hardware pi4-4gb \
+            --level full --out ci-lives/default.verify.json
 
       - name: Rehearsal tools on simulated lives (summary line, compare table)
         run: |
@@ -156,11 +161,16 @@ jobs:
       - name: Pi gate tools (shellcheck and dry runs; nothing reaches a Pi)
         run: |
           # make test already runs them against a fake Pi (tests/unit/test_pi_tools.py).
-          shellcheck -x tools/smoke_pi.sh tools/headless_boot_check.sh
+          shellcheck -x tools/smoke_pi.sh tools/headless_boot_check.sh tools/collect_lives.sh \
+            tools/fault_matrix_pi.sh
           export PI_HOST=pi EPITAPH_SSH=false EPITAPH_PYTHON=$PY
           tools/smoke_pi.sh --dry-run
           tools/smoke_pi.sh --dry-run --profile pi4/skeleton-1200 --lives 2
+          tools/smoke_pi.sh --dry-run --profile pi4/default --lives 3
           tools/headless_boot_check.sh --dry-run --reboot
+          tools/collect_lives.sh --dry-run --profile pi4/default --lives 3
+          tools/fault_matrix_pi.sh --list
+          tools/fault_matrix_pi.sh --dry-run
 
       - name: Keep the evidence
         if: always()
