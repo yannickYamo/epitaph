@@ -305,7 +305,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
             life.groups, life.mechanics = k.persona_groups, k.mechanics
             extra += reread_cost(sys_tokens + life.memory)
 
-        reading = reading_tokens(cfg, k.readings)
+        reading = reading_tokens(cfg, k.readings, after_birth=bool(life.thought_times))
         if not cfg.profile.unbounded and life.memory > k.recall:
             life.memory = int(k.recall * trim_to)
             extra += reread_cost(sys_tokens + life.memory)
@@ -646,7 +646,7 @@ def estimate_stream(
     rev = cfg.section("reveal")
     slow = 1 + float(margin if margin is not None else est.get("stream_margin", 0.15))
     pace = stream_pace(cfg, stream_curve(cfg, sch, letter_ms, gamma, lead_s))
-    fill = float(est.get("fill", 0.85))
+    fill = float(est.get("stream_fill", est.get("fill", 0.85)))
     letters_per_token = float(est.get("letters_per_token", 3.5))
     trim_to = float(cfg.get("output.trim_to", 0.85))
     threads_batch = int(cfg.get("backend.threads_batch", 0)) or None
@@ -730,7 +730,7 @@ def estimate_stream(
             step, threads = k.step, k.threads
             k = sch.at(t)
         sys_tokens = sys_tokens_of(k.persona_groups, k.mechanics)
-        reading = reading_tokens(cfg, k.readings)
+        reading = reading_tokens(cfg, k.readings, after_birth=bool(memory))
         extra = 0
         if (k.persona_groups, k.mechanics) != (groups, mechanics):
             groups, mechanics = k.persona_groups, k.mechanics
@@ -849,6 +849,10 @@ def stream_summary(stream: StreamEstimate) -> str:
     )
 
 
+ROBUST_STEP_MS = 4  # a fitted pace must hold at these steps slower than it ...
+ROBUST_STEPS = 6  # ... this many of them (about 10% of a birth pace)
+
+
 def fit_stream_pace(
     cfg: Config,
     costs: Costs,
@@ -858,12 +862,22 @@ def fit_stream_pace(
     lead_s: float | None = None,
 ) -> float | None:
     """The fastest birth letter interval (ms, whole) at which the stream, with this curve
-    shape (`[reveal]` by default), never starves with the margin; None if even `hi_ms`
-    starves."""
+    shape (`[reveal]` by default), never starves with the margin, nor with half as much
+    again; None if even `hi_ms` starves.
+
+    Starvation is not monotonic in the pace: a slower screen holds the writer back at the
+    buffer's bound, so a pace can starve where a faster one did not (the rehearsals of
+    ADR-031 starved inside such a lucky window). The pace found must therefore hold for the
+    `ROBUST_STEPS` paces just slower than it too."""
+    base = float(cfg.get("estimate.stream_margin", 0.15))
+    margins = (base, base * 1.5)
 
     def starves(ms: float) -> bool:
-        rep = estimate_stream(cfg, costs, letter_ms=ms, gamma=gamma, lead_s=lead_s)
-        return rep.stream is None or bool(rep.stream.stalls)
+        for m in margins:
+            rep = estimate_stream(cfg, costs, letter_ms=ms, gamma=gamma, lead_s=lead_s, margin=m)
+            if rep.stream is None or rep.stream.stalls:
+                return True
+        return False
 
     if starves(hi_ms):
         return None
@@ -874,7 +888,10 @@ def fit_stream_pace(
             lo = mid + 1
         else:
             hi = mid
-    return float(hi)
+    ms = hi
+    while ms < hi_ms and any(starves(ms + ROBUST_STEP_MS * k) for k in range(ROBUST_STEPS)):
+        ms += ROBUST_STEP_MS
+    return float(ms)
 
 
 @dataclass(frozen=True)

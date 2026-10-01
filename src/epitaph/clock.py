@@ -241,6 +241,9 @@ class Schedule:
             p.death.resolve(p.nominal_s, p.lifespan_s) if p.death is not None else None
         )
         self.stepped = frozenset(p.stepped)
+        self.world: list[tuple[float, tuple[str, ...]]] = [
+            (t, kf.world) for t, kf in zip(self.times, p.keyframes, strict=True) if kf.world
+        ]
 
     @classmethod
     def from_profile(cls, cfg: Config, lifespan_s: float | None = None) -> Schedule:
@@ -315,6 +318,10 @@ class Schedule:
             if any(a[f] != b[f] for f in ("health", "step", "threads", "persona_groups")):
                 out.append(self.times[i])
         return out
+
+    def world_times(self) -> list[tuple[float, tuple[str, ...]]]:
+        """(time, actions) of every keyframe that takes something from the world (ADR-031)."""
+        return list(self.world)
 
     def reload_times(self) -> list[float]:
         """Keyframe times where the ladder step or thread count changes."""
