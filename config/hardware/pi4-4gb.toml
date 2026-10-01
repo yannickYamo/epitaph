@@ -20,6 +20,9 @@ death_mode = "oom"               # S3: 15 of 15 kills within 1.4 s with the limi
 death_fraction = 0.5             # memory.max = 0.5 x the creature's anonymous memory
 cpu_share = true                 # S3c: speed follows cpu.max; worst token gap 2.8 s at 0.7 cores
 cpu_period_us = 100000
+# ADR-025: the CPU clock cap goes through this root-owned helper (deploy/sbin/epitaph-clock,
+# installed by deploy/install.sh with a sudoers drop-in for the service user). Empty = untouched.
+clock_helper = "/usr/local/sbin/epitaph-clock"
 
 [verify]
 max_reload_silence_s = 180
