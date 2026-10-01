@@ -322,6 +322,9 @@ class Life:
         self.knobs: Knobs | None = None  # the knobs last applied to the body
         self.compute = 3.0  # cores' worth of compute now (for the hang limits)
         self.on_dead: Callable[[str], None] | None = None
+        # Seconds the creature took to load in the silence before this life (dread plan
+        # W4), when the controller loaded it there; None: the birth loads it.
+        self.preloaded_s: float | None = None
 
     # -- events ----------------------------------------------------------------------------
 
@@ -487,9 +490,14 @@ class Life:
             self.pacer.set_rate_estimate(tg * self.letters_per_token)
 
     async def birth(self, k: Knobs, facts: dict[str, Any] | None = None) -> None:
-        """Load step 0, start the clock, prefill the system prompt (the birth card)."""
+        """Load step 0 (unless the silence loaded it), start the clock, prefill the system
+        prompt (the birth card): restored from the persona cache when the backend has it."""
         quant = self.model.quant(k.step)
         self.state = "birth"
+        preloaded = self.preloaded_s is not None and self.backend.status().alive
+        extra: dict[str, Any] = {}
+        if preloaded:
+            extra = {"preloaded": True, "load_s": round(self.preloaded_s or 0.0, 1)}
         self.emit(
             "birth_loading",
             model=self.model.name,
@@ -500,8 +508,10 @@ class Life:
             hardware=self.cfg.hardware,
             lifespan_s=self.sch.lifespan_s,
             reveal="stream" if self.screen is not None else "letter",
+            **extra,
         )
-        await self._load(quant, k.threads)
+        if not preloaded:
+            await self._load(quant, k.threads)
         self.clock.start()
         self.born = True
         self.state = "living"
@@ -514,6 +524,21 @@ class Life:
         self.rate_estimate(k)
         self._born()
         await self.backend.prefill(self._system())
+        self._log_prefill()
+
+    def _log_prefill(self) -> None:
+        """One log line on how the system prompt got into the cache (the persona cache)."""
+        inner: object = getattr(self.backend, "inner", self.backend)
+        info: object = getattr(inner, "last_prefill", None)
+        if getattr(info, "mode", None) == "restore":
+            log.info(
+                "life %d: persona restored (%s tokens) in %.1f s",
+                self.n,
+                getattr(info, "tokens", 0),
+                float(getattr(info, "seconds", 0.0)),
+            )
+        elif getattr(info, "error", None):
+            log.warning("life %d: persona cache: %s", self.n, getattr(info, "error", ""))
 
     def kill_time(self) -> float:
         """Life time of the scheduled death: the OOM squeeze, else the deadline."""
@@ -1087,6 +1112,21 @@ class _NewLife:
 
 
 @dataclass
+class _Preload:
+    """The next life's creature, loading during the silence (dread plan W4).
+
+    Used at the next birth only if it is still what that birth would load: the same life
+    number, the same `new_life` request (or none) and the same model."""
+
+    n: int
+    model: str
+    nxt: _NewLife | None
+    backend: Backend
+    task: asyncio.Task[float]  # the load; its result is the seconds it took
+    started: float  # loop time the load started
+
+
+@dataclass
 class _Current:
     life: Life
     guard: GuardedBackend
@@ -1167,6 +1207,7 @@ class Controller:
         self.ping_times: deque[float] = deque(maxlen=PING_HISTORY)
         self._registered: weakref.WeakSet[Any] = weakref.WeakSet()
         self._next: _NewLife | None = None
+        self._preload: _Preload | None = None
         self._wake = asyncio.Event()
         self._last_ping = -math.inf
         self._loop_time: Callable[[], float] = time.monotonic
@@ -1606,6 +1647,8 @@ class Controller:
         A life whose setup fails (a bad model, a full card, a body error) is logged and closed
         with cause crash; the controller goes on to the silence and the next life.
         """
+        pre = await self._take_preload()
+        nxt = self._next
         cfg, model_name = self._life_config()
         n = self._next_number()  # the counter is written first (atomic write + fsync)
         self.kill_cause = None
@@ -1614,8 +1657,12 @@ class Controller:
         self._wake.clear()  # a new_life asked from now on cuts the next silence short
         self.cur = None
         self._bump()
+        if pre is not None and not self._preload_fits(pre, n, nxt, cfg, model_name):
+            log.info("life %d: the creature loaded in the silence is not this life's", n)
+            await self._stop_creature(pre.backend)
+            pre = None
         try:
-            cur, model = self._setup(n, cfg, model_name)
+            cur, model = self._setup(n, cfg, model_name, pre)
         except Exception as e:
             return await self._setup_failed(n, model_name, e)
         life, guard, inner = cur.life, cur.guard, cur.guard.inner
@@ -1659,12 +1706,16 @@ class Controller:
         await self._reset_body(n)
         return rec
 
-    def _setup(self, n: int, cfg: Config, model_name: str | None) -> tuple[_Current, ModelSpec]:
-        """Everything of life n before its birth: model, costs, creature, life, transcript."""
+    def _setup(
+        self, n: int, cfg: Config, model_name: str | None, pre: _Preload | None = None
+    ) -> tuple[_Current, ModelSpec]:
+        """Everything of life n before its birth: model, costs, creature, life, transcript.
+
+        `pre` is the creature loaded for it in the silence, if any (it fits this life)."""
         # Rotation follows the life number, so it carries on across controller restarts.
         model = cfg.model(model_name) if model_name else pick_model(cfg, n - 1, self.seed)
         costs = self.costs_for(model)
-        inner = self.backend_for(n, model)
+        inner = pre.backend if pre is not None else self.backend_for(n, model)
         self._register(inner)
         died = asyncio.Event()
         watch = HangWatch(self._loop_time)
@@ -1695,6 +1746,8 @@ class Controller:
         )
         holder.append(life)
         life.on_dead = self._on_dead
+        if pre is not None:
+            life.preloaded_s = pre.task.result()
         if transcript is not None:
             transcript.open(
                 {
@@ -1763,8 +1816,99 @@ class Controller:
         self._close_transcript(rec)
         if not sleep:
             return
+        self._start_preload()
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self._wake.wait(), seconds)
+
+    # -- loading in the silence (dread plan W4) ----------------------------------------------
+
+    def _peek_number(self) -> int:
+        """The number the next life will get (nothing is written)."""
+        if self.life_counter is not None:
+            return self.life_counter.current() + 1
+        return self._mem_count + 1
+
+    def _start_preload(self) -> None:
+        """Start loading the next life's creature now, in the silence (the RAM is free since
+        the death), when `[life] load_during_silence` is on. Never raises: a failure here
+        only means the birth loads it, as without the setting."""
+        if not bool(self.cfg.get("life.load_during_silence", False)) or self._preload is not None:
+            return
+        nxt = self._next
+        cfg = nxt.cfg if nxt is not None and nxt.cfg is not None else self.cfg
+        n = self._peek_number()
+        try:
+            if nxt is not None and nxt.model:
+                model = cfg.model(nxt.model)
+            else:
+                model = pick_model(cfg, n - 1, self.seed)
+            k = Schedule(cfg.profile).at(0)
+            backend = self.backend_for(n, model)
+            self._register(backend)
+        except Exception:
+            log.exception("life %d: loading in the silence could not start", n)
+            return
+        task = asyncio.ensure_future(
+            self._load_ahead(n, backend, model, model.quant(k.step), k.threads)
+        )
+        self._preload = _Preload(n, model.name, nxt, backend, task, self._loop_time())
+
+    async def _load_ahead(
+        self, n: int, backend: Backend, model: ModelSpec, quant: str, threads: int
+    ) -> float:
+        """Load the creature; returns the seconds it took."""
+        t0 = self._loop_time()
+        await backend.start(model, quant, threads)
+        seconds = self._loop_time() - t0
+        log.info("life %d: %s %s loaded in the silence in %.0f s", n, model.name, quant, seconds)
+        return seconds
+
+    async def _take_preload(self) -> _Preload | None:
+        """The creature loaded in the silence, once its load is done; None (and nothing left
+        running) when there is none, or its load failed, hung past the load limit or the
+        creature died since."""
+        pre, self._preload = self._preload, None
+        if pre is None:
+            return None
+        if not pre.task.done():
+            self._set_state("birth")  # the silence is over; the load is not
+            left = self.limits.load_s - (self._loop_time() - pre.started)
+            await asyncio.wait({pre.task}, timeout=max(left, 0.0))
+        if not pre.task.done():
+            log.error("life %d: the load in the silence hung; the birth loads again", pre.n)
+            pre.task.cancel()
+            await asyncio.wait({pre.task}, timeout=CANCEL_WAIT_S)
+        elif pre.task.cancelled():
+            pass
+        elif (err := pre.task.exception()) is not None:
+            log.warning("life %d: the load in the silence failed (%r); the birth loads", pre.n, err)
+        elif pre.backend.status().alive:
+            return pre
+        else:
+            log.warning("life %d: the creature loaded in the silence died; the birth loads", pre.n)
+        await self._stop_creature(pre.backend)
+        return None
+
+    def _preload_fits(
+        self, pre: _Preload, n: int, nxt: _NewLife | None, cfg: Config, model_name: str | None
+    ) -> bool:
+        """Whether the creature loaded in the silence is the one life n would load."""
+        if pre.n != n or pre.nxt is not nxt:
+            return False
+        try:
+            model = cfg.model(model_name) if model_name else pick_model(cfg, n - 1, self.seed)
+        except Exception:
+            return False
+        return model.name == pre.model
+
+    async def _drop_preload(self) -> None:
+        """Stop a load in the silence that no birth will take (the controller is stopping)."""
+        pre, self._preload = self._preload, None
+        if pre is None:
+            return
+        pre.task.cancel()
+        await asyncio.wait({pre.task}, timeout=CANCEL_WAIT_S)
+        await self._stop_creature(pre.backend)
 
     async def run(self) -> list[LifeRecord]:
         """Recover, then live, die and be reborn until `lives` lives are done (or forever)."""
@@ -1808,6 +1952,9 @@ class Controller:
             sup.add_done_callback(_retrieve)
             if self.cur is not None:
                 self.cur.guard.close()
+            if self._preload is not None:
+                with contextlib.suppress(Exception):
+                    await self._drop_preload()
 
 
 # ---------------------------------------------------------------------------------------
@@ -1847,6 +1994,9 @@ def make_controller(
 
     body = make_body(cfg)
     settings = ServerSettings.from_config(cfg)
+    auto = str(cfg.get("backend.persona_cache_dir", "auto")) == "auto"
+    if settings.persona_cache_dir and state_dir is not None and auto:
+        settings.persona_cache_dir = str(state_dir / "cache")  # beside the lives
     server = LlamaServerBackend(settings, body)
     action: SlotAction = getattr(server, "_slot_action")  # noqa: B009 - A's slot API
     slots = ServerSlots(action, settings.slot_save_path)

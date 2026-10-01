@@ -9,7 +9,9 @@ causes, death flush, silence and rebirth. Only the world around it is fake:
 - the body is `SimBody`: a `FakeBody` that kills the fake creature at the death squeeze
   (OOM) and when the controller kills it (deadline, hang, manual), and whose progress
   counters stop while the creature hangs;
-- the slot (ADR-014) is kept by `FakeSlots`, so the echo never costs the carried memory.
+- the slot (ADR-014) is kept by `FakeSlots`, so the echo never costs the carried memory;
+- the persona cache (`[backend] persona_cache`) is one store shared by the lives' fakes, as
+  the disk is: the first birth reads the system prompt, the next ones restore it.
 
 Event conventions (contract decisions E2, E3, D2, D5, D6, E4): every event carries `t`, the
 life clock in seconds (0 before birth); `birth_loading` carries the resolved `profile`,
@@ -24,7 +26,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from epitaph.backend.base import Backend
-from epitaph.backend.fake import SIGKILL, FakeBackend
+from epitaph.backend.fake import SIGKILL, FakeBackend, PersonaStore
 from epitaph.body.fake import FakeBody
 from epitaph.clock import VirtualClock, run_virtual
 from epitaph.config import Config
@@ -123,6 +125,7 @@ def make_controller(
     sim_body = body or SimBody(str(cfg.get("body.death_mode", "oom")))
     cls = backend_cls or FakeBackend
     wall0 = time.time() - clock.now()
+    persona: PersonaStore | None = {} if bool(cfg.get("backend.persona_cache", False)) else None
 
     def backend_for(n: int, model: ModelSpec) -> Backend:
         b = cls(
@@ -132,6 +135,7 @@ def make_controller(
             ctx=cfg.ctx,
             cache_reuse_min=int(cfg.get("backend.cache_reuse", 32)) or 32,
             reload_handover=str(cfg.get("backend.reload_handover", "reread")),
+            persona_store=persona,
         )
         sim_body.creature = b
         return b
