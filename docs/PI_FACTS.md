@@ -23,7 +23,12 @@
 ## The installed service (phase 1, `deploy/install.sh`)
 
 `tools/pi_deploy.sh` (under the Pi lock) rsyncs the working tree to `/opt/epitaph/src` and
-runs `sudo deploy/install.sh` there. A second install changes nothing (`changed: 0`).
+runs `sudo deploy/install.sh` there. A second install changes nothing (`changed: 0`). The
+same script installs from a fresh Raspberry Pi OS ([INSTALLATION.md](INSTALLATION.md)): it adds
+`python3-venv`, `nftables` and `sudo` when missing, and refuses a source anywhere but
+`/opt/epitaph/src`. `make install-test-arm64` proves it in a clean arm64 Debian trixie container
+under qemu (`install.sh --container`: no booted systemd, so no daemon-reload, cgroup, watchdog
+or selftest steps); about 10-12 minutes, outside CI.
 
 | Item | Value |
 |---|---|

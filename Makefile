@@ -4,7 +4,7 @@ PROFILE ?= pi4/default
 PROFILES_PI4 := pi4/default pi4/smoke-300 pi4/skeleton-1200 pi4/compressed-2700 pi4/unbounded
 
 .PHONY: check lint type test sim estimate venv faults pi-deploy pi-smoke pi-life pi-boot-check \
-	pi-collect pi-faults
+	pi-collect pi-faults install-test-arm64
 
 venv:
 	python3 -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
@@ -64,3 +64,9 @@ pi-collect:
 # table goes to logs/pi/faults-<stamp>.md. ROWS=a,b runs only those (tools/fault_matrix_pi.sh --list).
 pi-faults:
 	tools/fault_matrix_pi.sh --agent $${AGENT:-L} $${ROWS:+--rows $$ROWS}
+
+# deploy/install.sh in a clean arm64 Debian trixie container under qemu (podman), run twice:
+# the second run must change nothing (BUILD_PLAN 9 C10, 11 item 6). Laptop only, not CI: the
+# emulated apt and pip make it slow (see tools/test_install_arm64.sh for the time).
+install-test-arm64:
+	tools/test_install_arm64.sh
