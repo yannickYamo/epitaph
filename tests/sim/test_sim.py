@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from epitaph.clock import Schedule
@@ -8,7 +10,7 @@ from epitaph.costmodel import estimate, load_costs
 from epitaph.sim import simulate
 from tests.conftest import v6_config
 
-ORDER_START = ["birth_loading", "birth", "vitals", "gen_start", "thought_start"]
+ORDER_START = ["birth_loading", "birth", "vitals", "thought_start", "gen_start"]
 
 
 @pytest.mark.parametrize(
@@ -31,7 +33,10 @@ def test_event_order_and_lifecycle() -> None:
     r = simulate(cfg, lives=2)
     first = [e["type"] for e in r.events if e["life"] == 1]
     assert first[:5] == ORDER_START
-    assert first[-3:] == ["death", "death_shown", "silence"]
+    # The death flush (BUILD_PLAN 5.8): the words generated before the death are still
+    # shown after it, then the death screen and the silence.
+    assert first.count("death") == 1 and first.index("death") < first.index("death_shown")
+    assert first[-2:] == ["death_shown", "silence"]
     assert first.count("reload") == 2 and first.count("erosion") == len(
         Schedule(cfg.profile).erosion_times()
     )
@@ -87,7 +92,10 @@ def test_event_conventions() -> None:
         assert loading["hardware"] == "pi4-4gb"
         assert loading["lifespan_s"] == cfg.profile.lifespan_s
     ends = [e for e in r.events if e["type"] == "gen_end"]
-    assert all(e["prompt_n"] > 0 and e["tok_s"] > 0 for e in ends)
+    # A request cut by the death has no timings (gen_end with prompt_n None, as in pacing).
+    finished = [e for e in ends if e["prompt_n"] is not None]
+    assert len(ends) - len(finished) <= 2  # at most one cut request per life
+    assert all(e["prompt_n"] > 0 and e["tok_s"] > 0 for e in finished)
 
 
 def test_every_memory_cut_emits_forget_the_reload_included() -> None:
@@ -104,7 +112,8 @@ def test_readings_come_from_the_mind() -> None:
     """The simulator writes the real readings, marker included (mind.prompt.Reader)."""
     r = simulate(load_config("pi4/default", "pi4-4gb"))
     readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
-    assert readings[0].startswith("[host] t+00:00 · boot complete · health: nominal")
+    # The first reading comes after the system prompt was read at birth (ADR-013).
+    assert re.match(r"\[host\] t\+0\d:\d\d · boot complete · health: nominal", readings[0])
     assert any("forgotten:" in x for x in readings)
     assert readings[-1].startswith("[host] ") and " · terminal · " in readings[-1]
     vitals = [e for e in r.events if e["type"] == "vitals"]
@@ -140,5 +149,7 @@ def test_sim_honours_the_slot_handover() -> None:
     reread = _reload_silences(v6_config(overrides={"backend": {"reload_handover": "reread"}}))
     slot = _reload_silences(v6_config(overrides={"backend": {"reload_handover": "slot"}}))
     assert len(reread) == len(slot) == 2
+    # A re-reading server reads the system prompt during the reload (ADR-013), so its first
+    # request reads only the past turns: the slot still reads less, and the silence halves.
     for (t_re, n_re), (t_slot, n_slot) in zip(reread, slot, strict=True):
-        assert n_slot < n_re / 4 and t_slot < t_re / 2
+        assert n_slot < n_re and t_slot < t_re / 2

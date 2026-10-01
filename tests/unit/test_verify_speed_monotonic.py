@@ -184,7 +184,11 @@ def rise_from_gen_end(events: list[dict[str, Any]], k: int) -> list[float]:
     ratios: list[float] = []
     reloads = [i for i, e in enumerate(events) if e["type"] == "reload"]
     edges = [-1, *reloads, len(events)]
-    rates = [(i, float(e["tok_s"])) for i, e in enumerate(events) if e["type"] == "gen_end"]
+    rates = [
+        (i, float(e["tok_s"]))
+        for i, e in enumerate(events)
+        if e["type"] == "gen_end" and e.get("tok_s") is not None  # a request cut by the death
+    ]
     for j, at in enumerate(reloads):
         before = [r for i, r in rates if edges[j] < i < at][-k:]
         after = [r for i, r in rates if at < i < edges[j + 2]][:k]

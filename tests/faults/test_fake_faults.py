@@ -33,7 +33,9 @@ def test_crash_is_recorded_and_fails_verify(monkeypatch: pytest.MonkeyPatch) -> 
     r = simulate(cfg, lives=2)
     assert r.causes == ["crash", "crash"]  # and the next life is born after the silence
     types = [e["type"] for e in r.events if e["life"] == 1]
-    assert types[-3:] == ["death", "death_shown", "silence"]
+    # The death flush (BUILD_PLAN 5.8): words generated before the crash are shown after it.
+    assert types.count("death") == 1 and types.index("death") < types.index("death_shown")
+    assert types[-2:] == ["death_shown", "silence"]
     res = v.verify_life(v.parse_life(r.events, 1), cfg, next_life=v.parse_life(r.events, 2))
     assert res.by_name("cause").status == "fail"
     assert res.by_name("duration").status == "fail"
