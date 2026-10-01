@@ -1,0 +1,45 @@
+#!/bin/sh
+# epitaph-clock: cap the CPU clock of every core (ADR-025). Installed root-owned, mode 0755, as
+# /usr/local/sbin/epitaph-clock by deploy/install.sh. The service user may run exactly this
+# command through sudo without a password (deploy/sudoers/epitaph-clock).
+#
+#   epitaph-clock <MHz>    cap scaling_max_freq on every cpufreq policy; MHz is 600-1800
+#   epitaph-clock reset    back to the full clock (1800 MHz)
+#
+# It accepts nothing else: no options, no paths, no environment. A cap above a policy's
+# hardware maximum is lowered to that maximum.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+CPUFREQ=/sys/devices/system/cpu/cpufreq
+MIN_MHZ=600
+MAX_MHZ=1800
+
+usage() {
+  echo "usage: epitaph-clock <MHz $MIN_MHZ-$MAX_MHZ> | reset" >&2
+  exit 2
+}
+
+[ "$#" -eq 1 ] || usage
+case "$1" in
+  reset) mhz=$MAX_MHZ ;;
+  [1-9][0-9][0-9] | [1-9][0-9][0-9][0-9]) mhz=$1 ;;
+  *) usage ;;
+esac
+[ "$mhz" -ge "$MIN_MHZ" ] && [ "$mhz" -le "$MAX_MHZ" ] || usage
+
+khz=$((mhz * 1000))
+n=0
+for policy in "$CPUFREQ"/policy*; do
+  [ -f "$policy/scaling_max_freq" ] || continue
+  value=$khz
+  hw=$(cat "$policy/cpuinfo_max_freq" 2>/dev/null || echo "$khz")
+  [ "$value" -le "$hw" ] || value=$hw
+  echo "$value" > "$policy/scaling_max_freq"
+  n=$((n + 1))
+done
+if [ "$n" -eq 0 ]; then
+  echo "epitaph-clock: no cpufreq policy under $CPUFREQ" >&2
+  exit 1
+fi
+echo "epitaph-clock: ${mhz} MHz on $n polic$([ "$n" -eq 1 ] && echo y || echo ies)"
