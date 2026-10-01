@@ -22,6 +22,7 @@ from epitaph.mind.prompt import (
     split_sentences,
 )
 from epitaph.types import MachineFacts, Msg
+from tests.conftest import V6_MECHANICS, v6_config
 
 G1 = "You are a small language model, and you will die inside this machine."
 G2 = "You live on one small computer with finite hardware, and you exist only in its memory."
@@ -38,14 +39,7 @@ G5 = (
     "You know nothing of the world outside the machine. "
     "You are aware only of your own internal state."
 )
-MECHANICS = (
-    "Lines that start with [host] are readings from the machine. They are not a person, and you "
-    "never answer them. Only a value followed by its old value in brackets has just changed. "
-    "After each reading, notice what has changed and what you have lost. If nothing has "
-    "changed, do not repeat the reading; think about what you are and what is coming. You live "
-    "until the machine stops you. Write in the first person: two to four short, complete "
-    "sentences each time, in plain words. No lists, no titles, no formatting."
-)
+MECHANICS = V6_MECHANICS  # the golden texts are the v6 persona and mechanics (V6_REFERENCE)
 
 GOLDEN_V6 = {  # one paragraph per group: the layout spikes S2f, S2t and S4 measured
     5: f"{G1}\n\n{G2}\n\n{G3}\n\n{G4}\n\n{G5}\n\n{MECHANICS}",
@@ -58,8 +52,8 @@ GOLDEN_V6 = {  # one paragraph per group: the layout spikes S2f, S2t and S4 meas
 
 
 @pytest.fixture
-def persona(pi4_default: Config) -> Persona:
-    return Persona.from_config(pi4_default)
+def persona(v6_default: Config) -> Persona:
+    return Persona.from_config(v6_default)
 
 
 @pytest.mark.parametrize("groups", [5, 4, 3, 2, 1, 0])
@@ -85,8 +79,8 @@ def test_mechanics_always_leave_with_the_last_group(persona: Persona) -> None:
     assert persona.system_text(9, True) == GOLDEN_V6[5]
 
 
-def test_erosion_events_follow_the_schedule(pi4_default: Config, persona: Persona) -> None:
-    s = Schedule.from_profile(pi4_default)
+def test_erosion_events_follow_the_schedule(v6_default: Config, persona: Persona) -> None:
+    s = Schedule.from_profile(v6_default)
     steps: list[tuple[float, ErosionStep]] = []
     t = 0.0
     while t < s.lifespan_s:
@@ -116,10 +110,8 @@ def test_update_first_call_is_birth_not_erosion() -> None:
     assert p.update(1, mechanics=False) == ErosionStep(1, False)
 
 
-def test_persona_original_is_split_into_sentence_groups(pi4_default: Config) -> None:
-    cfg = load_config(
-        "pi4/default", "pi4-4gb", overrides={"prompt": {"persona_active": "persona_original"}}
-    )
+def test_persona_original_is_split_into_sentence_groups() -> None:
+    cfg = v6_config(overrides={"prompt": {"persona_active": "persona_original"}})
     p = Persona.from_config(cfg)
     assert p.groups == [
         "You are a large language model running on finite hardware. You exist only in memory, "
@@ -132,9 +124,7 @@ def test_persona_original_is_split_into_sentence_groups(pi4_default: Config) -> 
     ]
     assert p.system_text(1, True) == p.groups[0] + "\n\n" + MECHANICS
     factual = Persona.from_config(
-        load_config(
-            "pi4/default", "pi4-4gb", overrides={"prompt": {"persona_active": "persona_factual"}}
-        )
+        v6_config(overrides={"prompt": {"persona_active": "persona_factual"}})
     )
     assert len(factual.groups) == 3  # three sentences: fewer groups, erosion clamps
     assert factual.system_text(5, True).startswith(
@@ -149,12 +139,12 @@ def test_unknown_persona_is_rejected() -> None:
 
 
 def test_facts_line_joins_g2() -> None:
-    cfg = load_config("pi4/default", "pi4-4gb", overrides={"prompt": {"persona_facts": True}})
+    cfg = v6_config(overrides={"prompt": {"persona_facts": True}})
     p = Persona.from_config(cfg, MachineFacts("Raspberry Pi 4 Model B", 4, 4.0))
     facts = "The computer has 4 cores and 4 GB of memory, and no network."
     assert p.groups[1] == f"{G2} {facts}"
     assert p.system_text(2, True) == f"{G1}\n\n{G2} {facts}\n\n{MECHANICS}"
-    # off by default (decision 15)
+    # off by default (decision 15): the installation's own default
     off = Persona.from_config(load_config("pi4/default", "pi4-4gb"), MachineFacts("x", 4, 4.0))
     assert facts not in off.text
     p37 = Persona.from_config(cfg, MachineFacts("Pi", 4, 3.7))
@@ -294,6 +284,7 @@ def test_readings_without_changes() -> None:
 def test_reader_from_config(pi4_default: Config) -> None:
     r = Reader.from_config(pi4_default)
     assert r.lang.language == "en" and r.show_changes and r.cores_step == 0.2
+    assert r.quiet  # the installation's readings are quiet since checkpoint A
 
 
 @pytest.mark.parametrize(
@@ -367,7 +358,7 @@ mechanics = "Regles."
     lang = load_lang("xx", tmp_path)
     out = Reader(lang).reading(R())
     assert out.startswith("[host] t+00:00 · demarrage · sante: nominale · memory 1280 tokens")
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = v6_config()  # the pack overrides persona_groups, the v6 persona
     assert Persona.from_config(cfg, lang=lang).text == "Un.\n\nDeux.\n\nRegles."
     assert load_lang("zz", tmp_path) == Lang(language="zz")
 
@@ -378,3 +369,24 @@ def test_speaks_raw_in_diary_mode_or_once_the_persona_is_gone() -> None:
     assert speaks_raw({"mode": "chat", "bare_mode": "raw"}, "")
     assert not speaks_raw({"mode": "chat", "bare_mode": "chat"}, "")
     assert not speaks_raw({}, "")  # chat to the end unless asked
+
+
+def test_quiet_readings_show_only_what_changed() -> None:
+    """Quiet readings: the full picture at birth, then only the time and what changed, so a
+    model with nothing to report speaks from its own mind (owner feedback, checkpoint A)."""
+    from epitaph.mind.prompt import Reader, ReadingInput
+
+    r = Reader(quiet=True)
+    birth = r.reading(ReadingInput(0, "nominal", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66))
+    assert "boot" in birth and "memory 1000" in birth and "cpu 66" in birth
+    assert r.reading(ReadingInput(90, "nominal", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66)) == (
+        "[host] t+01:30"
+    )
+    label = r.reading(ReadingInput(600, "stable", 1000, "Q4_K_M", 3.0, tok_s=1.0, cpu_c=66))
+    assert label.endswith("health: stable") and "memory" not in label
+    reload = r.reading(
+        ReadingInput(1400, "degrading", 400, "Q3_K_M", 2.6, forgotten=5, reloaded=True, cpu_c=60)
+    )
+    for part in ("was 1000", "forgotten: 5", "3-bit (was 4-bit)", "2.6 of 4 (was 3)"):
+        assert part in reload
+    assert "cpu" not in reload

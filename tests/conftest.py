@@ -1,6 +1,7 @@
 """Shared fixtures (BUILD_PLAN 9 E1, 10). Agent E owns this file.
 
-- configs: `pi4_default`, `load_cfg` (any profile and overlay)
+- configs: `pi4_default`, `load_cfg` (any profile and overlay), `v6_default` and `v6_cfg`
+  (the v6 reference configuration: see V6_REFERENCE)
 - fakes: `fake_clock`, `pi4_costs`, `fake_backend`, `fake_body`
 - events: `recorder` (EventRecorder), `life_builder` (crafted lives)
 - recorded lives: `recorded_life(profile, lives=1, seed=0)` writes `epitaph sim --events`
@@ -19,6 +20,7 @@ import contextlib
 import io
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,7 +28,7 @@ from epitaph.backend.fake import FakeBackend
 from epitaph.body.fake import FakeBody
 from epitaph.cli import main as cli_main
 from epitaph.clock import FakeClock
-from epitaph.config import Config, load_config
+from epitaph.config import Config, deep_merge, load_config
 from epitaph.costmodel import Costs, load_costs
 from tests.helpers import EventRecorder, LifeBuilder, read_events, write_events
 
@@ -47,10 +49,58 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 # -- configs ------------------------------------------------------------------------------
 
+# The v6 reference configuration: the Qwen3 1.7B schedule, the v6 persona and mechanics, full
+# readings, and reloads that re-read the context. Checkpoint A (2026-09-30) moved the
+# installation's defaults to Qwen3 4B, the owner's original persona, thin mechanics, quiet
+# readings and the slot handover. Tests of a mechanism (erosion, reload cuts, rescaling, the
+# cost model, golden prompt text) were written against this configuration and pin it, so an art
+# decision in config/default.toml does not change what they test. Tests of the installation's
+# defaults use `pi4_default`.
+V6_REFERENCE_PROFILE = "pi4/default-qwen3-1.7b"
+V6_MECHANICS = (
+    "Lines that start with [host] are readings from the machine. They are not a person, and you "
+    "never answer them. Only a value followed by its old value in brackets has just changed. "
+    "After each reading, notice what has changed and what you have lost. If nothing has "
+    "changed, do not repeat the reading; think about what you are and what is coming. You live "
+    "until the machine stops you. Write in the first person: two to four short, complete "
+    "sentences each time, in plain words. No lists, no titles, no formatting."
+)
+V6_REFERENCE: dict[str, Any] = {
+    "life": {"models": ["qwen3-1.7b"]},
+    "prompt": {"persona_active": "persona", "mechanics": V6_MECHANICS, "readings_quiet": False},
+    "backend": {"reload_handover": "reread"},
+    # The v6 schedule rises slightly at both reloads on the measured 1.7B costs (review 2, F2);
+    # the rule only warned until checkpoint A made it a failure for the installation.
+    "estimate": {"speed_monotonic": "warn"},
+}
+
+
+def v6_config(
+    profile: str = V6_REFERENCE_PROFILE,
+    hardware: str = "pi4-4gb",
+    lifespan_s: float | None = None,
+    overrides: dict[str, Any] | None = None,
+) -> Config:
+    """load_config with the v6 reference configuration under `overrides`."""
+    over = deep_merge(V6_REFERENCE, overrides or {})
+    return load_config(profile, hardware, lifespan_s=lifespan_s, overrides=over)
+
 
 @pytest.fixture
 def pi4_default() -> Config:
     return load_config("pi4/default", "pi4-4gb")
+
+
+@pytest.fixture
+def v6_default() -> Config:
+    """The v6 reference configuration (V6_REFERENCE) on its own profile, Pi 4."""
+    return v6_config()
+
+
+@pytest.fixture
+def v6_cfg() -> Callable[..., Config]:
+    """v6_cfg(profile=V6_REFERENCE_PROFILE, hardware="pi4-4gb", lifespan_s=None, overrides=None)"""
+    return v6_config
 
 
 @pytest.fixture
