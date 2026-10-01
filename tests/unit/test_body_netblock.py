@@ -237,11 +237,53 @@ def test_network_check_skips(cgroup_root: Path) -> None:
         ["add", CG, "extra"],
         ["status", "extra"],
         ["flush"],
+        ["add", f"{CG}\nsystem.slice/epitaph-x.service/creature"],
+        ["add", 'system.slice/epitaph-x".service/creature'],
+        ["del", "system.slice/epitaph x.service/creature"],
+        ["add", ""],
     ],
 )
 def test_helper_rejects_everything_else(args: list[str]) -> None:
     out = subprocess.run(["sh", str(HELPER), *args], capture_output=True, text=True, check=False)
     assert out.returncode == 2 and "usage" in out.stderr
+
+
+def test_helper_serializes_calls(tmp_path: Path) -> None:
+    """Regression (finding 4): two calls at once must not interleave their list-then-delete.
+
+    The helper runs here with its PATH, lock and cgroupfs pointed into tmp_path and a stub
+    `nft` that logs when each listing starts and ends, slowly.
+    """
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    log = tmp_path / "nft.log"
+    (stub / "nft").write_text(
+        "#!/bin/sh\n"
+        'if [ "$1 $2" = "-a list" ]; then\n'
+        f'  echo "begin $PPID" >> {log}; sleep 0.3; echo "end $PPID" >> {log}\n'
+        "fi\n"
+        "exit 0\n"
+    )
+    (stub / "nft").chmod(0o755)
+    text = HELPER.read_text()
+    assert "PATH=/usr/sbin:/usr/bin:/sbin:/bin\n" in text
+    assert "LOCK=/run/epitaph-netblock.lock\n" in text
+    assert "CGROUP_FS=/sys/fs/cgroup\n" in text
+    script = tmp_path / "netblock"
+    script.write_text(
+        text.replace("PATH=/usr/sbin:/usr/bin:/sbin:/bin\n", f"PATH={stub}:/usr/bin:/bin\n")
+        .replace("LOCK=/run/epitaph-netblock.lock\n", f"LOCK={tmp_path}/lock\n")
+        .replace("CGROUP_FS=/sys/fs/cgroup\n", f"CGROUP_FS={tmp_path}\n")
+    )
+    procs = [
+        subprocess.Popen(["sh", str(script), "del", CG], stdout=subprocess.PIPE, text=True)
+        for _ in range(3)
+    ]
+    for p in procs:
+        out, _ = p.communicate(timeout=20)
+        assert p.returncode == 0 and "unblocked" in out
+    lines = [line.split()[0] for line in log.read_text().splitlines()]
+    assert lines == ["begin", "end"] * 3
 
 
 def test_helper_is_executable() -> None:

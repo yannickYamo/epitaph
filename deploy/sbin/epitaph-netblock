@@ -15,10 +15,14 @@
 # removed and created again (a restarted controller) needs `add` again: the body calls it every
 # time it sets up the creature cgroup. Every call also drops the rules of cgroups that no longer
 # exist. One nft transaction per call: the old rule and the new one never coexist half-loaded.
+# Calls are serialized on LOCK (flock): two concurrent calls (a controller's add, a selftest's
+# del) must not each list the handles and then delete the same rule, or drop the other's.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
-export PATH
+LC_ALL=C
+export PATH LC_ALL
 CGROUP_FS=/sys/fs/cgroup
+LOCK=/run/epitaph-netblock.lock
 
 usage() {
   echo "usage: epitaph-netblock add|del system.slice/epitaph<name>.service/creature | status" >&2
@@ -26,6 +30,10 @@ usage() {
 }
 
 valid_cgroup() {
+  # Only [a-z0-9./-]: no newline, quote or space can reach grep, nft or a rule comment.
+  case "$1" in
+    '' | *[!a-z0-9./-]*) return 1 ;;
+  esac
   printf '%s\n' "$1" | grep -Eqx 'system\.slice/epitaph[a-z0-9-]*\.service/creature'
 }
 
@@ -50,11 +58,7 @@ EOF
 }
 
 case "${1:-}" in
-  status)
-    [ "$#" -eq 1 ] || usage
-    nft -a list table inet epitaph 2>/dev/null || true
-    exit 0
-    ;;
+  status) [ "$#" -eq 1 ] || usage ;;
   add | del)
     [ "$#" -eq 2 ] || usage
     valid_cgroup "$2" || usage
@@ -62,6 +66,15 @@ case "${1:-}" in
     ;;
   *) usage ;;
 esac
+
+# Everything below runs under the lock, one call at a time (released when the shell exits).
+exec 9>"$LOCK"
+flock -w 10 9 || { echo "epitaph-netblock: $LOCK busy for 10 s" >&2; exit 1; }
+
+if [ "$1" = status ]; then
+  nft -a list table inet epitaph 2>/dev/null || true
+  exit 0
+fi
 
 ensure_table
 script=$(mktemp)
