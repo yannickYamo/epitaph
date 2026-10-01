@@ -123,18 +123,24 @@ remote_host = "pi"
 layout = "flow"                  # flow | grid
 grid = [6, 16]
 orientation = "landscape"
-theme = "plain"                  # plain | segment16
+theme = "plain"                  # plain | segment16 (16-segment LED cells; implies the grid)
 charset = "unicode"
 line_chars = 48
 min_font_px = 36
 cursor = "block"
 cursor_blink_ms = 530
-fade_seconds = 8
+fade_seconds = 8                 # forgotten words fade through grey (>= 12:1), then are gone
 status_strip = true
+reload_dim_text = false          # the cursor dims in a reload; true dims the whole text too
 birth_card = true
+birth_card_model = true          # the birth card names the model (the life number: [life] reveal_life_number)
 birth_card_seconds = 4
+card_char_ms = 165               # cards are typed at this letter interval ([reveal] gaps and pauses);
+                                 # the death card at the life's last one, if slower
+death_fade = true                # at death the last words fade out before the death card
 death_card_seconds = 8
 silence_style = "dark"           # dark | last_words | death_card | idle
+idle_step_seconds = 4            # idle: the mark moves to a new place this often
 screenshot_on = ["birth", "reload_done", "death_shown"]
 
 [exhibit]

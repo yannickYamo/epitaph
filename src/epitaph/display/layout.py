@@ -12,7 +12,9 @@ any monotonic origin). Drivers (terminal, pygame, e-ink, serial) feed events to 
 - `flow_lines` wraps whole words: a word is placed with its full length before its
   first letter is typed, so it never splits across lines.
 - `compose_flow` gives the full-screen view: newest text at the bottom, a blank line
-  between thoughts, forgotten words fading through grey.
+  between thoughts, forgotten words fading through grey and then gone.
+- Cards (`cards.py`) are typed letter by letter; at death the words fade out before the
+  death card; the silence is dark, idle, the card or the last words.
 - `compose_grid` gives an N x M character grid (LED matrix, small panel) with a charset
   map and a memory gauge instead of fading.
 - `verify_probe` replays a recorded life through the same model for `epitaph verify-life`
@@ -27,8 +29,24 @@ import sys
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypeGuard
 
+from epitaph.display.cards import (
+    CAUSE_TEXT as CAUSE_TEXT,  # re-exported for older imports
+)
+from epitaph.display.cards import (
+    IDLE_MARK,
+    Card,
+    CardKind,
+    CardStyle,
+    birth_lines,
+    card_char_ms,
+    death_lines,
+    idle_position,
+    shown_per_piece,
+    type_card,
+    wrap_card,
+)
 from epitaph.types import PROTOCOL_VERSION, WordState
 
 DEFAULT_CHAR_MS = 60
@@ -36,17 +54,6 @@ BLINK_S = 0.53
 CURSOR_KINDS = ("hidden", "on", "off")
 
 Charset = Literal["unicode", "ascii", "segment16"]
-CardKind = Literal["birth", "death"]
-
-CAUSE_TEXT = {
-    "oom": "its memory was taken",
-    "deadline": "its time ran out",
-    "full": "its memory filled",
-    "crash": "it broke",
-    "hang": "it stopped",
-    "manual": "it was ended by hand",
-    "interrupted": "it was interrupted",
-}
 
 
 # ---------------------------------------------------------------------------------------
@@ -143,7 +150,12 @@ class ViewSettings:
     """Timing and card options for a `LifeView`; durations in seconds.
 
     `max_backlog_s` bounds how far typing may lag the events before `catch_up`, and
-    `max_words` bounds the history kept for display.
+    `max_words` bounds the history kept for display. `reveal_life_number` and `card_model`
+    choose what the cards name; `card_char_ms`, `card_word_gap_ms` and
+    `card_line_pause_ms` are the rhythm cards are typed with. `reload_dim_text` dims the
+    whole text during a reload (the cursor always dims). `death_fade` fades every word
+    after the last letter at death, before the death card. `idle_step_s` is how long the
+    idle silence mark rests in one place.
     """
 
     fade_s: float = 8.0
@@ -154,6 +166,25 @@ class ViewSettings:
     silence_style: str = "dark"
     max_backlog_s: float = 30.0
     max_words: int = 1500
+    reveal_life_number: bool = False
+    card_model: bool = True
+    card_char_ms: int = 165
+    card_word_gap_ms: int = 270
+    card_line_pause_ms: int = 750
+    reload_dim_text: bool = False
+    death_fade: bool = True
+    idle_step_s: float = 4.0
+
+    @property
+    def card_style(self) -> CardStyle:
+        """What the cards show and their typing rhythm."""
+        return CardStyle(
+            self.reveal_life_number,
+            self.card_model,
+            self.card_char_ms,
+            self.card_word_gap_ms,
+            self.card_line_pause_ms,
+        )
 
     @classmethod
     def from_config(cls, display: dict[str, Any]) -> ViewSettings:
@@ -165,6 +196,14 @@ class ViewSettings:
             birth_card_s=float(display.get("birth_card_seconds", 4)),
             death_card_s=float(display.get("death_card_seconds", 8)),
             silence_style=str(display.get("silence_style", "dark")),
+            reveal_life_number=bool(display.get("reveal_life_number", False)),
+            card_model=bool(display.get("birth_card_model", True)),
+            card_char_ms=int(display.get("card_char_ms", 165)),
+            card_word_gap_ms=int(display.get("card_word_gap_ms", 270)),
+            card_line_pause_ms=int(display.get("card_line_pause_ms", 750)),
+            reload_dim_text=bool(display.get("reload_dim_text", False)),
+            death_fade=bool(display.get("death_fade", True)),
+            idle_step_s=float(display.get("idle_step_seconds", 4)),
         )
 
 
@@ -194,8 +233,10 @@ class LifeView:
         self.groups_left: int | None = None
         self.exhibit_open = True
         self.tail = 0.0  # display time when the typing queue is empty
+        self.loading_at: float | None = None
         self.birth_at: float | None = None
         self.death_shown_at: float | None = None
+        self._cards: dict[CardKind, Card] = {}
         self.t_life: float | None = None
         self.t_at = 0.0
         self.last_error: str = ""
@@ -229,7 +270,7 @@ class LifeView:
         gauge = e.get("memory")
         if isinstance(gauge, dict):
             self.vitals.update({k: v for k, v in gauge.items() if k in ("recall", "recall_used")})  # type: ignore[union-attr]
-        self.quant = str(self.vitals.get("quant", "") or "")
+        self.quant = str(e.get("quant") or self.vitals.get("quant", "") or "")
         self.mode = str(e.get("mode", "living" if e.get("words") else "empty"))
         if self.mode not in ("empty", "loading", "living", "reloading", "dying", "dead", "silence"):
             self.mode = "living"
@@ -245,18 +286,35 @@ class LifeView:
             vw = ViewWord(turn, int(w.get("i", len(th.words))), text, (0,) * len(text))
             vw.start = now
             if state in ("fading", "forgotten"):
-                vw.forgotten_at = now - (0 if state == "fading" else self.s.fade_s)
+                fade = w.get("fade", 0.0) if state == "fading" else 1.0
+                fade = min(1.0, max(0.0, float(fade))) if _is_number(fade) else 0.0
+                vw.forgotten_at = now - fade * self.s.fade_s
             elif state == "inherited":
                 vw.state = "inherited"
             th.words.append(vw)
         if self.thoughts and e.get("open_turn") == self.thoughts[-1].turn:
             self.thoughts[-1].ended = False
         self.tail = now
+        reload = e.get("reload")
+        if self.mode == "reloading" and isinstance(reload, dict):
+            self.reload_info = dict(reload)  # type: ignore[arg-type]
+        if _is_number(e.get("groups_left")):
+            self.groups_left = int(e["groups_left"])
+        death = e.get("death")
+        if isinstance(death, dict):
+            self.death = dict(death)  # type: ignore[arg-type]
+        ago = e.get("death_shown_ago")
+        if _is_number(ago) and self.mode in ("dead", "silence"):
+            # the last letter was typed `ago` seconds before: cards and fades resume there
+            self.death_shown_at = self.tail = now - float(ago)
+            for w in self.words():
+                w.start = min(w.start, self.tail)
 
     def _on_birth_loading(self, e: dict[str, Any], now: float) -> None:
         self.model = str(e.get("model", ""))
         self.quant = str(e.get("quant", ""))
         self.mode = "loading"
+        self.loading_at = now
 
     def _on_birth(self, e: dict[str, Any], now: float) -> None:
         self.model = str(e.get("model", self.model))
@@ -425,6 +483,9 @@ class LifeView:
         if due == math.inf and self.cursor(now) in ("on", "off") and self.s.blink_s > 0:
             idle = self.idle_since(now)
             due = now + self.s.blink_s - idle % self.s.blink_s
+        card = self.card(now)
+        if card is not None:
+            due = min(due, card.next_change(now))
         return due
 
     def life_t(self, now: float) -> float | None:
@@ -451,53 +512,124 @@ class LifeView:
 
     # -- what to show ---------------------------------------------------------------------
 
-    def card(self, now: float) -> tuple[CardKind, list[str]] | None:
-        """The birth or death card to show instead of the text, if any."""
-        if self.mode == "loading" and self.s.birth_card:
-            return "birth", self._birth_lines(loading=True)
-        if self.birth_at is not None and self.mode == "living" and self.s.birth_card:
-            first = next(iter(self.words()), None)
-            until = self.birth_at + self.s.birth_card_s
-            if now < until and (first is None or first.start > now):
-                return "birth", self._birth_lines(loading=False)
+    def card(self, now: float) -> Card | None:
+        """The birth or death card to show instead of the text at `now`, if any.
+
+        The birth card shows while the model loads and after birth until the first word
+        starts (at most `birth_card_s`). The death card is typed once the last word has
+        been typed and has faded (`death_fade`), and stays `death_card_s` after its last
+        letter, or the whole silence with the `death_card` style.
+        """
+        s = self.s
+        if s.birth_card and (self.mode == "loading" or self._birth_card_due(now)):
+            return self._card(
+                "birth",
+                birth_lines(self.life, self.model, self.quant, s.card_style),
+                self.loading_at if self.loading_at is not None else (self.birth_at or now),
+            )
         if self.mode in ("dead", "silence") and self.death_shown_at is not None:
-            start = max(self.death_shown_at, self.tail)
-            keep = self.s.silence_style == "death_card" and self.mode == "silence"
-            if start <= now and (keep or now < start + self.s.death_card_s):
-                return "death", self._death_lines()
+            start = self.death_end() + (s.fade_s if self.death_fade_start() is not None else 0)
+            if now < start:
+                return None
+            lived = self.death.get("lived_s")
+            card = self._card(
+                "death",
+                death_lines(
+                    self.life,
+                    float(lived) if _is_number(lived) else None,
+                    str(self.death.get("cause", "")),
+                    s.card_style,
+                ),
+                start,
+                card_char_ms([w.char_ms for w in self._recent()[:12]], s.card_char_ms),
+            )
+            keep = s.silence_style == "death_card" and self.mode == "silence"
+            if keep or now < card.end + s.death_card_s:
+                return card
         return None
 
-    def _birth_lines(self, loading: bool) -> list[str]:
-        lines = [f"life {self.life}" if self.life else "a life"]
-        if self.model:
-            lines.append(self.model + (f" · {self.quant}" if self.quant else ""))
-        lines.append("waking" if loading else "awake")
-        return lines
+    def _birth_card_due(self, now: float) -> bool:
+        """After birth: until the first word starts, at most `birth_card_s`."""
+        if self.birth_at is None or self.mode != "living":
+            return False
+        first = next(iter(self.words()), None)
+        return now < self.birth_at + self.s.birth_card_s and (first is None or first.start > now)
 
-    def _death_lines(self) -> list[str]:
-        lines = [f"life {self.life}" if self.life else "a life"]
-        lived = self.death.get("lived_s")
-        if isinstance(lived, int | float):
-            m, s = divmod(int(lived), 60)
-            lines.append(f"lived {m}:{s:02d}")
-        cause = str(self.death.get("cause", ""))
-        if cause:
-            lines.append(CAUSE_TEXT.get(cause, cause))
-        return lines
+    def _card(
+        self, kind: CardKind, lines: list[str], start: float, char_ms: int | None = None
+    ) -> Card:
+        """The card of `kind` typed from `start`, kept while its lines and start hold."""
+        card = self._cards.get(kind)
+        if card is None or card.lines != tuple(lines) or card.start != start:
+            card = self._cards[kind] = type_card(kind, lines, start, self.s.card_style, char_ms)
+        return card
+
+    def death_end(self) -> float:
+        """When the last letter after death has been typed (the death card comes after)."""
+        return max(self.death_shown_at or 0.0, self.tail)
+
+    def death_fade_start(self) -> float | None:
+        """When every word starts fading at death; None when the text stays (the
+        `last_words` style, `death_fade` off, or before `death_shown`)."""
+        s = self.s
+        if (
+            not s.death_fade
+            or s.silence_style == "last_words"
+            or self.death_shown_at is None
+            or self.mode not in ("dead", "silence")
+        ):
+            return None
+        return self.death_end()
+
+    def word_state(self, w: ViewWord, now: float) -> tuple[WordState, float]:
+        """The state of word `w` at `now` and its fade progress (0 bright, 1 forgotten).
+
+        A word fades for `fade_s` once forgotten, or once the death fade starts.
+        """
+        since = w.forgotten_at
+        death = self.death_fade_start()
+        if death is not None and (since is None or death < since):
+            since = death
+        if since is None or now < since:
+            return w.state, 0.0
+        if self.s.fade_s <= 0 or now - since >= self.s.fade_s:
+            return "forgotten", 1.0
+        return "fading", (now - since) / self.s.fade_s
+
+    def idle(self, now: float) -> bool:
+        """The silence in the `idle` style: dark but for one wandering mark."""
+        return (
+            self.exhibit_open
+            and self.mode == "silence"
+            and self.s.silence_style == "idle"
+            and self.card(now) is None
+            and now >= self._text_gone_at()
+        )
+
+    def idle_cell(self, now: float, rows: int, cols: int) -> tuple[int, int]:
+        """Where the idle mark rests at `now` on a `rows` x `cols` screen."""
+        t = now - self._text_gone_at()
+        return idle_position(t, rows, cols, self.s.idle_step_s, self.life)
+
+    def _text_gone_at(self) -> float:
+        """When the last words leave the screen after death (typed, then faded)."""
+        end = max(self.tail, self.death_shown_at or 0.0)
+        return end + (self.s.fade_s if self.death_fade_start() is not None else 0.0)
 
     def dark(self, now: float) -> bool:
-        """Nothing on screen: closed hours, or the silence in the dark style."""
+        """Nothing on screen: closed hours, or the silence in the dark or idle style once
+        the death card has gone (the idle mark is drawn on the dark screen)."""
         if not self.exhibit_open:
             return True
         if self.mode == "silence" and self.card(now) is None:
-            if now < max(self.tail, self.death_shown_at or 0.0):
-                return False  # the last words are still being typed
+            if now < self._text_gone_at():
+                return False  # the last words are still being typed or fading
             return self.s.silence_style in ("dark", "idle", "death_card")
         return False
 
     def dimmed(self) -> bool:
-        """Whether the text is drawn dimmed (during a reload)."""
-        return self.mode == "reloading"
+        """Whether the text is drawn dimmed: during a reload, with `reload_dim_text`."""
+        return self.mode == "reloading" and self.s.reload_dim_text
 
     def gauge(self) -> float | None:
         """Share of the memory budget in use: recall_used / recall (0..1)."""
@@ -510,7 +642,7 @@ class LifeView:
     def bright_words(self, now: float) -> int:
         """Words typed and still live: what verify-life bounds late in a life."""
         return sum(
-            1 for w in self.words() if w.start <= now and w.state_at(now, self.s.fade_s) == "live"
+            1 for w in self.words() if w.start <= now and self.word_state(w, now)[0] == "live"
         )
 
     def status_line(self, now: float) -> str:
@@ -548,11 +680,19 @@ class LifeView:
         return " · ".join(parts)
 
     def snapshot(self, now: float, **extra: Any) -> dict[str, Any]:
-        """A `snapshot` event (BUILD_PLAN 6.3) reproducing this view without animation."""
-        words = [
-            {"turn": w.turn, "i": w.i, "text": w.text, "state": w.state_at(now, self.s.fade_s)}
-            for w in self.words()
-        ]
+        """A `snapshot` event (BUILD_PLAN 6.3) reproducing this view without animation.
+
+        Besides the contract's fields it carries what a display needs to redraw the same
+        screen: `mode`, `open_turn`, each fading word's `fade` progress, the current
+        `reload`, `groups_left`, and at death the `death` record and `death_shown_ago`.
+        """
+        words: list[dict[str, Any]] = []
+        for w in self.words():
+            state, fade = self.word_state(w, now)
+            item: dict[str, Any] = {"turn": w.turn, "i": w.i, "text": w.text, "state": state}
+            if state == "fading":
+                item["fade"] = round(fade, 3)
+            words.append(item)
         vit = {k: v for k, v in self.vitals.items() if k != "t"}
         snap: dict[str, Any] = {
             "v": PROTOCOL_VERSION,
@@ -570,6 +710,16 @@ class LifeView:
             snap["t"] = round(t, 2)
         if self.thoughts and not self.thoughts[-1].ended:
             snap["open_turn"] = self.thoughts[-1].turn
+        if self.quant:
+            snap["quant"] = self.quant
+        if self.mode == "reloading" and self.reload_info:
+            snap["reload"] = dict(self.reload_info)
+        if self.groups_left is not None:
+            snap["groups_left"] = self.groups_left
+        if self.death:
+            snap["death"] = dict(self.death)
+        if self.death_shown_at is not None:
+            snap["death_shown_ago"] = round(max(0.0, now - self.death_end()), 3)
         snap.update(extra)
         return snap
 
@@ -714,7 +864,9 @@ class Frame:
     cursor: Cursor | None = None
     status: str | None = None
     card: tuple[str, list[str]] | None = None
+    card_shown: list[int] | None = None  # letters typed per card line (None: all)
     dark: bool = False
+    idle: bool = False
     dim: bool = False
     gauge: float | None = None
     split_words: int = 0
@@ -840,7 +992,10 @@ def _started(
     for th in reversed(view.thoughts):
         words = [w for w in th.words if w.start <= now]
         if keep is not None:
-            words = [w for w in words if w.state_at(now, view.s.fade_s) in keep]
+            words = [w for w in words if view.word_state(w, now)[0] in keep]
+        elif all(view.word_state(w, now)[0] == "forgotten" for w in words):
+            continue  # gone from the screen: forgotten words keep their place only
+            # inside a thought that still shows something
         if not words:
             continue
         laid = _lay(th, words, cols, charset)
@@ -864,7 +1019,15 @@ def _compose(
 ) -> Frame:
     frame = Frame(cols=cols, rows=rows, status=status, gauge=gauge)
     frame.dim = view.dimmed()
-    frame.card = view.card(now)
+    card = view.card(now)
+    if card is not None:
+        frame.card = (card.kind, list(card.lines))
+        frame.card_shown = card.shown(now)
+    if view.idle(now):
+        frame.idle, frame.status = True, None
+        r, c = view.idle_cell(now, rows, cols)
+        frame.spans.append(Span(r, c, IDLE_MARK, "idle", 0.0, 1))
+        return frame
     frame.dark = view.dark(now)
     if frame.dark or frame.card is not None:
         return frame
@@ -891,7 +1054,6 @@ def _compose(
     first = max(0, total - rows)
     offset_row = rows - min(rows, total)  # newest at the bottom
     split_ids: set[int] = set()
-    fade_s = view.s.fade_s
     for start, laid in zip(starts, thoughts, strict=True):
         if start + laid.nlines <= first:
             continue
@@ -903,15 +1065,11 @@ def _compose(
             visible = p.text[: max(0, min(len(p.text), w.shown(now) - p.offset))]
             if not visible:
                 continue
+            state, fade = view.word_state(w, now)
+            if state == "forgotten":
+                continue  # gone: its place stays empty
             frame.spans.append(
-                Span(
-                    line - first + offset_row,
-                    p.col,
-                    visible,
-                    w.state_at(now, fade_s),
-                    w.fade_at(now, fade_s),
-                    len(p.text),
-                )
+                Span(line - first + offset_row, p.col, visible, state, fade, len(p.text))
             )
             if p.split:
                 split_ids.add(id(w))
@@ -925,8 +1083,9 @@ def compose_flow(
     view: LifeView, now: float, cols: int, rows: int, status_strip: bool = True
 ) -> Frame:
     """Full-screen flow: newest text at the bottom, a blank line between thoughts, forgotten
-    words fading through grey. `rows` counts text rows only; the status strip travels in
-    `Frame.status` and each driver draws it in its own place (smaller, above the text)."""
+    words fading through grey for `fade_s` and then gone (their place stays empty while the
+    rest of their thought is shown). `rows` counts text rows only; the status strip travels
+    in `Frame.status` and each driver draws it in its own place (smaller, above the text)."""
     status = view.status_line(now) if status_strip else None
     return _compose(
         view, now, cols, rows, _started(view, now, cols, rows), True, status, view.gauge()
@@ -946,13 +1105,39 @@ def compose_grid(
     text_rows = rows - 1 if gauge_row and rows >= 3 else rows
     thoughts = _started(view, now, cols, text_rows, {"live", "inherited"}, charset, False)
     frame = _compose(view, now, cols, text_rows, thoughts, False, None, view.gauge())
-    if text_rows < rows and not frame.dark and frame.card is None:
-        frame.rows = rows
+    frame.rows = rows
+    if frame.idle:
+        frame.spans = [replace(s, text=map_charset(s.text, charset)) for s in frame.spans]
+    elif text_rows < rows and not frame.dark and frame.card is None and view.mode not in _GONE:
         frame.spans.append(Span(rows - 1, 0, gauge_bar(frame.gauge, cols, charset), "gauge"))
     if frame.card is not None:
-        kind, lines = frame.card
-        frame.card = (kind, [map_charset(x, charset) for x in lines])
+        frame.card, frame.card_shown = grid_card(frame.card, frame.card_shown, rows, cols, charset)
     return frame
+
+
+_GONE = ("dead", "silence")  # no memory left to gauge
+
+
+def grid_card(
+    card: tuple[str, list[str]],
+    shown: list[int] | None,
+    rows: int,
+    cols: int,
+    charset: Charset | str,
+) -> tuple[tuple[str, list[str]], list[int]]:
+    """A card fitted to a grid: each line mapped to the charset and wrapped at spaces to
+    `cols` (a longer word is cut), at most `rows` lines, with the letters typed per line."""
+    kind, lines = card
+    typed = shown if shown is not None else [len(x) for x in lines]
+    out: list[str] = []
+    counts: list[int] = []
+    for line, k in zip(lines, typed, strict=True):
+        mapped = map_charset(line, charset)
+        done = len(map_charset(line[:k], charset))
+        pieces = wrap_card([mapped], cols)
+        out += [text for text, _ in pieces]
+        counts += shown_per_piece(pieces, done)
+    return (kind, out[:rows]), counts[:rows]
 
 
 def fit_status(text: str, max_chars: int) -> str:
@@ -1009,7 +1194,7 @@ def life_times(events: Sequence[dict[str, Any]]) -> list[float]:
     return out
 
 
-def _is_number(x: Any) -> bool:
+def _is_number(x: Any) -> TypeGuard[int | float]:
     return isinstance(x, int | float) and not isinstance(x, bool)
 
 

@@ -72,7 +72,11 @@ def test_cursor_blinks_in_pauses_dims_in_reload_and_goes_at_death() -> None:
     cur = [cell for cell in d.last_cells.values() if cell[0] == "█"]
     assert cur and cur[0][1] == PLAIN.dimmed(PLAIN.live)
     hi = [cell for cell in d.last_cells.values() if cell[0] == "h"]
-    assert hi[0][1] == PLAIN.dimmed(PLAIN.live)  # the whole text dims during a reload
+    assert hi[0][1] == PLAIN.live  # only the cursor dims: the text stays readable
+    d.view.s.reload_dim_text = True
+    d.render()
+    hi = [cell for cell in d.last_cells.values() if cell[0] == "h"]
+    assert hi[0][1] == PLAIN.dimmed(PLAIN.live)  # unless the whole text is asked to dim
     d.handle(ev("reload_done", seconds=1))
     d.handle(ev("death", cause="oom", lived_s=10))
     d.render()
@@ -82,18 +86,26 @@ def test_cursor_blinks_in_pauses_dims_in_reload_and_goes_at_death() -> None:
 def test_status_strip_card_and_dark() -> None:
     clock = Clock()
     d, _ = make(clock)
+    d.view.s.reveal_life_number = True
     d.handle(ev("birth_loading", life=5, model="llama", quant="Q6_K"))
     d.render()
     text = screen_text(d)
     assert text[0].strip().startswith("life 5")
+    assert any(line.strip() == "l" for line in text[1:])  # the card is being typed
+    clock.t = 10.0
+    d.render()
+    text = screen_text(d)
     assert any(line.strip() == "life 5" for line in text[1:])
     assert any("waking" in line for line in text)
     d.handle(ev("birth", life=5))
-    d.handle(word(1, 0, "x", 0))
+    d.handle(word(1, 0, "x", 0, life=5))
     d.handle(ev("death", life=5, cause="deadline", lived_s=60))
     d.handle(ev("death_shown", life=5))
     d.handle(ev("silence", life=5, seconds=90, style="dark"))
-    clock.t = 3.0
+    clock.t = 13.0
+    d.render()
+    assert any(line.strip() == "x" for line in screen_text(d))  # the last words fade first
+    clock.t = 30.0
     d.render()
     assert any("its time ran out" in line for line in screen_text(d))
     clock.t = 100.0
@@ -228,3 +240,21 @@ def test_theme_modules() -> None:
     from epitaph.display.themes import plain, segment16
 
     assert plain.THEME.name == "plain" and segment16.THEME.name == "segment16"
+
+
+def test_a_dark_screen_is_not_cleared_on_every_frame() -> None:
+    """Regression: an empty frame (the dark silence, closed hours) used to clear the whole
+    screen again at every frame, 30 times a second over SSH."""
+    clock = Clock()
+    d, out = make(clock)
+    d.handle(ev("birth"))
+    d.handle(ev("exhibit", open=False))
+    d.render()
+    written = len(out.getvalue())
+    for k in range(1, 10):
+        clock.t = k / 30
+        d.render()
+    assert len(out.getvalue()) == written and out.getvalue().count("\x1b[2J") == 1
+    d.handle(ev("snapshot", life=1, words=[]))
+    d.render()
+    assert out.getvalue().count("\x1b[2J") == 2  # a snapshot still redraws everything

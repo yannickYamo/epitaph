@@ -12,6 +12,10 @@ Scenarios:
 - `typing`: a thought typed at `char_ms` a letter, with the cursor blinking in pauses.
 - `fade`: every earlier thought is forgotten at once and fades for `fade_seconds`, as at a
   reload (the costliest few seconds of a life for the screen).
+- `death`: the life dies; its words fade out, then the death card is typed at `char_ms`
+  a letter (each card letter repaints the screen whole).
+
+`--theme segment16` measures the 16-segment grid instead of the plain flow.
 
 Run it offscreen, where the numbers do not depend on a monitor:
 
@@ -80,6 +84,7 @@ def bench_render(
     partial: bool = True,
     layout: str = "flow",
     fade_s: float = 8.0,
+    theme: str = "plain",
 ) -> dict[str, Any]:
     """Render `seconds` of `scenario` at `fps` and measure the CPU it took.
 
@@ -88,13 +93,14 @@ def bench_render(
     and flipped whole (the drawing before D7), for comparison. Returns the measurements
     as a dict; `core_share` is CPU seconds per second of screen time.
     """
-    if scenario not in ("typing", "fade"):
-        raise ValueError(f"unknown scenario {scenario!r} (typing or fade)")
+    if scenario not in ("typing", "fade", "death"):
+        raise ValueError(f"unknown scenario {scenario!r} (typing, fade or death)")
     os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
     from epitaph.display.screen import ScreenDriver
+    from epitaph.display.themes import get_theme
 
     settings = ViewSettings(birth_card=False, fade_s=fade_s)
-    drv = ScreenDriver(settings=settings, size=size, layout=layout)
+    drv = ScreenDriver(settings=settings, size=size, layout=layout, theme=get_theme(theme))
     drv.open()
     try:
         for e in _events(char_ms, 6, FILLER):
@@ -105,6 +111,16 @@ def bench_render(
             turns = [th.turn for th in drv.view.thoughts[:-1]]
             items = [{"turn": t, "all": True} for t in turns]
             drv.view.handle({"type": "forget", "life": 1, "items": items}, 0.0)
+        elif scenario == "death":
+            # the last thought typed at char_ms, then death: the fade and the typed card
+            drv.view.catch_up(0.0)
+            drv.view.thoughts[-1].words[-1].char_ms = (char_ms,)
+            for e in (
+                {"type": "death", "life": 1, "cause": "oom", "lived_s": 1770},
+                {"type": "death_shown", "life": 1},
+                {"type": "silence", "life": 1, "seconds": 90, "style": "dark"},
+            ):
+                drv.view.handle(e, 0.0)
         frames = painted = 0
         pg = drv.pg
         present = _PresentTimer(pg.display)
@@ -131,7 +147,8 @@ def bench_render(
     return {
         "size": f"{size[0]}x{size[1]}",
         "scenario": scenario,
-        "layout": layout,
+        "layout": drv.layout,
+        "theme": theme,
         "partial": partial,
         "fps": fps,
         "char_ms": char_ms,
@@ -185,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--char-ms", type=int, default=60)
     p.add_argument("--layout", default="flow", choices=["flow", "grid"])
+    p.add_argument("--theme", default="plain", choices=["plain", "segment16"])
     p.add_argument("--full", action="store_true", help="also measure whole-frame painting")
     p.add_argument("--budget", type=float, default=0.0, help="fail above this typing share")
     args = p.parse_args(argv)
@@ -200,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.char_ms,
                     partial,
                     args.layout,
+                    theme=args.theme,
                 )
                 print(json.dumps(r), flush=True)
                 if partial and scenario == "typing":
