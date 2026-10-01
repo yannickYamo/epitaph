@@ -10,8 +10,8 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
-# The controller sends READY=1 once its bus listens and WATCHDOG=1 at least every 15 s
-# (epitaph.body.watchdog); 30 s without a ping and systemd restarts it.
+# The controller sends READY=1 once its bus listens and WATCHDOG=1 at least every 5 s, in
+# every state (controller.sd_notify); 30 s without a ping and systemd restarts it.
 Type=notify
 NotifyAccess=main
 WatchdogSec=30
