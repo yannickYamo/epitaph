@@ -162,7 +162,7 @@ jobs:
         run: |
           # make test already runs them against a fake Pi (tests/unit/test_pi_tools.py).
           shellcheck -x tools/smoke_pi.sh tools/headless_boot_check.sh tools/collect_lives.sh \
-            tools/fault_matrix_pi.sh
+            tools/fault_matrix_pi.sh tools/soak_sample.sh
           export PI_HOST=pi EPITAPH_SSH=false EPITAPH_PYTHON=$PY
           tools/smoke_pi.sh --dry-run
           tools/smoke_pi.sh --dry-run --profile pi4/skeleton-1200 --lives 2

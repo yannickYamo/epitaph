@@ -1448,6 +1448,9 @@ class Verifier:
         Only the flow layout is checked (the last 120 s of the life); pending without a probe.
         """
         limit = int(self.th["max_bright_words_last_2min"])
+        if self.cfg.profile.unbounded:
+            # an unbounded life never forgets: nothing fades, by design (BUILD_PLAN 5.3)
+            return [Check("bright_words_last_2min", "skip", limit=limit, detail="unbounded")]
         if str(self.cfg.get("display.layout", "flow")) != "flow":
             return [Check("bright_words_last_2min", "skip", detail="grid layout")]
         if self.layout is None:
