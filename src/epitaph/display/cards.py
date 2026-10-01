@@ -22,9 +22,9 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
-CardKind = Literal["birth", "death"]
+CardKind = Literal["birth", "death", "vigil"]
 
-SILENCE_STYLES = ("dark", "death_card", "last_words", "idle")
+SILENCE_STYLES = ("dark", "death_card", "last_words", "idle", "vigil")
 
 CAUSE_TEXT = {
     "oom": "its memory was taken",

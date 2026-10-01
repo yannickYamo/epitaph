@@ -6,7 +6,9 @@ the last frame, so typing a letter costs a few bytes. Letters appear with each w
 `char_ms`, the pause after a word with `pause_after_ms`; the block cursor is solid while
 typing, blinks in pauses, dims during a reload and is gone at death. Forgotten words fade
 through grey (24-bit colour, or the 256-colour grey ramp when the terminal lacks it), then
-leave the screen; cards are typed letter by letter.
+leave the screen; cards are typed letter by letter. Readings are typed in the machine's dim
+grey (a terminal has one letter size), the colours follow the screen's dimming above the
+contrast floors, and after death the vigil is drawn centred.
 """
 
 from __future__ import annotations
@@ -185,10 +187,21 @@ class TerminalDriver:
         left = max(1, (cols - frame.cols) // 2)
         if frame.dark:
             return out
+        b = th.brightness(frame.brightness, frame.contrast_floor)
         if frame.status and show_strip:
             strip = fit_status(frame.status, cols - 2)
             for k, ch in enumerate(strip):
-                out[(0, 1 + k)] = (ch, th.status)
+                out[(0, 1 + k)] = (ch, th.lit(th.status, b))
+        if frame.card is not None and frame.card[0] == "vigil":
+            colour = th.lit(th.machine, frame.card_level)
+            shown = frame.card_shown or [len(x) for x in frame.card[1]]
+            r0 = max(top, rows // 2 - 1)
+            for n, line in enumerate(frame.card[1][:2]):
+                line = line[: cols - 2]
+                c0 = max(1, (cols - len(line)) // 2)
+                for k, ch in enumerate(line[: shown[n]]):
+                    out[(r0 + 2 * n, c0 + k)] = (ch, colour)
+            return out
         if frame.card is not None:
             lines = frame.card[1]
             shown = frame.card_shown or [len(x) for x in lines]
@@ -201,13 +214,13 @@ class TerminalDriver:
                     out[(r0 + 2 * n, c0 + k)] = (ch, colour)
             return out
         for s in frame.spans:
-            colour = th.word(s.kind, s.fade, frame.dim)
+            colour = th.lit(th.word(s.kind, s.fade, frame.dim), b)
             for k, ch in enumerate(s.text):
                 out[(top + s.row, left + s.col + k)] = (ch, colour)
         cur = frame.cursor
         if cur is not None and cur.mode in ("on", "dim"):
             colour = th.dimmed(th.live) if cur.mode == "dim" else th.live
-            out[(top + cur.row, left + cur.col)] = ("█", colour)
+            out[(top + cur.row, left + cur.col)] = ("█", th.lit(colour, b))
         return out
 
     def render(self, now: float | None = None) -> None:

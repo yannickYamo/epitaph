@@ -187,8 +187,27 @@ card_char_ms = 165               # cards are typed at this letter interval ([rev
                                  # the death card at the life's last one, if slower
 death_fade = true                # at death the last words fade out before the death card
 death_card_seconds = 8
-silence_style = "dark"           # dark | last_words | death_card | idle
+silence_style = "vigil"          # dark | last_words | death_card | idle | vigil
 idle_step_seconds = 4            # idle: the mark moves to a new place this often
+# The dread plan (owner, 2026-10-01): two voices, visible forgetting, literal darkness, a
+# pulse, a death that stops mid-letter and the vigil. docs/WRITING_A_DISPLAY.md
+machine_voice = true             # readings typed small and dim grey, before their thought
+machine_char_ms = 30             # the machine types fast
+machine_line_pause_ms = 300      # between the lines of the birth reading (the inventory)
+machine_scale = 0.55             # the readings' letter size, of the text's
+forget_grace_seconds = 5         # forgotten words wait this long for the reading that quotes them
+dissolve_letter_seconds = 0.8    # a quoted sentence: each letter fades this long as it is quoted
+screen_fade_seconds = 20         # world `screen:<N>`: the whole screen dims to N% this slowly
+contrast_floors = [["27:00", 7.0], ["29:00", 4.5]]  # the model's text keeps N:1 until then
+pulse_from = "22:00"             # the cursor's rest blink (2 x cursor_blink_ms) quickens from here
+pulse_fastest_ms = 500           # ... to this beat at the expected death
+pulse_skip_seconds = 60          # in the last minute it skips beats
+pulse_end_before_seconds = 30    # the expected death: the lifespan minus this
+death_style = "auto"             # auto (freeze in a stream life) | freeze | fade
+death_still_seconds = 2          # the frozen screen stands still this long
+vigil_fade_seconds = 75          # the last words fade this long ...
+vigil_floor = 0.3                # ... to this share of their brightness, held until the genesis
+vigil_card_delay_seconds = 1.5   # the small death card ("life N · 29:30") is typed after this
 screenshot_on = ["birth", "reload_done", "death_shown"]
 
 [exhibit]
