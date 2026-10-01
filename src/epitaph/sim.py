@@ -146,7 +146,7 @@ async def run_life(
                 t = clock.elapsed()
                 k = sch.at(t)
             body.apply(k)
-            backend.set_cpu_share(k.cpu_share)
+            backend.set_cpu_share(k.compute)
             if not cfg.profile.unbounded:
                 cut = memory.fit(k.recall, trim_to)
                 if cut.items:
@@ -193,7 +193,7 @@ async def run_life(
                 threads=cur[1],
                 cpu_share=k.cpu_share,
                 cores_effective=k.cpu_share,
-                tok_s=costs.tg(cur[0], cur[1], k.cpu_share),
+                tok_s=costs.tg(cur[0], cur[1], k.compute),
                 cpu_c=vit.cpu_c,
                 ram_limit_mb=None,
                 reading=reading,
@@ -214,7 +214,7 @@ async def run_life(
             # released and the previous word (with its pause) is done (BUILD_PLAN 5.12).
             typed_until = clock.elapsed()
             # Adaptive cadence (BUILD_PLAN 5.12): never type faster than 88% of generation.
-            letters_per_s = costs.tg(cur[0], cur[1], k.cpu_share) * letters_per_token
+            letters_per_s = costs.tg(cur[0], cur[1], k.compute) * letters_per_token
             interval = max(k.letter_ms, 1000 / (margin * letters_per_s))
 
             def word_event(

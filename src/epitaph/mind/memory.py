@@ -103,6 +103,7 @@ class Memory:
         self.gap_turn: int | None = None  # the turn whose reading carries the marker
         self._pending: _Turn | None = None
         self._forgotten = 0
+        self._forgotten_quotes: list[str] = []
         self.forgotten_total = 0
 
     # -- the system prompt -----------------------------------------------------------------
@@ -261,6 +262,15 @@ class Memory:
             res.thoughts += 1
             self._forgotten += 1
             self.forgotten_total += 1
+            if t.words:
+                self._forgotten_quotes.append(" ".join(t.words[: self.quote_words]))
+
+    quote_words = 8  # opening words of a forgotten thought quoted in a material reading
+
+    def take_forgotten_quotes(self) -> tuple[str, ...]:
+        """Opening words of each thought forgotten since the last call (material readings)."""
+        q, self._forgotten_quotes = tuple(self._forgotten_quotes), []
+        return q
 
     def take_forgotten(self) -> int:
         """Thoughts that lost something since the last call; the next reading reports them."""

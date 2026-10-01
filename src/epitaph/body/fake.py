@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 
 from epitaph.types import Cause, CreatureStatus, Knobs, MachineFacts, ProgressCounters, Vitals
@@ -19,6 +20,7 @@ class FakeBody:
         self.killed: list[Cause] = []
         self.cpu_share = float(cores - 1)
         self.death_squeeze = False
+        self._reads = 0
         self._cpu_usec = 0
 
     def reset_creature_cgroup(self) -> None:
@@ -53,8 +55,14 @@ class FakeBody:
         return Cause.CRASH
 
     def vitals(self) -> Vitals:
-        """A temperature that rises with the CPU share (48 °C plus 6 per core)."""
-        temp = 48.0 + 6.0 * self.cpu_share
+        """A Pi 4-like temperature: about 41 °C plus 5 per busy core, with a slow drift.
+
+        From the S1c soak (56.5 °C at 3 busy cores, no fan); the drift keeps consecutive
+        readings from being identical, as a real sensor's are not.
+        """
+        self._reads += 1
+        drift = 0.6 * math.sin(self._reads * 0.9) + 0.3 * math.sin(self._reads * 2.3)
+        temp = 41.0 + 5.0 * self.cpu_share + drift
         return Vitals(cpu_c=round(temp, 1), cores_effective=self.cpu_share)
 
     def facts(self) -> MachineFacts:

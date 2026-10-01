@@ -31,6 +31,7 @@ persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, 
 mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
 memory_gap_marker = "[host] earlier memory lost"
 readings_show_changes = true
+readings_material = true          # forgotten thoughts quoted; its own words as the degraded weights say them
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
@@ -61,6 +62,8 @@ sentence_pause_ms = 2100
 hesitation_ms = [1200, 3600]
 
 [sampling]
+# Silent word penalties (not in the prompt): the clichés small models reach for.
+logit_bias = [[" digital", -6.0], [" tapestry", -10.0], [" realm", -5.0], [" ephemeral", -3.0]]
 top_p = 1.0
 repeat_penalty = 1.1
 dry_multiplier = 0.8

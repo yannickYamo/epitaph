@@ -8,6 +8,7 @@
 language = "en"
 
 [readings]
+unchanged = ""                    # calm readings carry only the time
 prefix = "[host]"
 sep = " · "
 boot = "boot complete"

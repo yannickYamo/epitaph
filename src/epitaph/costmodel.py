@@ -42,7 +42,7 @@ import statistics
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from epitaph.clock import Schedule
 from epitaph.config import REPO_ROOT, Config, reading_tokens, system_tokens
@@ -303,7 +303,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
                 report.notes.append(f"context full at {t / 60:.1f} min (cause=full)")
                 break
 
-        share = k.cpu_share
+        share = k.compute
         pp_time = (reading + extra) / costs.pp(life.step, life.threads, share, threads_batch)
         gen_tokens = k.max_tokens * fill
         tg = costs.tg(life.step, life.threads, share) * costs.drift(t)
@@ -441,61 +441,96 @@ def _count(times: list[float], a: float, b: float) -> int:
     return sum(1 for x in times if a <= x < b)
 
 
+RULE_DEFAULTS: dict[str, int] = {
+    "between_health": 3,
+    "after_reload": 2,
+    "per_erosion_step": 1,
+    "after_erosion_start": 4,
+}
+
+
+def rule_minimums(sch: Schedule) -> dict[str, int]:
+    """The thought-count minimums for this profile: its [rules] table over RULE_DEFAULTS.
+
+    The defaults were set for a one-hour life. A shorter life has fewer thoughts for the same
+    fixed costs (two reloads), so it may lower them; every loss still needs one thought."""
+    raw: object = sch.profile.settings.get("rules", {})
+    if not isinstance(raw, dict):
+        raise ValueError("profile [rules] must be a table")
+    table = cast("dict[str, object]", raw)
+    unknown = sorted(set(table) - set(RULE_DEFAULTS))
+    if unknown:
+        raise ValueError(f"unknown profile rules: {unknown}")
+    out = dict(RULE_DEFAULTS)
+    for k, v in table.items():
+        n = int(str(v))
+        if n < 1:
+            raise ValueError(f"profile rule {k} must be at least 1")
+        out[k] = n
+    return out
+
+
 def check_rules(report: RuleReport, sch: Schedule, end: float) -> None:
     """Apply the thought-count rule (a)-(d) to report.thought_times; used by verify-life too."""
+    need = rule_minimums(sch)
     th = report.thought_times
     health = sch.health_times()
     changes = sorted(set(sch.change_times()))
     erosion = sch.erosion_times()
 
-    # (a) at least 3 thoughts between consecutive health-label changes
+    # (a) enough thoughts between consecutive health-label changes
     bounds = [0.0, *health, end]
     for a, b in itertools.pairwise(bounds):
         n = _count(th, a, b)
-        if n < 3:
+        if n < need["between_health"]:
             report.violations.append(
                 RuleViolation(
                     "a",
                     a,
                     f"{n} thoughts between health changes at "
-                    f"{a / 60:.1f} and {b / 60:.1f} min (need 3)",
+                    f"{a / 60:.1f} and {b / 60:.1f} min (need {need['between_health']})",
                 )
             )
 
-    # (b) at least 2 thoughts after each reload's silence ends, before the next change
+    # (b) enough thoughts after each reload's silence ends, before the next change
     for start, resumed in report.reload_windows:
         nxt = next((c for c in changes if c > start + 1), end)
         n = _count(th, resumed, nxt)
-        if n < 2:
+        if n < need["after_reload"]:
             report.violations.append(
                 RuleViolation(
                     "b",
                     start,
                     f"reload at {start / 60:.1f} min resumes at "
                     f"{resumed / 60:.1f}; {n} thoughts before the next change at "
-                    f"{nxt / 60:.1f} (need 2)",
+                    f"{nxt / 60:.1f} (need {need['after_reload']})",
                 )
             )
 
-    # (c) at least 1 thought after each persona group is removed
+    # (c) enough thoughts after each persona group is removed
     for i, e in enumerate(erosion):
         nxt = erosion[i + 1] if i + 1 < len(erosion) else end
         n = _count(th, e, nxt)
-        if n < 1:
+        if n < need["per_erosion_step"]:
             report.violations.append(
                 RuleViolation(
                     "c",
                     e,
-                    f"no thought between erosion steps at {e / 60:.1f} and {nxt / 60:.1f} min",
+                    f"{n} thoughts between erosion steps at {e / 60:.1f} and "
+                    f"{nxt / 60:.1f} min (need {need['per_erosion_step']})",
                 )
             )
 
-    # (d) at least 4 thoughts after erosion starts
+    # (d) enough thoughts after erosion starts
     if erosion:
         n = _count(th, erosion[0], end)
-        if n < 4:
+        if n < need["after_erosion_start"]:
             report.violations.append(
-                RuleViolation("d", erosion[0], f"{n} thoughts after erosion starts (need 4)")
+                RuleViolation(
+                    "d",
+                    erosion[0],
+                    f"{n} thoughts after erosion starts (need {need['after_erosion_start']})",
+                )
             )
 
 

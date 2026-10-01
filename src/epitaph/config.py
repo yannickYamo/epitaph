@@ -33,7 +33,9 @@ INTERPOLATED = (
     "jitter",
     "hesitation",
 )
-KNOB_FIELDS = STEPPED + INTERPOLATED
+# Optional interpolated knobs: a profile may omit them; the first keyframe gets the default.
+OPTIONAL_DEFAULTS: dict[str, float] = {"cpu_mhz": 1800.0}
+KNOB_FIELDS = STEPPED + INTERPOLATED + tuple(OPTIONAL_DEFAULTS)
 READINGS_FORMS = ("full", "short", "minimal")
 HEALTH_LABELS = ("nominal", "stable", "degrading", "failing", "critical", "terminal")
 
@@ -219,6 +221,8 @@ def load_profile(name: str, hw_class: str, _seen: tuple[str, ...] = ()) -> Profi
             raise ConfigError(f"{path}: keyframe {i} has unknown fields {sorted(unknown)}")
         current = {**current, **{k: v for k, v in row.items() if k != "at"}}
         if i == 0:
+            for name, default in OPTIONAL_DEFAULTS.items():
+                current.setdefault(name, default)
             missing = [f for f in KNOB_FIELDS if f not in current]
             if missing:
                 raise ConfigError(f"{path}: the first keyframe must set {missing}")

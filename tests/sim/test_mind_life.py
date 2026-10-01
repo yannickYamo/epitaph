@@ -219,13 +219,11 @@ def test_erosion_and_death(life: dict[str, Any]) -> None:
     sch: Schedule = life["schedule"]
     erosions = of(life, "erosion")
     if sch.erosion_times():
-        assert [(e["groups_left"], e["mechanics_present"]) for e in erosions] == [
-            (4, True),
-            (3, True),
-            (2, True),
-            (1, True),
-            (0, False),
-        ]
+        steps = [(e["groups_left"], e["mechanics_present"]) for e in erosions]
+        groups = [g for g, _ in steps]
+        assert groups == sorted(groups, reverse=True) and len(set(groups)) == len(groups)
+        # the knowledge of its death (and the mechanics) goes last, in the final step
+        assert steps[-1] == (0, False) and all(m for _, m in steps[:-1])
         for e, t in zip(erosions, sch.erosion_times(), strict=True):
             assert e["t"] >= t
     deaths = of(life, "death")

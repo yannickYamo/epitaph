@@ -40,6 +40,9 @@ class Health(StrEnum):
     TERMINAL = "terminal"
 
 
+FULL_MHZ = 1800.0  # the Pi 4's full clock; spike S7 measured speed linear below it
+
+
 @dataclass(frozen=True)
 class Knobs:
     """Every schedule-driven setting at one moment of a life (BUILD_PLAN 5.3).
@@ -65,7 +68,13 @@ class Knobs:
     letter_ms: float
     jitter: float
     hesitation: float
+    cpu_mhz: float = FULL_MHZ  # CPU clock cap (cpufreq); speed scales with it like the share
     death_squeeze: bool = False
+
+    @property
+    def compute(self) -> float:
+        """Cores' worth of full-clock compute: the CPU share scaled by the clock (spike S7)."""
+        return self.cpu_share * self.cpu_mhz / FULL_MHZ
 
 
 @dataclass(frozen=True)
@@ -79,6 +88,8 @@ class Sampling:
     dry_multiplier: float = 0.8
     seed: int | None = None
     latin_only: bool = False
+    # Silent word penalties: (text, bias) pairs, applied by the server to the text's tokens.
+    logit_bias: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)

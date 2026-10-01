@@ -201,7 +201,7 @@ def test_verify_probe_reads_the_display_config() -> None:
 def test_simulated_lives_split_no_words(profile: str) -> None:
     cfg = load_config(profile, "pi4-4gb")
     events = list(sim_life(profile))
-    assert sum(1 for e in events if e["type"] == "word") > 500
+    assert sum(1 for e in events if e["type"] == "word") > 300  # a 30-minute life shows about 480
     res = v.verify_life(v.parse_life(events), cfg, "full", layout=verify_probe(cfg))
     assert res.by_name("no_split_words").status == "pass"
     assert res.by_name("no_split_words").value == 0

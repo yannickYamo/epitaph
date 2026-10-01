@@ -50,4 +50,5 @@ def sampling_for(
         dry_multiplier=float(section.get("dry_multiplier", 0.8)),
         seed=seed,
         latin_only=latin_only_at(section, step),
+        logit_bias=tuple((str(w), float(b)) for w, b in section.get("logit_bias", [])),
     )

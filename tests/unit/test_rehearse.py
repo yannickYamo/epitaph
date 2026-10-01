@@ -308,8 +308,10 @@ def test_life_charges_add_up_to_the_life(life_dir: Path) -> None:
     data = json.loads((life_dir / "charges.json").read_text())
     by = data["summary"]["by_kind"]
     # The Pi 4 overlay carries the cache across reloads since checkpoint A (reload_handover =
-    # "slot"), so each reload also charges the save and restore.
-    assert set(by) == {"load", "handover", "prefill", "prompt", "generate"}
+    # "slot"), so each reload also charges the save and restore; with material readings, the
+    # reloaded weights also continue one of its sentences (the echo), charged on its own.
+    assert set(by) == {"load", "handover", "prefill", "prompt", "generate", "echo"}
+    assert by["echo"]["count"] == 4  # a prompt and a generation per reload
     assert by["load"]["count"] == 2  # the reloads (the birth load is before the clock starts)
     assert by["handover"]["count"] == 2
     events = load_events(life_dir / "events.jsonl")
