@@ -7,11 +7,12 @@ metrics of 5.11. The result goes to `verify.json` next to the events.
 
 Levels:
   smoke      plumbing: duration, cause, words shown, recall budget, nothing banned shown, sync
-             rule, death display, next birth
+             rule, death display, next birth, non-fatal errors (advisory)
   skeleton   smoke + empty thoughts, typing speed, whole words (layout)
-  full       skeleton + the thought-count rule, reloads, the rehearsal metrics, speed decline,
-             speed never rising across a reload, bright words (layout), persona groups at
-             death
+  full       skeleton + the death on time, the thought-count rule, reloads (silence, count,
+             the rung each one loads), the rehearsal metrics, speed decline, speed never
+             rising across a reload, bright words (layout), every erosion step taken, persona
+             groups at death
   rehearsal  the 5.11 metrics, the thought-count rule and speed never rising across a reload,
              for laptop rehearsal lives
   screen     the 5.11 text metrics only, for rehearsal stage 1 samples (a few thoughts at a
@@ -105,6 +106,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "recall_tolerance": 0.10,  # 10.3: recall + 10%
     "sync_tolerance_s": 0.5,  # typing replay vs gen_start (rounding of char_ms)
     "next_birth_margin_s": 300,  # 10.3: silence + load + 5 min
+    "max_kill_delay_s": 10,  # 10.4, S3: cause=oom within 10 s of the squeeze (or the deadline)
     "reload_noticing_min": 1.0,  # 5.11: 2 of 2
     "notice_window_thoughts": 2,  # 5.11: one of the next two thoughts
     "cpu_drop_min_cores": 0.25,  # a CPU-share change worth noticing
@@ -400,7 +402,12 @@ def _t(e: Event) -> float:
 
 
 def load_events(path: Path) -> list[Event]:
-    """Read a JSON-lines events file; a torn last line (power cut) is ignored."""
+    """Read a JSON-lines events file; a torn line (power cut, controller killed) is ignored.
+
+    A torn line is tolerated only where a cut leaves one: last in the file, or followed by
+    nothing but the death record recovery appends (`death` with `recovered`, written after
+    terminating the torn line). Anywhere else a bad line is an error.
+    """
     out: list[Event] = []
     lines = path.read_text(encoding="utf-8").splitlines()
     for i, line in enumerate(lines):
@@ -409,10 +416,21 @@ def load_events(path: Path) -> list[Event]:
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError:
-            if i == len(lines) - 1:
-                break
+            if all(_is_recovery_record(rest) for rest in lines[i + 1 :] if rest.strip()):
+                continue
             raise
     return out
+
+
+def _is_recovery_record(line: str) -> bool:
+    try:
+        e: Any = json.loads(line)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(e, dict):
+        return False
+    rec = cast(dict[str, Any], e)
+    return rec.get("type") == "death" and rec.get("recovered") is True
 
 
 def is_header(e: Event) -> bool:
@@ -904,17 +922,20 @@ class Verifier:
         plan: list[tuple[bool, Callable[[], list[Check]]]] = [
             (basic, self.check_duration),
             (basic, self.check_cause),
+            (full, self.check_death_time),
             (basic, self.check_words_shown),
             (basic or lived, self.check_recall_budget),
             (True, self.check_banned_shown),
             (level != "screen", self.check_sync_rule),
             (basic, self.check_death_display),
             (basic, self.check_next_birth),
+            (basic, self.check_error_events),
             (skeleton, self.check_empty_thoughts),
             (skeleton, self.check_typing_speed),
             (skeleton, self.check_split_words),
             (lived, self.check_thought_count_rule),
             (full, self.check_reloads),
+            (full, self.check_reload_targets),
             (metrics, self.check_reload_noticing),
             (full, self.check_bright_words),
             (full, self.check_speed_decline),
@@ -926,6 +947,7 @@ class Verifier:
             (metrics, self.check_cliches),
             (metrics, self.check_voice_hygiene),
             (metrics, self.check_repetition),
+            (full, self.check_erosion_steps),
             (full, self.check_persona_at_death),
         ]
         for enabled, fn in plan:
@@ -1022,6 +1044,35 @@ class Verifier:
         """The recorded cause of death is the one `expected_cause` gives for this level."""
         want = self.expected_cause(self.level)
         return [Check("cause", _pf(self.cause == want), self.cause, want)]
+
+    def check_death_time(self) -> list[Check]:
+        """The life died when the plan kills it (10.4; spike S3).
+
+        With `death_mode = "oom"` the creature must die within `max_kill_delay_s` after the
+        death squeeze (`end-0:30` on the Pi 4); otherwise within as long after the deadline.
+        The value is the delay in seconds; dying before the planned moment fails too (a crash
+        or a hang is not the death the plan gives). Skipped for an unbounded profile, which
+        dies of a full context whenever it fills.
+        """
+        limit = float(self.th["max_kill_delay_s"])
+        if self.cfg.profile.unbounded:
+            return [Check("death_time", "skip", limit=limit, detail="unbounded: no planned death")]
+        squeeze = self.schedule.death_s
+        oom = self.expected_cause("full") == "oom" and squeeze is not None
+        planned = squeeze if oom and squeeze is not None else self.schedule.lifespan_s
+        what = "the death squeeze" if oom else "the deadline"
+        if self.life.death is None:
+            return [Check("death_time", "fail", None, limit, "no death event")]
+        delay = self.lived_s - planned
+        return [
+            Check(
+                "death_time",
+                _pf(-1.0 <= delay <= limit),
+                _r(delay, 1),
+                limit,
+                f"died at {self.lived_s:.1f}s; {what} at {planned:.0f}s",
+            )
+        ]
 
     def check_words_shown(self) -> list[Check]:
         """At least one word reached the screen.
@@ -1151,6 +1202,16 @@ class Verifier:
             )
         ]
 
+    def check_error_events(self) -> list[Check]:
+        """Non-fatal errors the controller recorded (6.3 `error`): advisory, never failing.
+
+        A failed bus or transcript write, or a backend error the life survived, does not end
+        the life by design (phase 1 review); the count still belongs in the evidence.
+        """
+        errors = self.life.of("error")
+        detail = "; ".join(f"{e.get('where')}: {e.get('message')}" for e in errors[:3])
+        return [Check("error_events", "advisory" if errors else "pass", len(errors), 0, detail)]
+
     # -- skeleton -------------------------------------------------------------------------
 
     def check_empty_thoughts(self) -> list[Check]:
@@ -1258,6 +1319,50 @@ class Verifier:
             ),
             Check("reload_count", _pf(count_ok), n, expected, f"{skipped} skipped"),
         ]
+
+    def check_reload_targets(self) -> list[Check]:
+        """Each reload loaded the ladder step and threads its keyframe asks for (5.2, 5.5).
+
+        The first vitals after a reload must report the schedule's step and threads at the
+        reload's time and the quant the reload event named; the last vitals of the life must
+        report the step and threads in force then, so the decline reached its last rung. A
+        reload cut short by the death has no vitals after it and is not judged. Skipped
+        without reloads in the profile.
+        """
+        if not self.schedule.reload_times():
+            return [Check("reload_targets", "skip", detail="no reloads in profile")]
+        vitals = self.life.of("vitals")
+        bad: list[str] = []
+        notes: list[str] = []
+        reloads = self.life.of("reload")
+        for i, e in enumerate(reloads):
+            hi = int(reloads[i + 1]["_idx"]) if i + 1 < len(reloads) else len(self.life.events)
+            after = next((v for v in vitals if int(e["_idx"]) < int(v["_idx"]) < hi), None)
+            want = self.schedule.at(_t(e))
+            where = f"reload at {_t(e) / 60:.1f} min"
+            if after is None:
+                notes.append(f"{where}: no reading after it")
+                continue
+            got = (after.get("step"), after.get("threads"), after.get("quant"))
+            exp = (want.step, want.threads, e.get("to", after.get("quant")))
+            if got != exp:
+                bad.append(f"{where}: loaded step/threads/quant {got}, planned {exp}")
+            elif e.get("threads") is not None and e.get("threads") != want.threads:
+                bad.append(
+                    f"{where}: reload event threads {e.get('threads')}, planned {want.threads}"
+                )
+        if vitals:
+            last = vitals[-1]
+            want = self.schedule.at(_t(last))
+            if (last.get("step"), last.get("threads")) != (want.step, want.threads):
+                bad.append(
+                    f"last reading at {_t(last) / 60:.1f} min: step {last.get('step')} threads "
+                    f"{last.get('threads')}, planned {want.step} and {want.threads}"
+                )
+        else:
+            bad.append("no vitals")
+        detail = "; ".join(bad[:5] + notes)
+        return [Check("reload_targets", _pf(not bad), len(bad), 0, detail)]
 
     def _next_thoughts(self, idx: int, k: int) -> list[Thought]:
         return [th for th in self.life.thoughts if th.gen_idx > idx][:k]
@@ -1401,6 +1506,34 @@ class Verifier:
             return [Check("speed_monotonic", "skip", limit=limit, detail="; ".join(notes))]
         worst = max(ratios)
         return [Check("speed_monotonic", _pf(worst <= limit), _r(worst), limit, "; ".join(notes))]
+
+    def check_erosion_steps(self) -> list[Check]:
+        """Every scheduled erosion step was taken as its own step, in order (5.6; ADR-024).
+
+        The persona changes only before a reading, so two steps with no reading between them
+        would merge into one and the model would never live with the middle persona. Expected:
+        one `erosion` event per erosion keyframe up to the life's last reading, with that
+        keyframe's groups left and mechanics. The detail gives each step's lag behind its
+        keyframe. Skipped when the profile never erodes.
+        """
+        times = self.schedule.erosion_times()
+        if not times:
+            return [Check("erosion_steps", "skip", detail="no erosion in profile")]
+        vitals = self.life.of("vitals")
+        last_reading = _t(vitals[-1]) if vitals else -1.0
+        planned = [t for t in times if t <= last_reading + 1e-6]
+        want = [
+            (int(self.schedule.at(t).persona_groups), bool(self.schedule.at(t).mechanics))
+            for t in planned
+        ]
+        ero = self.life.of("erosion")
+        got = [(int(e["groups_left"]), bool(e.get("mechanics_present", True))) for e in ero]
+        lags = [
+            f"{w[0]} groups at {_t(e) / 60:.1f} min ({_t(e) - t:+.0f}s)"
+            for e, t, w in zip(ero, planned, want, strict=False)
+        ]
+        detail = f"planned {want}, taken {got}" if got != want else "; ".join(lags)
+        return [Check("erosion_steps", _pf(got == want), len(got), len(want), detail)]
 
     def check_persona_at_death(self) -> list[Check]:
         """Every persona group and the mechanics text were gone by the last erosion step.

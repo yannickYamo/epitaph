@@ -111,14 +111,37 @@ holder) and writes its evidence under `logs/pi/` (untracked), so the phase repor
 
 ## G2: full decline, checkpoint B (BUILD_PLAN 8.4)
 
+The installation is the 30-minute `pi4/default` life (ADR-024). `compressed-2700` (45 min) is
+now longer than it and is retired from the gates: G2.3 runs the installation's own profile.
+
+**How the G2 rows run.** Two ways to get lives, both judged by `verify-life` at the profile's
+level (`full` for `pi4/default`), both writing `verify.json` next to each life's `events.jsonl`
+under `logs/pi/` (untracked); the phase 2 report in `docs/process/reports/` quotes the
+summary lines and names the folders.
+
+- `make pi-life` (`tools/smoke_pi.sh`, as in G1): stops the service inside its lock hold, runs
+  `LIVES` consecutive lives as a detached unit, starts the service again, copies and judges
+  them. Budget for `PROFILE=pi4/default LIVES=3`: 137 min of lock (3 × (30 min + 5 min load +
+  3 min) + 2 × 90 s silence + 5 min, plus 15 min for the copy and the checks).
+- `make pi-collect` (`tools/collect_lives.sh`): copies the newest `LIVES` finished lives of
+  `PROFILE` from the running service (`/var/lib/epitaph/lives`, read-only, no lock, the service
+  keeps running), each with the life after it for `next_birth`, to `logs/pi/service-<stamp>/`
+  and judges them. It never judges the life in progress and skips `interrupted` lives (a deploy
+  or a restart cut them short) unless `--include-interrupted`. `summary.md` holds one line per
+  life, the controller's `NRestarts`, and whether the lives are consecutive.
+- The fault matrix: `make faults` runs the laptop rows (tests/faults, also part of `make test`);
+  `AGENT=E make pi-faults` runs the Pi rows (`tools/fault_matrix_pi.sh`, one lock hold, each
+  row through C's `tools/fault_pi.sh <row>`) and writes `logs/pi/faults-<stamp>.md` with each
+  row's log in `logs/pi/faults-<stamp>/`. `ROWS=a,b` runs a subset; `--list` names them.
+
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
-| G2.1 | Selftest passes under the installed service | `ssh pi 'sudo -u epitaph epitaph selftest'` (or as the unit user) exit 0 | open | |
-| G2.2 | The fault matrix passes on the Pi (rows that apply) | the fault table below, Pi column | open | |
-| G2.3 | Three `compressed-2700` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/compressed-2700 LIVES=3` exit 0 (each life judged at the profile's level, `full`); re-check: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/compressed-2700 --hardware pi4-4gb` exit 0 each | open | layout checks pending until D's `verify_probe` |
+| G2.1 | Selftest passes under the installed service | `tools/pi_lock.sh run E 10 -- ssh pi /opt/epitaph/venv/bin/epitaph selftest --user pi` exit 0 (it relaunches itself as a transient `Delegate=yes` unit for the service user; its clock round trip moves the CPU clock, so stop `epitaph-controller` around it and start it again after, or take the fault row `AGENT=E make pi-faults ROWS=delegated-cgroups`) | open | phase 1 deploy: `install.sh` ran it last, 11/11 ([report](process/reports/1-L.md)); not yet re-run on the phase 2 code |
+| G2.2 | The fault matrix passes on the Pi (rows that apply) | `AGENT=E make pi-faults` exit 0 and its last line reads `PASS: every row that ran passed`; the table `logs/pi/faults-<stamp>.md` has every `pi` and `native` row **PASS** and the `owner` rows listed (the fault table below, Pi column) | open | 2026-10-01 (E, phase 2, this branch): the `native` rows `headless-boot` and `two-agents` PASS on the running service (controller active, 0 restarts, clock 1800 MHz, no stray unit, `throttled=0x0` after). The `pi` rows wait for C's `tools/fault_pi.sh` |
+| G2.3 | Three consecutive `pi4/default` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/default LIVES=3` exits 0 and its last line reads `PASS: 3 life(s) of pi4/default`. Or, from the running service: `make pi-collect PROFILE=pi4/default LIVES=3` exits 0 and `logs/pi/service-<stamp>/summary.md` reads `Consecutive lives: yes`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/default --hardware pi4-4gb` (level `full`, the profile's own) exits 0 for each `<n>` | open | 2026-10-01 (E): `make pi-collect PROFILE=pi4/default LIVES=1` on the service found one finished life, 000004 (before the on-time clock fix 18e5b09 was deployed): every machine check passes, including the new ones (`death_time` 0.6 s after the squeeze, `reload_targets`, `erosion_steps` 2 of 2) except `speed_decline` 0.40 (1.31 → 0.53 tok/s; the limit is < 0.40): its 600 MHz keyframe at end-2:30 came after its last reading and was never applied. 000005 was interrupted by that deploy; 000006 is the first life on the fixed code |
 | G2.4 | `/code-review high` done | integrator's review note | open | |
 | G2.5 | Checkpoint B reply ("good" or the list) | QUESTIONS / CHANGELOG | open | needs Yannick |
-| G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `$PY -m epitaph.verify <n> --level full --json --no-write \| python -c 'import json,sys; print([c for c in json.load(sys.stdin)["checks"] if c["name"]=="speed_monotonic"])'` shows a value ≤ 1.05 for both reloads, from `gen_end` rates | open | |
+| G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `python -c 'import json,sys; print([c for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="speed_monotonic"])' logs/pi/<run>/lives/<n>/verify.json` shows a value ≤ 1.05, from `gen_end` rates | open | life 000004: 0.939 (1.22 → 1.14 tok/s at reload 1, 1.17 → 0.94 at reload 2) |
 
 ## G3: hardening, checkpoint C = acceptance (BUILD_PLAN 8.4, 11)
 
@@ -146,36 +169,44 @@ holder) and writes its evidence under `logs/pi/` (untracked), so the phase repor
 
 ## Fault matrix (BUILD_PLAN 10.4)
 
-Laptop rows run on the fakes in `tests/faults/`; Pi rows run with C's fault scripts (C9) and
-are judged by `verify-life`. `n/a` rows depend on the S3/S3b/S3c results.
+Laptop rows run on the fakes in `tests/faults/test_fake_faults.py` (`make faults`): each
+injects the fault into the real controller on the installation's profile, `pi4/default`, and
+lets verify-life judge the recorded life; `ROWS` in that file maps each 10.4 row to its test.
+Pi rows run through `tools/fault_matrix_pi.sh` (`make pi-faults`; `pi:<row>` below is its row
+name): `pi` rows call C's `tools/fault_pi.sh <row>` (one row per call, a line that starts with
+`PASS` or `FAIL`, exit 0 or 1; exit 2 for a row it does not know; it must not take the Pi lock
+when `EPITAPH_PI_LOCKED=1`, because the driver holds it), `native` rows are the driver's own,
+and `owner` rows need a person or a fresh SD image and are never run by an agent (no power cut
+and no reboot until then). `tests/unit/test_fault_matrix_pi.py` checks that this table, the
+laptop tests and the driver's rows agree.
 
 | Fault | Expected | Laptop (fakes) | Pi | Status |
 |---|---|---|---|---|
-| RAM death (`death_mode = oom`) | `cause=oom` within 10 s; next life after the silence | `tests/faults/test_fake_faults.py::test_oom_death_at_the_squeeze` | death squeeze life + `verify-life` (`cause`, `next_birth`) | laptop pass |
-| Delegated cgroups | every S3b step passes | | `epitaph selftest` under the service | open |
-| Creature network blocked | refused | | outbound connect from the creature cgroup | open |
-| Crash | `cause=crash`; next life | `test_crash_is_recorded_and_fails_verify` | `kill -9 <creature>` | laptop pass |
-| Hang | `cause=hang` after the timeout; cgroup killed | needs B's hang detection (P2) | `kill -STOP <creature>` | open |
-| Slow first token at low CPU share | no false `hang` | P2 | CPU share 0.7, 1000-token prompt | open |
-| Waiting on the SD card | no false `hang` | P2 | `memory.high` probe 60 s | open |
-| Full context (`unbounded`) | `cause=full` | `test_full_context_in_a_small_ctx` | small-ctx test profile | laptop pass |
-| Reload longer than a keyframe gap | `reload_skipped`, current target loaded | needs the controller's skip logic (B8) | cold reload | open |
-| Deadline during a reload | `cause=deadline`, nothing left running | `test_deadline_during_a_reload` | short lifespan on the Pi | laptop pass |
-| Death with a full pacing queue | words flushed at pace, then `death_shown` | needs B5 pacing in the loop | | open |
-| Controller killed | restarted; previous life `interrupted`; no creature left; counter + 1 | needs B6 | `systemctl kill -s KILL epitaph-controller` | open |
-| Controller stops pinging | systemd restarts it | | test hook | open |
-| Power cut | as a controller kill; state intact | | `echo b > /proc/sysrq-trigger` after a fresh image | open |
-| Clean reboot | services active, words within `first_word_after_boot_s` | | `make pi-boot-check` (services); the first `word` after boot from the life's events (A5) | open |
-| Headless boot | display unit skipped by `ExecCondition`; controller up | | `make pi-boot-check`, no screen (G1.3) | open |
-| Display or remote view killed | life continues; redraw from snapshot within 5 s | D3 tests | `systemctl kill epitaph-display`; kill the tunnel | open |
-| Slow subscriber | controller timing unchanged; snapshot after overflow | `tests/unit/test_events.py` (bus overflow) | client reading 1 event/s | open |
-| Two controllers | refuses; points to `epitaph ctl new-life` | `tests/unit/test_state.py` (instance lock) | `epitaph run` while the service runs | open |
-| Two agents on the Pi | queues; stale lock expires | | second `pi_lock.sh run` | open |
-| Wi-Fi only | `ssh pi` works; NTP; a life starts | | unplug cable, reboot | open |
-| Laptop off | Pi keeps internet and time; life continues | | disconnect the laptop | open |
-| Password login over Wi-Fi | refused; accepted over the cable | | S0.12 | open |
-| Hostname persistence | still `epitaph` | | two reboots | open |
-| Exhibition closing | `unseen`: dark, life continues; `pause`: no birth until opening | B9 tests on the fake clock | | open |
+| RAM death (`death_mode = oom`) | `cause=oom` within 10 s; next life after the silence | `test_fake_faults.py::test_oom_death_at_the_squeeze` (and `death_time` on every full life) | `pi:ram-death`; every service life (`make pi-collect`) | laptop pass |
+| Delegated cgroups | every S3b step passes | | `pi:delegated-cgroups` (`epitaph selftest` under the service, G2.1) | open |
+| Creature network blocked | refused | | `pi:creature-network` | open |
+| Crash | `cause=crash`; next life | `test_fake_faults.py::test_crash_is_recorded_and_fails_verify` | `pi:crash` (`kill -9 <creature>`) | laptop pass |
+| Hang | `cause=hang` after the timeout; cgroup killed | `test_fake_faults.py::test_hang_kills_the_creature_and_the_next_life_follows` | `pi:hang` (`kill -STOP <creature>`) | laptop pass |
+| Slow first token at low CPU share | no false `hang` | `test_fake_faults.py::test_slow_first_token_at_low_cpu_share_is_not_a_hang` | `pi:slow-first-token` (CPU share 0.7, 1000-token prompt) | laptop pass |
+| Waiting on the SD card | no false `hang` | `test_fake_faults.py::test_waiting_on_the_sd_card_is_not_a_hang` | `pi:sd-card-wait` (`memory.high` probe 60 s) | laptop pass |
+| Full context (`unbounded`) | `cause=full` | `test_fake_faults.py::test_full_context_in_a_small_ctx` | `pi:full-context` (small-ctx test profile) | laptop pass |
+| Reload longer than a keyframe gap | `reload_skipped`, current target loaded | `test_fake_faults.py::test_reload_longer_than_a_keyframe_gap` | `pi:reload-longer-than-gap` (cold reload) | laptop pass |
+| Deadline during a reload | `cause=deadline`, nothing left running | `test_fake_faults.py::test_deadline_during_a_reload` | `pi:deadline-during-reload` (short lifespan on the Pi) | laptop pass |
+| Death with a full pacing queue | words flushed at pace, then `death_shown` | `test_fake_faults.py::test_death_with_a_full_pacing_queue` | (fakes only, 10.4) | laptop pass |
+| Controller killed | restarted; previous life `interrupted`; no creature left; counter + 1 | `test_fake_faults.py::test_controller_killed_mid_life_is_recovered` | `pi:controller-killed` (`systemctl kill -s KILL epitaph-controller`) | laptop pass |
+| Controller stops pinging | systemd restarts it | `tests/unit/test_controller_resilience.py::test_a_stuck_loop_kills_its_creature_then_loses_its_pings` | `pi:controller-stops-pinging` (test hook) | laptop pass |
+| Power cut | as a controller kill; state intact | | `pi:power-cut` (`echo b > /proc/sysrq-trigger` after a fresh image) | owner |
+| Clean reboot | services active, words within `first_word_after_boot_s` | | `pi:clean-reboot` (`make pi-boot-check`; the first `word` after boot, A5) | owner (no reboot this phase; G1.3 rebooted once) |
+| Headless boot | display unit skipped by `ExecCondition`; controller up | | `pi:headless-boot` (current boot, no reboot; the reboot passed at G1.3) | Pi pass (2026-10-01, current boot) |
+| Display or remote view killed | life continues; redraw from snapshot within 5 s | D3 tests | `pi:display-killed` (`systemctl kill epitaph-display`; kill the tunnel) | open |
+| Slow subscriber | controller timing unchanged; snapshot after overflow | `tests/unit/test_events.py::test_slow_subscriber_never_blocks_and_gets_snapshot` | `pi:slow-subscriber` (client reading 1 event/s) | laptop pass |
+| Two controllers | refuses; points to `epitaph ctl new-life` | `tests/unit/test_state.py::test_single_instance_lock` | `pi:two-controllers` (`epitaph run` while the service runs) | laptop pass |
+| Two agents on the Pi | queues; stale lock expires | `tests/unit/test_pi_tools.py` (the lock in a temporary dir) | `pi:two-agents` (a second `pi_lock.sh run` while the driver holds it) | Pi pass (2026-10-01) |
+| Wi-Fi only | `ssh pi` works; NTP; a life starts | | `pi:wifi-only` (unplug cable, reboot) | owner |
+| Laptop off | Pi keeps internet and time; life continues | | `pi:laptop-off` (disconnect the laptop) | owner |
+| Password login over Wi-Fi | refused; accepted over the cable | | `pi:password-over-wifi` (S0.12) | owner |
+| Hostname persistence | still `epitaph` | | `pi:hostname-persistence` (two reboots) | owner |
+| Exhibition closing | `unseen`: dark, life continues; `pause`: no birth until opening | B9 tests on the fake clock (not built yet) | | open |
 | Low disk | refuses with the space needed | A8 container test | | open |
 
 ---
@@ -210,12 +241,14 @@ are judged by `verify-life`. `n/a` rows depend on the S3/S3b/S3c results.
 
 ## verify-life coverage of 10.3
 
-Which 10.3 rows `verify.py` implements today (phase 1), and at which level. A life is judged by the
+Which 10.3 rows `verify.py` implements today (phase 2), and at which level. A life is judged by the
 hardware overlay it records, else the one its profile's class implies (`pi4/...` → `pi4-4gb`),
 so a Pi life copied to the laptop keeps the Pi's thresholds. Layout rows call
 D's `epitaph.display.layout.verify_probe(cfg)` (on main since phase 0b) and are `pending` only if it cannot load. The
 `rehearsal` level runs the 5.11 metrics plus the recall budget, the sync rule, the
 thought-count rule and `speed_monotonic`; `screen` (stage 1 samples) runs the text metrics only.
+A life cut by a killed controller or a power cut keeps a torn line before the death record
+recovery appends; verify-life reads past it (phase 2 fix; before, it refused the life).
 
 | 10.3 check | Check name(s) in verify.json | Levels | State |
 |---|---|---|---|
@@ -241,6 +274,10 @@ thought-count rule and `speed_monotonic`; `screen` (stage 1 samples) runs the te
 | Specific ≥ 50%; clichés ≤ 1/200 words; non-Latin < 1%; distinct 4-grams ≥ 0.5 | `specific`, `cliches`, `non_latin`, `distinct_4grams` | full, rehearsal, screen | built |
 | Voice hygiene (5.11) | `helpdesk_voice`, `answering_readings`, `thinking_tags` (+ the banned and markup checks) | full, rehearsal, screen | built; lists from `config/lang/<language>.toml` |
 | Persona groups left at death: 0 | `persona_groups_at_death` | full | built |
+| The death when the plan kills it: within `max_kill_delay_s` (10 s) of the squeeze, or of the deadline (10.4 RAM death; not in the 10.3 table) | `death_time` | full | built (phase 2): the old `duration` check let a death up to 60 s late or early pass |
+| Each reload loads its keyframe's step and threads; the last reading is on the last rung (5.2, 5.5; not in the 10.3 table) | `reload_targets` | full | built (phase 2): from the vitals after each reload and the last one; a reload cut by the death is listed, not judged |
+| Every erosion step taken as its own step, in order (5.6, ADR-024; not in the 10.3 table) | `erosion_steps` | full | built (phase 2): one `erosion` per erosion keyframe up to the last reading, with its groups and mechanics; the detail gives each step's lag. `persona_groups_at_death` alone passed two steps merged into one |
+| Non-fatal controller errors (6.3 `error`) | `error_events` | smoke, skeleton, full | built (phase 2): `advisory` when any, never failing (the life survives them by design); listed in `verify.json` |
 
 ---
 
