@@ -4,8 +4,12 @@
 [Unit]
 Description=epitaph controller (a small model lives and dies on this machine)
 Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/BUILD_PLAN.md
-After=network-online.target time-sync.target
-Wants=network-online.target
+# No network: the controller needs none, and the piece must start in a room without one
+# (docs/INSTALLATION.md "Offline"). Wanting network-online.target would hold the start until
+# NetworkManager-wait-online gives up. time-sync.target is ordering only, never wanted: with
+# systemd-timesyncd it is reached as soon as timesyncd has restored the saved clock, synced
+# or not (install.sh fails if systemd-time-wait-sync.service, which would block it, is on).
+After=time-sync.target
 # Restart=always must never give up.
 StartLimitIntervalSec=0
 
