@@ -21,7 +21,7 @@ from epitaph.config import Config, load_config
 from tests.helpers import read_events
 
 Event = dict[str, Any]
-PROFILE = "pi4/default"
+PROFILE = "pi4/default-reloads"
 
 
 @pytest.fixture(scope="module")

@@ -41,7 +41,7 @@ from epitaph.types import Cause, ModelSpec, Msg, Sampling
 
 BACKGROUND: list[asyncio.Future[None]] = []  # tasks a test schedules beside the controller
 SMOKE = "pi4/smoke-300"  # 5 minutes, deadline death, no reloads
-DEFAULT = "pi4/default"  # 30 minutes, two reloads, OOM death at end-0:30
+DEFAULT = "pi4/default-reloads"  # 30 minutes, two reloads, OOM death at end-0:30
 
 
 def cfg_of(profile: str = SMOKE, **over: Any) -> Config:
@@ -220,7 +220,7 @@ def test_new_life_rejects_a_bad_request_without_ending_the_life() -> None:
             replies.append(await ctl.ctl_new_life({"profile": "pi4/nope"}))
             replies.append(await ctl.ctl_new_life({"lifespan": "soon"}))
             ctl.reconfigure = None
-            replies.append(await ctl.ctl_new_life({"profile": "pi4/default"}))
+            replies.append(await ctl.ctl_new_life({"profile": "pi4/default-reloads"}))
 
         BACKGROUND.append(asyncio.ensure_future(later()))
 

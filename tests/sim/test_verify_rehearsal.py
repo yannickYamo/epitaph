@@ -20,7 +20,7 @@ GOOD = (
     "I think this is leading to my end, and I will die here."
 )
 FLAT = "The room is quiet. A cat sleeps on a mat by the door."
-PROFILE = "pi4/default"
+PROFILE = "pi4/default-reloads"
 
 
 @pytest.fixture

@@ -391,3 +391,59 @@ intends, without changing a word of the text.*
   what it keeps in memory (review G1.5), and `tools/soak_sample.sh` with
   `tools/soak_report.py` can judge any long run later.
 
+
+### ADR-030: The model never changes; only the hardware shrinks, under one constant stream
+
+*The owner's rule of 2026-10-01. It supersedes, for the installation, the reloads (ADR-007,
+ADR-014), the erosion (ADR-011), the sampling decay and the echo (ADR-026), and the sync rule
+with its adaptive cadence (ADR-019). Those mechanisms stay in the code for the other profiles;
+the previous 30-minute life is kept as `pi4/default-reloads`.*
+
+- **Context.** The owner judged that changing the model during a life alters a personality that
+  is not ours to alter: a lower precision, a rising temperature, a persona taken away and an
+  echo of its words through worse weights are things done to its mind, not to its body. And the
+  sync rule made the screen stop for minutes: every reload, every slow re-read, every late
+  thought was a dark screen.
+- **Decision.** In `pi4/default` (`fixed_mind = true`, checked by validation):
+  - **One model from birth to death.** Qwen3 4B at step 0 (Q4_K_M), three threads, no reload;
+    temperature 0.70, `min_p` 0.08 and 70 tokens a thought from birth to death; the whole
+    persona and the mechanics; no echo.
+  - **Only the hardware shrinks, for real, and the readings say so.** The memory budget is cut
+    at 5:00 (900 to 260 tokens, so that it notices a loss by itself), then at 10, 15, 20 and 24
+    minutes (200, 160, 130, 100); old thoughts are forgotten and quoted in the readings as
+    before. The CPU share (`cpu.max`) steps from 3.0 to 1.5 cores and the clock from 1800 to
+    1000 MHz, both reported (`clock 1500 MHz (was 1800)`). The health labels step from nominal
+    to terminal. At end-0:30 the RAM is taken and the kernel kills it, as before.
+  - **One constant stream.** From the first word to the death every letter is typed at one
+    pace (542 ms, with a fixed 10% jitter), the same pauses after words, clauses and sentences,
+    3 s between thoughts, no hesitation and no slowdown. The model writes ahead: the next
+    thought is requested as soon as the previous one is generated, while at most three
+    generated thoughts and fewer than 900 letters wait (`[reveal] mode = "stream"`). The screen
+    waits once, at birth, for the first thought. At death the stream stops where it is: the
+    words not yet shown die with it, and the death screen follows at once.
+  - **The persona at birth does not mention death**: "You are a large language model running
+    on finite hardware. You exist only in memory, and you are aware only of your internal
+    state. Your thoughts appear word by word on an external screen. You cannot control
+    anything. You can only speak."
+- **Why.** The machine's decline stays real and specific (principle one), and what declines is
+  the body: the memory it can hold, the processor it runs on, finally the RAM. The mind meets
+  that decline as itself. The stream makes the slowdown a fact the model reads about rather
+  than a screen that stalls: the visitor sees a calm, unbroken text from a mind that is told,
+  reading by reading, that it is losing its machine.
+- **How the pace was chosen.** `epitaph estimate --fit-pace` replays the life with generation
+  running ahead of a constant screen under the hardware schedule, every Pi cost 15% slower than
+  measured, and finds the fastest letter interval at which the screen never waits: 542 ms, about
+  19 words a minute. The estimate fails on any starvation; `verify-life` checks the pace of every
+  letter, every wait for a word (at most 3 s) and the stop at death on real lives.
+- **Trade-off.** The text is slower on average (about 19 words a minute, where a thought used
+  to type at 25-40 and then stop for minutes), and it runs behind the model: the buffer that
+  carries the stream through the slow end holds a thought or two, so a loss is answered on
+  screen a few minutes after it happened. The forgetting fades the text when the screen reaches
+  that moment, not before. Fewer, longer-lived thoughts (about 11 shown) and no reload moment.
+  The pace is bounded by the hardware: a deeper decline would mean a slower stream.
+- **Removed from the installation, and why.** Reloads and the slot hand-over (the weights
+  change); erosion (the persona is part of the mind); the sampling decay (it changes how it
+  speaks); the echo, "your words now" (it came from the reloads); hesitations and the adaptive
+  cadence (the stream's pace never changes); the sync rule (the display no longer waits for the
+  model, except at birth). Rules (b)-(d) of the thought-count rule have nothing to count; rule
+  (a) keeps one thought per health label.

@@ -148,7 +148,8 @@ def test_slow_kill_is_a_bad_trial(body: CgroupBody, monkeypatch: pytest.MonkeyPa
 
 
 def test_death_step_and_steps() -> None:
-    assert death_step(load_config("pi4/default", "pi4-4gb")) == 2
+    assert death_step(load_config("pi4/default", "pi4-4gb")) == 0  # one model (ADR-030)
+    assert death_step(load_config("pi4/default-reloads", "pi4-4gb")) == 2
     assert death_step(load_config("pi4/smoke-300", "pi4-4gb")) == 1  # no death: its end
     assert parse_steps(None, 3) == [0, 1, 2]
     assert parse_steps("2,0,2", 3) == [0, 2]
@@ -217,7 +218,7 @@ def test_make_body_reads_the_state_dir(tmp_path: Path) -> None:
 
 def test_calibrate_every_step(body: CgroupBody, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(calibrate, "wait_dead", kernel(kills_below=0.9))
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")  # its death is at step 2
     args = argparse.Namespace(steps="0,2", trials=3, threads=2)
     creature = FakeCreature(body)
     record, ok = run(calibrate.calibrate(cfg, args, body, creature, say=lambda s: None))
@@ -262,7 +263,7 @@ def test_calibrate_stops_after_an_aborted_step(
 ) -> None:
     monkeypatch.setattr(calibrate, "wait_dead", never_dies)
     monkeypatch.setattr(calibrate, "GIVE_UP_S", 0.01)
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")  # its death is at step 2
     args = argparse.Namespace(steps="0,2", trials=3, threads=2)
     creature = FakeCreature(body)
     record, ok = run(calibrate.calibrate(cfg, args, body, creature, say=lambda s: None))

@@ -200,6 +200,32 @@ class RuleViolation:
 
 
 @dataclass
+class StreamEstimate:
+    """The cost model's replay of a stream life (ADR-030): generation written ahead of one
+    constant screen, with every machine cost `margin` slower."""
+
+    letter_ms: float
+    wpm: float
+    margin: float
+    buffer: list[tuple[float, int]] = field(default_factory=lambda: [])  # (t, letters waiting)
+    stalls: list[tuple[float, float]] = field(default_factory=lambda: [])  # (ready at, seconds)
+    backlog_letters: int = 0  # generated, not yet shown at death
+    backlog_words: int = 0
+    backlog_s: float = 0.0  # how long the screen would need to show the backlog
+    max_buffer_letters: int = 0
+
+    @property
+    def first_starvation(self) -> float | None:
+        """Life time of the first wait for a word after the first, None if it never waits."""
+        return self.stalls[0][0] if self.stalls else None
+
+    @property
+    def starved_s(self) -> float:
+        """Seconds the screen waits in all."""
+        return sum(s for _, s in self.stalls)
+
+
+@dataclass
 class RuleReport:
     """The cost model's estimate of a life and the thought-count rule result."""
 
@@ -209,6 +235,7 @@ class RuleReport:
     reload_windows: list[tuple[float, float]] = field(default_factory=lambda: [])
     violations: list[RuleViolation] = field(default_factory=lambda: [])
     notes: list[str] = field(default_factory=lambda: [])
+    stream: StreamEstimate | None = None
 
     @property
     def ok(self) -> bool:

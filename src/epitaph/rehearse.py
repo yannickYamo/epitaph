@@ -391,6 +391,10 @@ class PiClockBackend:
         self._kill_at: float | None = None  # absolute clock time
         self._timer: asyncio.TimerHandle | None = None
         self._model: ModelSpec | None = None
+        # The CPU share x clock the schedule gives now: generation is charged token by token
+        # at it, so a step of the hardware mid-thought costs what it would on the Pi (a
+        # stream life generates ahead of the screen, through the steps). None: `share`.
+        self.compute_now: Callable[[], float] | None = None
         self.revivals = 0  # laptop server restarts after it quit on its own (harness faults)
         self._rewarm = False
 
@@ -585,16 +589,21 @@ class PiClockBackend:
         self._charge("echo" if echo else "prompt", prompt_n, pp_s, pp, self._cached())
         await self._spend(pp_s)
         n = final.predicted_n if final.predicted_n is not None else len(tokens)
-        per_chunk = (n / tg.value) / max(1, len(tokens))
+        per_token = n / max(1, len(tokens))  # tokens per chunk
         given = 0
+        spent = 0.0
         try:
             for c in tokens:
-                await self._spend(per_chunk)
+                share = self.compute_now() if self.compute_now is not None else self.share
+                tg = self.costs.tg(self.step, self.threads, share)
+                seconds = per_token / tg.value
+                await self._spend(seconds)
+                spent += seconds
                 given += 1
                 yield c
         finally:
             shown = round(n * given / max(1, len(tokens)))
-            self._charge("echo" if echo else "generate", shown, per_chunk * given, tg)
+            self._charge("echo" if echo else "generate", shown, spent, tg)
             self._status.tok_s = tg.value
             self._status.prompt_tok_s = pp.value
         yield Chunk(
@@ -698,6 +707,7 @@ class _Life(Life):
         )
         self.pi = backend
         backend.on_death(self.on_death)
+        backend.compute_now = lambda: self.sch.at(self.lived()).compute
 
     async def _load(self, quant: str, threads: int) -> None:
         charging, self.pi.charging = self.pi.charging, False
@@ -765,6 +775,9 @@ def _make_inner(
             seed=seed,
             ctx=cfg.ctx,
             reload_handover=settings.reload_handover,
+            # the server's --cache-reuse, as the simulator's fake has it (the fake's own
+            # default of 256 tokens re-read every kept turn after each trim)
+            cache_reuse_min=int(cfg.get("backend.cache_reuse", 32)) or 32,
             handover_s=0.0,  # the fake runs on its own clock; PiClockBackend charges the Pi's
         )
     return LlamaServerBackend(settings)
@@ -834,9 +847,10 @@ async def run_life(
                 "death", cause=life.dead, lived_s=round(clock.elapsed(), 1), model=life.model.name
             )
     backend.arm_death(None)
+    stream = await life.end_stream()  # a stream life stops where it is (ADR-030)
     words = sum(1 for e in out.events if e["type"] == "word")
     last = next((e["text"] for e in reversed(out.events) if e["type"] == "thought_end"), "")
-    life.emit("death_shown", last_line=last, words_total=words)
+    life.emit("death_shown", last_line=last, words_total=words, **stream)
     silence = float(cfg.get("life.silence_seconds", 90))
     life.emit("silence", seconds=silence, style=str(cfg.get("display.silence_style", "dark")))
     out.charges = backend.charges
@@ -954,6 +968,8 @@ async def screen_moment(
     out = RehearsedLife()
     counter = TokenCounter(worker, inner, on_lost=backend.revive)
     life = _Life(cfg, clock, backend, counter, out.events.append, seed=seed)
+    # A screen samples single thoughts, each typed before the next: no stream (ADR-030).
+    life.screen = life.pacer.screen = None
     wall = time.monotonic()
     sch = life.sch
     k0 = sch.at(0)
@@ -1141,11 +1157,11 @@ def parse_set(items: Sequence[str]) -> dict[str, Any]:
     return out
 
 
-def _config(args: argparse.Namespace, persona: str, model: str, profile: str) -> Config:
-    overrides = deep_merge(
-        parse_set(args.set or []),
-        {"prompt": {"persona_active": persona}, "life": {"models": [model]}},
-    )
+def _config(args: argparse.Namespace, persona: str | None, model: str, profile: str) -> Config:
+    over: dict[str, Any] = {"life": {"models": [model]}}
+    if persona is not None:
+        over["prompt"] = {"persona_active": persona}
+    overrides = deep_merge(parse_set(args.set or []), over)
     lifespan = parse_duration(args.lifespan) if args.lifespan else None
     cfg = load_config(profile, args.hardware, lifespan, overrides)
     if getattr(args, "ladder", None):
@@ -1334,9 +1350,11 @@ def screen_markdown(
 def run_life_stage(args: argparse.Namespace) -> Path:
     """`--stage life`: one full life into its own folder; returns the folder."""
     profile = args.profile or "pi4/default"
-    persona = (args.persona or ["persona"])[0]
     model = args.model[0] if args.model else _default_model(profile, args.hardware)
+    # Without --persona the life runs the configuration's own persona, as the installation.
+    persona = (args.persona or [None])[0]
     cfg = _config(args, persona, model, profile)
+    persona = str(cfg.get("prompt.persona_active", "persona"))
     out_dir = Path(args.out).expanduser() / f"life-{model}-{persona}-{_stamp()}"
     out_dir.mkdir(parents=True, exist_ok=True)
     costs = PiCosts.from_bench(cfg, model, Path(args.bench_dir))
@@ -1457,7 +1475,8 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         "--persona",
         action="append",
         choices=PERSONAS,
-        help="persona (repeat for the screen; default: persona and persona_original)",
+        help="persona (repeat for the screen; default: persona and persona_original for the "
+        "screen, the configuration's persona_active for a life)",
     )
     p.add_argument("--profile", help="default: pi4/default")
     p.add_argument("--hardware", default="pi4-4gb", help="overlay for thresholds and estimates")

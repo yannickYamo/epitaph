@@ -68,7 +68,7 @@ def worker():
 
 
 def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")
     (tmp_path / "pi4-qwen3-1.7b-1-2.json").write_text(
         json.dumps({"step": 1, "threads": 2, "pp_tok_s": 4.0, "tg_tok_s": 2.1, "load_s": 33})
     )
@@ -85,7 +85,7 @@ def test_pi_costs_label_where_each_rate_comes_from(tmp_path: Path) -> None:
 
 
 def test_an_estimated_bench_file_gives_rates_labelled_estimates(tmp_path: Path) -> None:
-    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")
     rec = {"step": 2, "threads": 2, "pp_tok_s": 3.0, "tg_tok_s": 2.5, "estimated": True}
     (tmp_path / "pi4-qwen3-1.7b-2-2.json").write_text(json.dumps(rec))
     costs = PiCosts.from_bench(cfg, "qwen3-1.7b", tmp_path)
@@ -254,7 +254,10 @@ def test_score_thought_per_moment() -> None:
 @pytest.fixture(scope="module")
 def life_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     out = tmp_path_factory.mktemp("voice")
-    rc = main(["--stage", "life", "--backend", "fake", "--model", "qwen3-1.7b", "--out", str(out)])
+    rc = main(
+        ["--stage", "life", "--backend", "fake", "--model", "qwen3-1.7b", "--out", str(out),
+         "--profile", "pi4/default-reloads", "--persona", "persona"]
+    )  # fmt: skip
     assert rc == 0
     (folder,) = [p for p in out.iterdir() if p.is_dir()]
     return folder
@@ -289,7 +292,7 @@ def test_life_events_follow_the_contract(life_dir: Path) -> None:
     # the words generated before the death are still shown (the death flush), then the card
     assert types.index("death") < types.index("death_shown")
     loading = events[0]
-    assert loading["profile"] == "pi4/default" and loading["hardware"] == "pi4-4gb"
+    assert loading["profile"] == "pi4/default-reloads" and loading["hardware"] == "pi4-4gb"
     assert loading["lifespan_s"] == 1800.0
     for e in events:
         assert {"v", "ts", "life", "type", "t"} <= set(e), e
@@ -362,6 +365,7 @@ def test_screen_stage_on_the_fake(tmp_path: Path) -> None:
     rc = main(
         [
             "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--profile", "pi4/default-reloads",
             "--persona", "persona", "--moments", "birth,reload1,erosion_end",
             "--out", str(tmp_path),
         ]
@@ -410,6 +414,7 @@ def test_a_slot_handover_is_charged_instead_of_the_reread(tmp_path: Path) -> Non
     the fresh server reads only what the cut left new, not the whole memory."""
     rc = main(
         ["--stage", "life", "--backend", "fake", "--model", "qwen3-1.7b", "--out", str(tmp_path),
+         "--profile", "pi4/default-reloads", "--persona", "persona",
          "--set", 'backend.reload_handover="slot"']
     )  # fmt: skip
     assert rc == 0
@@ -434,6 +439,7 @@ def test_screen_runs_with_another_last_step(tmp_path: Path) -> None:
     rc = main(
         [
             "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--profile", "pi4/default-reloads",
             "--persona", "persona", "--moments", "reload2", "--thoughts", "1",
             "--ladder", "Q8_0,Q4_K_M,Q3_K_M", "--out", str(tmp_path),
         ]
@@ -449,6 +455,7 @@ def test_bare_mode_raw_continues_the_text_once_the_persona_is_gone(tmp_path: Pat
     rc = main(
         [
             "--stage", "screen", "--backend", "fake", "--model", "qwen3-1.7b",
+            "--profile", "pi4/default-reloads",
             "--persona", "persona", "--moments", "erosion_end", "--thoughts", "1",
             "--set", 'prompt.bare_mode="raw"', "--out", str(tmp_path),
         ]
@@ -483,3 +490,69 @@ def test_a_failed_slot_save_means_no_echo() -> None:
     assert slot_saved({"id_slot": 0, "n_saved": 412})
     assert not slot_saved({"error": "slot save path not set", "status": 501})
     assert not slot_saved({"n_saved": 0}) and not slot_saved(None)
+
+
+# -- a stream life (ADR-030) ----------------------------------------------------------------
+
+
+def test_a_stream_life_rehearses_with_its_own_persona_and_stops_at_death(tmp_path: Path) -> None:
+    """pi4/default on the fake at Pi costs: the configuration's persona, generation written
+    ahead of one constant stream, no starvation, and the backlog reported at death."""
+    rc = main(
+        ["--stage", "life", "--backend", "fake", "--profile", "pi4/default", "--out", str(tmp_path)]
+    )
+    assert rc == 0
+    (folder,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert "persona_original" in folder.name
+    events = [json.loads(x) for x in (folder / "events.jsonl").read_text().splitlines()]
+    shown = next(e for e in events if e["type"] == "death_shown")
+    assert {"backlog_words", "backlog_letters", "starved_s", "max_stall_s"} <= set(shown)
+    assert shown["starved_s"] == 0
+    verdict = json.loads((folder / "verify.json").read_text())
+    status = {c["name"]: c["status"] for c in verdict["checks"]}
+    assert status["stream_pace"] == "pass" and status["stream_starvation"] == "pass"
+    assert "sync_rule" not in status
+
+
+def test_generation_is_charged_at_the_hardware_of_each_token() -> None:
+    """A thought that runs across a CPU step is charged at the old rate, then the new one."""
+    from epitaph.clock import run_virtual
+    from epitaph.config import load_config
+    from epitaph.rehearse import LaptopWorker, PiClockBackend, PiCosts
+
+    cfg = load_config("pi4/default", "pi4-4gb")
+    costs = PiCosts.from_bench(cfg, "qwen3-4b-instruct-2507")
+
+    class Inner:
+        async def start(self, *a: object) -> None: ...
+
+        def status(self) -> object:
+            from epitaph.types import CreatureStatus
+
+            return CreatureStatus(alive=True)
+
+        async def chat(self, *a: object):  # type: ignore[no-untyped-def]
+            from epitaph.types import Chunk
+
+            for _ in range(10):
+                yield Chunk(" word")
+            yield Chunk("", done=True, prompt_n=0, predicted_n=10)
+
+    async def main(clock: VirtualClock) -> float:
+        worker = LaptopWorker()
+        try:
+            b = PiClockBackend(Inner(), worker, clock, costs)  # type: ignore[arg-type]
+            await b.start(cfg.model(), "Q4_K_M", 3)
+            clock.start()
+            full = costs.tg(0, 3, 3.0).value
+            # full speed for the first 5 s, then a third of it
+            b.compute_now = lambda: 3.0 if clock.elapsed() < 5 / full else 1.0
+            async for _ in b.chat([], None, 10):  # type: ignore[arg-type]
+                pass
+            return clock.elapsed() * full
+        finally:
+            worker.close()
+
+    tokens_time = run_virtual(main)
+    # 5 tokens at full speed, then 5 at a third of it: 5 + 15 token-times
+    assert tokens_time == pytest.approx(20, rel=0.05)

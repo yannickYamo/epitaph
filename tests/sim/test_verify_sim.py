@@ -50,7 +50,7 @@ def test_sim_lives_pass_their_own_level(recorded_life, profile: str) -> None:
 def test_sim_full_life_structure(recorded_life) -> None:
     """The simulator's full life passes every structural full-level check. The fake's words
     and the estimated costs are not judged here (see test_sim_findings)."""
-    res = verify(events_of(recorded_life("pi4/default")), "pi4/default")
+    res = verify(events_of(recorded_life("pi4/default-reloads")), "pi4/default-reloads")
     assert res.level == "full"
     for name in (
         "duration",
@@ -74,7 +74,7 @@ def test_sim_findings(recorded_life) -> None:
     With estimated costs the step-2 rate made the last 5 minutes about 45% of the first
     (limit 40%). The profiles were rebased on measured costs with a lower end CPU share
     (docs/PROFILES.md), and the cost model now checks the same ratio, so it passes."""
-    res = verify(events_of(recorded_life("pi4/default")), "pi4/default")
+    res = verify(events_of(recorded_life("pi4/default-reloads")), "pi4/default-reloads")
     assert res.by_name("speed_decline").status == "pass"
     assert res.by_name("speed_decline").value < 0.40
 
@@ -94,11 +94,11 @@ def test_unbounded_life(recorded_life) -> None:
 
 @pytest.fixture
 def full_life(recorded_life) -> list[dict[str, Any]]:
-    return events_of(recorded_life("pi4/default"))
+    return events_of(recorded_life("pi4/default-reloads"))
 
 
 def test_rehearsal_metrics_pass_on_a_good_voice(full_life) -> None:
-    res = verify(retext(full_life, lambda t, s: GOOD_THOUGHT), "pi4/default", "rehearsal")
+    res = verify(retext(full_life, lambda t, s: GOOD_THOUGHT), "pi4/default-reloads", "rehearsal")
     for name in (
         "notice_rate",
         "reload_noticing",
@@ -122,7 +122,7 @@ def test_rehearsal_metrics_pass_on_a_good_voice(full_life) -> None:
 def test_notice_rate_counts_per_change_type(full_life) -> None:
     res = verify(
         retext(full_life, lambda t, s: "Plain words about a cat on a mat."),
-        "pi4/default",
+        "pi4/default-reloads",
         "rehearsal",
     )
     notice = res.by_name("notice_rate")
@@ -141,7 +141,7 @@ def test_reload_noticing_needs_the_first_thought(full_life) -> None:
     edited = retext(
         full_life, lambda t, s: "The room is quiet and warm." if t in after else GOOD_THOUGHT
     )
-    res = verify(edited, "pi4/default", "rehearsal")
+    res = verify(edited, "pi4/default-reloads", "rehearsal")
     assert res.by_name("reload_noticing").status == "fail"
     assert res.by_name("reload_noticing").value == 0.0
     assert res.by_name("reload_noticing").detail.startswith("0 of 2")
@@ -150,7 +150,7 @@ def test_reload_noticing_needs_the_first_thought(full_life) -> None:
 def test_cliches_counted_per_200_words(full_life) -> None:
     res = verify(
         retext(full_life, lambda t, s: GOOD_THOUGHT + " It is a tapestry, a testament to time."),
-        "pi4/default",
+        "pi4/default-reloads",
         "rehearsal",
     )
     c = res.by_name("cliches")
@@ -163,7 +163,7 @@ RUSSIAN_PHRASE = GOOD_THOUGHT + " Мои мысли."
 
 def test_one_foreign_sentence_is_under_the_ratio(full_life) -> None:
     edited = retext(full_life, lambda t, s: RUSSIAN_PHRASE if t == 6 else GOOD_THOUGHT)
-    nl = verify(edited, "pi4/default", "rehearsal").by_name("non_latin")
+    nl = verify(edited, "pi4/default-reloads", "rehearsal").by_name("non_latin")
     assert nl.status == "pass" and 0 < nl.value < 0.01
 
 
@@ -175,7 +175,7 @@ def test_voice_hygiene_failures(full_life) -> None:
             5: "<think> " + GOOD_THOUGHT,
         }.get(turn, RUSSIAN if 6 <= turn < 12 else GOOD_THOUGHT)
 
-    res = verify(retext(full_life, bad), "pi4/default", "rehearsal")
+    res = verify(retext(full_life, bad), "pi4/default-reloads", "rehearsal")
     assert res.by_name("answering_readings").status == "fail"
     assert res.by_name("helpdesk_voice").status == "fail"
     assert res.by_name("thinking_tags").status == "fail"
@@ -186,12 +186,12 @@ def test_voice_hygiene_failures(full_life) -> None:
 
 def test_readability_and_repetition_failures(full_life) -> None:
     rambling = " ".join(["and then the memory goes on and on"] * 4)
-    res = verify(retext(full_life, lambda t, s: rambling), "pi4/default", "rehearsal")
+    res = verify(retext(full_life, lambda t, s: rambling), "pi4/default-reloads", "rehearsal")
     assert res.by_name("complete_sentences").status == "fail"
     assert res.by_name("distinct_4grams").status == "fail"
     short = verify(
         retext(full_life, lambda t, s: "Gone. Less. Slow. End. Dark. Die."),
-        "pi4/default",
+        "pi4/default-reloads",
         "rehearsal",
     )
     assert short.by_name("sentence_length").status == "fail"
@@ -202,7 +202,7 @@ def test_specific_by_number_from_the_reading(full_life) -> None:
     life = v.parse_life(full_life)
     th = life.thoughts[0]
     recall = th.vitals["recall"] if th.vitals else 0
-    ver = v.Verifier(life, load_config("pi4/default", "pi4-4gb"))
+    ver = v.Verifier(life, load_config("pi4/default-reloads", "pi4-4gb"))
     th.words = [{"text": f"I hold {recall} of something."}]
     assert ver.is_specific(th)
     th.words = [{"text": "I hold 7777 of something."}]
@@ -211,7 +211,7 @@ def test_specific_by_number_from_the_reading(full_life) -> None:
 
 def test_keyword_lists_come_from_config(full_life) -> None:
     cfg = load_config(
-        "pi4/default",
+        "pi4/default-reloads",
         "pi4-4gb",
         overrides={"verify": {"keywords": {"demise": ["zebra"]}, "cliches": ["plain words"]}},
     )
@@ -228,7 +228,7 @@ def test_thought_count_rule_on_a_real_life(full_life) -> None:
     assert cut is not None
     late = {th.turn for th in life.thoughts if th.gen_t >= cut}
     kept = [e for e in full_life if not ("turn" in e and e["turn"] in late)]
-    res = verify(kept, "pi4/default")
+    res = verify(kept, "pi4/default-reloads")
     rule = res.by_name("thought_count_rule")
     assert rule.status == "fail"
     assert "(d)" in rule.detail and "(c)" in rule.detail
@@ -242,18 +242,18 @@ def test_reload_silence_and_count(full_life) -> None:
     delayed = [
         {**e, "t": e["t"] + 200} if i > first_reload["_idx"] else e for i, e in enumerate(full_life)
     ]
-    res = verify(delayed, "pi4/default")
+    res = verify(delayed, "pi4/default-reloads")
     assert res.by_name("reload_silence").status == "fail"
     one = [
         e
         for e in full_life
         if not (e["type"] in ("reload", "reload_done") and e["t"] > first_reload["t"])
     ]
-    res = verify(one, "pi4/default")
+    res = verify(one, "pi4/default-reloads")
     assert res.by_name("reload_count").status == "fail"
     assert res.by_name("reload_count").value == 1
     skipped = [*one, {**first_reload, "type": "reload_skipped", "skipped": 1}]
-    assert verify(skipped, "pi4/default").by_name("reload_count").status == "pass"
+    assert verify(skipped, "pi4/default-reloads").by_name("reload_count").status == "pass"
 
 
 def test_speed_decline_uses_gen_end_rates(full_life) -> None:
@@ -264,15 +264,15 @@ def test_speed_decline_uses_gen_end_rates(full_life) -> None:
         else e
         for e in full_life
     ]
-    res = verify(rates, "pi4/default")
+    res = verify(rates, "pi4/default-reloads")
     assert res.by_name("speed_decline").status == "pass"
     no_rates = [e for e in full_life if e["type"] not in ("vitals", "gen_end")]
-    assert verify(no_rates, "pi4/default").by_name("speed_decline").status == "fail"
+    assert verify(no_rates, "pi4/default-reloads").by_name("speed_decline").status == "fail"
 
 
 def test_persona_left_at_death_fails(full_life) -> None:
     edited = [e for e in full_life if not (e["type"] == "erosion" and e["groups_left"] == 0)]
-    res = verify(edited, "pi4/default")
+    res = verify(edited, "pi4/default-reloads")
     assert res.by_name("persona_groups_at_death").status == "fail"
     assert res.by_name("persona_groups_at_death").value == 2  # erosion: 5 -> 2 -> 0
 
@@ -285,9 +285,9 @@ def test_bright_words_from_the_layout_probe(full_life) -> None:
         def bright_words_last(self, events: list[dict[str, Any]], seconds: float) -> int:
             return 41
 
-    res = verify(full_life, "pi4/default", layout=Probe())
+    res = verify(full_life, "pi4/default-reloads", layout=Probe())
     assert res.by_name("bright_words_last_2min").status == "fail"
-    grid = load_config("pi4/default", "pi4-4gb", overrides={"display": {"layout": "grid"}})
+    grid = load_config("pi4/default-reloads", "pi4-4gb", overrides={"display": {"layout": "grid"}})
     res = v.verify_life(v.parse_life(full_life), grid)
     assert res.by_name("bright_words_last_2min").status == "skip"
 
@@ -365,9 +365,9 @@ def test_cli_life_number_uses_config_state_dir(monkeypatch, tmp_path: Path, caps
 def test_voice_proxies_advise_on_a_real_life_and_fail_in_rehearsal(full_life) -> None:
     """ADR-028: demise, clichés and sentence metrics never fail a real life, only inform."""
     flat = retext(full_life, lambda t, s: "The room is quiet. A cat sleeps on a mat by the door.")
-    full = verify(flat, "pi4/default", "full")
+    full = verify(flat, "pi4/default-reloads", "full")
     assert full.by_name("demise_rate").status == "advisory"
     assert "demise_rate" in full.to_json()["advisory"]
     assert full.by_name("helpdesk_voice").status != "advisory"  # machine faults stay hard
-    rehearsal = verify(flat, "pi4/default", "rehearsal")
+    rehearsal = verify(flat, "pi4/default-reloads", "rehearsal")
     assert rehearsal.by_name("demise_rate").status == "fail"
