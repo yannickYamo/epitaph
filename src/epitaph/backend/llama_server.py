@@ -102,6 +102,8 @@ class ServerSettings:
     dry_penalty_last_n: int | None = -1
     load_timeout_s: float = 300.0
     stop_timeout_s: float = 10.0
+    # A slot save or restore (about 0.3 s, spike S4b) that takes longer is given up.
+    slot_timeout_s: float = 30.0
     log_path: str | None = None
     extra_args: tuple[str, ...] = ()
     # How a reload carries the memory: "reread" (the fresh server reads it all again) or
@@ -144,6 +146,7 @@ class ServerSettings:
             ),
             dry_penalty_last_n=_opt_int(cfg.get("sampling.dry_penalty_last_n", -1)),
             load_timeout_s=float(cfg.get("life.load_timeout_s", 300)),
+            slot_timeout_s=float(cfg.get("backend.slot_timeout_s", cls.slot_timeout_s)),
             reload_handover=str(cfg.get("backend.reload_handover", cls.reload_handover)),
             slot_save_path=str(cfg.get("backend.slot_save_path", cls.slot_save_path)),
         )
@@ -443,7 +446,11 @@ class LlamaServerBackend:
     async def _slot_action(self, action: str, name: str) -> dict[str, Any] | None:
         """POST /slots/0?action=save|restore; the JSON reply, or None on any failure."""
         try:
-            r = await self.client().post(f"/slots/0?action={action}", json={"filename": name})
+            r = await self.client().post(
+                f"/slots/0?action={action}",
+                json={"filename": name},
+                timeout=self.s.slot_timeout_s,
+            )
         except httpx.HTTPError as e:
             return {"error": repr(e)}
         try:
@@ -479,6 +486,8 @@ class LlamaServerBackend:
         """Stop the process: SIGTERM (SIGKILL when `hard`), then SIGKILL after `stop_timeout_s`.
 
         A deliberate stop does not fire on_death. Does nothing when no process is running.
+        Never waits forever: a process that outlives the SIGKILL by another `stop_timeout_s`
+        (stuck in the kernel) is logged and left to the cgroup reset.
         """
         proc = self._proc
         if proc is None:
@@ -492,8 +501,13 @@ class LlamaServerBackend:
             except TimeoutError:
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
-                await proc.wait()
+                try:
+                    await asyncio.wait_for(proc.wait(), self.s.stop_timeout_s)
+                except TimeoutError:
+                    _log.error("llama-server pid %d did not exit after SIGKILL", proc.pid)
         if self._watcher is not None:
+            if proc.returncode is None:
+                self._watcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._watcher
         self._status = _status_from_rc(proc.pid, proc.returncode)
