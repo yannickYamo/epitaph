@@ -9,6 +9,10 @@ service user run exactly that command without a password; deploy/install.sh inst
 The clock is set only when the value changes, and restored to the full clock at every death
 and at every start (the controller unit also resets it in ExecStartPre and ExecStopPost, so a
 crashed controller cannot leave the machine slow).
+
+`sudo` can take seconds (up to the 10 s limit): with `background=True` (the controller's body)
+the helper runs on one worker thread, in order, so the event loop and its watchdog pings never
+wait on it.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from epitaph.types import FULL_MHZ
@@ -64,13 +69,22 @@ def read_max_mhz(cpufreq: Path = CPUFREQ) -> list[int]:
 class CpuClock:
     """Sets the clock cap through the helper, once per change; `reset` restores 1800 MHz."""
 
-    def __init__(self, helper: str = HELPER, runner: Runner | None = None) -> None:
-        """Call `helper` through `runner` (default: sudo_runner; a fake in tests)."""
+    def __init__(
+        self, helper: str = HELPER, runner: Runner | None = None, background: bool = False
+    ) -> None:
+        """Call `helper` through `runner` (default: sudo_runner; a fake in tests).
+
+        With `background`, `set` and `reset` hand the call to one worker thread and return
+        True at once (asked, not yet done); `mhz` follows when the helper has run.
+        """
         self.helper = helper
         self.runner = runner
         self.mhz: int | None = None  # what the helper last set; None = unknown
         self.failures = 0
         self._asked: int | None = None  # the last value asked for, set or not
+        self._pool = (
+            ThreadPoolExecutor(1, thread_name_prefix="epitaph-clock") if background else None
+        )
 
     def set(self, mhz: float) -> bool:
         """Cap the clock at `mhz` (clamped to 600-1800) unless it is already there.
@@ -80,13 +94,25 @@ class CpuClock:
         """
         value = clamp_mhz(mhz)
         if value == self._asked:
-            return value == self.mhz
+            return self._pool is not None or value == self.mhz
         arg = "reset" if value == MAX_MHZ else str(value)
-        return self._run(arg, value)
+        return self._call(arg, value)
 
     def reset(self) -> bool:
         """Restore the full clock, always calling the helper (the state may be stale)."""
-        return self._run("reset", MAX_MHZ)
+        return self._call("reset", MAX_MHZ)
+
+    def wait_idle(self) -> None:
+        """Block until every call handed to the worker thread has run (tests, shutdown)."""
+        if self._pool is not None:
+            self._pool.submit(lambda: None).result()
+
+    def _call(self, arg: str, value: int) -> bool:
+        if self._pool is None:
+            return self._run(arg, value)
+        self._asked = value
+        self._pool.submit(self._run, arg, value)
+        return True
 
     def _run(self, arg: str, value: int) -> bool:
         self._asked = value

@@ -174,8 +174,8 @@ class CgroupBody:
     ) -> None:
         """`root` is the delegated cgroup; nothing is touched until setup().
 
-        `vitals` defaults to a VitalsReader on `sys_paths`. `clock` defaults to a CpuClock on
-        `settings.clock_helper`, or none when that is empty.
+        `vitals` defaults to a VitalsReader on `sys_paths`. `clock` defaults to a background
+        CpuClock on `settings.clock_helper`, or none when that is empty.
         """
         self.root = root
         self.settings = settings
@@ -189,7 +189,8 @@ class CgroupBody:
         self._kill_cause: Cause | None = None
         self._oom_base = 0
         if clock is None and settings.clock_helper:
-            clock = CpuClock(settings.clock_helper)
+            # sudo can take seconds: off the controller's event loop (ping on time).
+            clock = CpuClock(settings.clock_helper, background=True)
         self.clock = clock
 
     # --- setup -------------------------------------------------------------------------
