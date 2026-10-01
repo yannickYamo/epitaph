@@ -230,7 +230,11 @@ print(json.dumps({'out': c((h, int(p))), 'lo': c(srv.getsockname()),
   ev "outside (ssh session):      $outside"
   out="$(printf '%s' "$inside" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out"))' 2>/dev/null || echo "?")"
   lo="$(printf '%s' "$inside" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("lo"))' 2>/dev/null || echo "?")"
-  [ "$out" != connected ] && [ "$out" != "?" ] || ok=0
+  outside_out="$(printf '%s' "$outside" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out"))' 2>/dev/null || echo "?")"
+  # Blocked means refused by the rule, not "unreachable": a missing route, a DNS failure or a
+  # timeout would look the same from inside, so the same probe must connect from outside.
+  [ "$out" = ConnectionRefusedError ] || ok=0
+  [ "$outside_out" = connected ] || { ev "outside could not connect ($outside_out): the probe proves nothing"; ok=0; }
   [ "$lo" = connected ] || ok=0
   if [ "$ok" = 1 ]; then
     say "PASS netblock: rule on cgroup id $ino; creature -> $PROBE_TARGET $out, -> 127.0.0.1 $lo"
