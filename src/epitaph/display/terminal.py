@@ -5,7 +5,8 @@ It draws the flow layout into a cell buffer and writes only the cells that chang
 the last frame, so typing a letter costs a few bytes. Letters appear with each word's
 `char_ms`, the pause after a word with `pause_after_ms`; the block cursor is solid while
 typing, blinks in pauses, dims during a reload and is gone at death. Forgotten words fade
-through grey (24-bit colour, or the 256-colour grey ramp when the terminal lacks it).
+through grey (24-bit colour, or the 256-colour grey ramp when the terminal lacks it), then
+leave the screen; cards are typed letter by letter.
 """
 
 from __future__ import annotations
@@ -101,6 +102,7 @@ class TerminalDriver:
         self.alt_screen = alt_screen
         self.closed = False
         self._prev: dict[tuple[int, int], Cell] = {}
+        self._clear = True  # the next frame clears the screen and redraws every cell
         self._size: tuple[int, int] = (0, 0)
         self._opened = False
         self.last_frame: Frame | None = None
@@ -111,7 +113,7 @@ class TerminalDriver:
     def handle(self, event: dict[str, Any]) -> None:
         """Apply `event` to the view at the driver's clock; a snapshot forces a full redraw."""
         if event.get("type") == "snapshot":
-            self._prev = {}  # redraw everything from the snapshot
+            self._clear = True  # redraw everything from the snapshot
         self.view.handle(event, self.clock())
 
     def open(self) -> None:
@@ -189,12 +191,13 @@ class TerminalDriver:
                 out[(0, 1 + k)] = (ch, th.status)
         if frame.card is not None:
             lines = frame.card[1]
+            shown = frame.card_shown or [len(x) for x in lines]
             r0 = max(top, (rows - len(lines) * 2) // 2)
             for n, line in enumerate(lines):
                 line = line[: cols - 2]
                 c0 = max(1, (cols - len(line)) // 2)
-                colour = th.card if n == 0 else th.status
-                for k, ch in enumerate(line):
+                colour = th.card if n == 0 else th.forgotten
+                for k, ch in enumerate(line[: shown[n]]):
                     out[(r0 + 2 * n, c0 + k)] = (ch, colour)
             return out
         for s in frame.spans:
@@ -215,8 +218,10 @@ class TerminalDriver:
         self.last_cells = cells
         bg = self.theme.bg
         buf: list[str] = []
-        if size != self._size or not self._prev:
+        if size != self._size or self._clear:
+            # not on every empty frame: a dark silence would clear the screen 30 times a second
             self._size = size
+            self._clear = False
             buf.append(sgr(self.theme.live, bg, self.color) + f"{CSI}2J")
             self._prev = {}
         changed = [

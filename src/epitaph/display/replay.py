@@ -198,6 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--size", help="window size WxH (screen driver)")
     p.add_argument("--fullscreen", action="store_true")
     p.add_argument("--hardware")
+    p.add_argument("--theme", help="plain or segment16 (default: the [display] config)")
     return p
 
 
@@ -256,7 +257,7 @@ async def _run(args: argparse.Namespace, events: list[Event], from_s: float) -> 
             await feeder
         else:
             cfg = display_config(args.hardware)
-            opts: dict[str, Any] = {}
+            opts: dict[str, Any] = {"theme": args.theme} if args.theme else {}
             if args.driver == "screen":
                 opts.update(size=parse_size(args.size), fullscreen=args.fullscreen)
             driver = make_driver(args.driver, cfg, **opts)
@@ -265,3 +266,7 @@ async def _run(args: argparse.Namespace, events: list[Event], from_s: float) -> 
         feeder.cancel()
         if bus is not None:
             await bus.stop()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
