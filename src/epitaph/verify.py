@@ -6,8 +6,8 @@ typed), and runs the checks of the 10.3 table for the requested level plus the r
 metrics of 5.11. The result goes to `verify.json` next to the events.
 
 Levels:
-  smoke      plumbing: duration, cause, recall budget, nothing banned shown, sync rule, death
-             display, next birth
+  smoke      plumbing: duration, cause, words shown, recall budget, nothing banned shown, sync
+             rule, death display, next birth
   skeleton   smoke + empty thoughts, typing speed, whole words (layout)
   full       skeleton + the thought-count rule, reloads, the rehearsal metrics, speed decline,
              speed never rising across a reload, bright words (layout), persona groups at
@@ -902,6 +902,7 @@ class Verifier:
         plan: list[tuple[bool, Callable[[], list[Check]]]] = [
             (basic, self.check_duration),
             (basic, self.check_cause),
+            (basic, self.check_words_shown),
             (basic or lived, self.check_recall_budget),
             (True, self.check_banned_shown),
             (level != "screen", self.check_sync_rule),
@@ -1013,10 +1014,28 @@ class Verifier:
         want = self.expected_cause(self.level)
         return [Check("cause", _pf(self.cause == want), self.cause, want)]
 
+    def check_words_shown(self) -> list[Check]:
+        """At least one word reached the screen.
+
+        A life that showed nothing passes every other smoke check (no thought breaks the sync
+        rule or shows a banned phrase), so the plumbing check would prove nothing.
+        """
+        words = sum(th.n_words for th in self.life.thoughts)
+        return [
+            Check(
+                "words_shown",
+                _pf(words > 0),
+                words,
+                1,
+                f"{len(self.life.thoughts)} thoughts" if words else "no word was shown",
+            )
+        ]
+
     def check_recall_budget(self) -> list[Check]:
         """Memory in use never exceeded the recall budget by more than `recall_tolerance` (10.3).
 
-        Judged at the worst vitals sample; skipped when no sample reports `recall_used`.
+        Judged at the worst vitals sample. A controller life (smoke, skeleton, full) must
+        report `recall_used` in its vitals (6.3), so none fails it; other levels skip.
         """
         tol = 1 + float(self.th["recall_tolerance"])
         worst: tuple[float, Event] | None = None
@@ -1028,7 +1047,16 @@ class Verifier:
             if worst is None or ratio > worst[0]:
                 worst = (ratio, e)
         if worst is None:
-            return [Check("recall_budget", "skip", detail="no vitals with recall_used")]
+            controller = self.level in ("smoke", "skeleton", "full")
+            return [
+                Check(
+                    "recall_budget",
+                    "fail" if controller else "skip",
+                    None,
+                    _r(tol),
+                    "no vitals with recall_used",
+                )
+            ]
         ratio, e = worst
         return [
             Check(
@@ -1803,13 +1831,35 @@ def _label(base: Path, roots: Sequence[Path]) -> str:
     return here.name
 
 
+def hardware_for_profile(profile: str | None) -> str | None:
+    """The hardware overlay a class profile implies, when its class has exactly one overlay.
+
+    `pi4/skeleton-1200` gives `pi4-4gb`; `pi5/...` gives None (two overlays), as does a
+    profile without a class. A Pi life copied to the laptop is then judged by the Pi's
+    thresholds, not by the laptop's own overlay.
+    """
+    if not profile or "/" not in profile:
+        return None
+    cls = profile.split("/", 1)[0]
+    found: list[str] = []
+    for path in sorted((CONFIG_DIR / "hardware").glob("*.toml")):
+        with path.open("rb") as f:
+            if tomllib.load(f).get("class") == cls:
+                found.append(path.stem)
+    return found[0] if len(found) == 1 else None
+
+
 def _config_for(
     life: Life, profile: str | None, hardware: str | None, lifespan_s: float | None
 ) -> Config:
-    """The config a life is judged by: the given values, else those the life recorded."""
+    """The config a life is judged by: the given values, else those the life recorded.
+
+    Without a recorded hardware overlay, the profile's class picks one
+    (`hardware_for_profile`) before the machine running the check is detected.
+    """
     meta = life_meta(life)
     profile = profile or meta.get("profile")
-    hardware = hardware or meta.get("hardware")
+    hardware = hardware or meta.get("hardware") or hardware_for_profile(profile)
     if lifespan_s is None and meta.get("lifespan_s"):
         lifespan_s = float(meta["lifespan_s"])
     return load_config(profile, hardware, lifespan_s)
@@ -1935,6 +1985,12 @@ def run(args: argparse.Namespace) -> int:
     except (OSError, ValueError, ConfigError) as e:
         print(f"verify-life: {e}", file=sys.stderr)
         return 2
+    if not args.profile and not life_meta(life).get("profile"):
+        print(
+            f"verify-life: the life does not record its profile; judged as {cfg.profile.name} "
+            "(pass --profile)",
+            file=sys.stderr,
+        )
     res = verify_life(
         life,
         cfg,
