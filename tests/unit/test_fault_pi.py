@@ -54,3 +54,12 @@ def test_hang_waits_for_a_busy_creature_not_the_transcript() -> None:
     assert "wait_for 600 busy" in hang and "events.jsonl" not in hang
     busy = text[text.index("busy() {") :]
     assert "usage_usec" in busy[: busy.index("\n}\n")]
+
+
+def test_the_matrix_row_names_are_accepted() -> None:
+    """tools/fault_matrix_pi.sh names rows as BUILD_PLAN 10.4 does; fault_pi.sh maps them."""
+    for row, own in (("creature-network", "netblock"), ("controller-killed", "controller-kill")):
+        out = subprocess.run(
+            ["bash", str(FAULT), row, "--dry-run"], capture_output=True, text=True, check=True
+        )
+        assert f"== fault {own}" in out.stdout

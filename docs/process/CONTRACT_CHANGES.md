@@ -124,3 +124,18 @@ and records the decision in CHANGELOG.md.
 | C-P2-2 | 2 | C | **Config `[body]` (L): `netblock_helper` (default `""`; the `pi4-4gb` overlay sets `/usr/local/sbin/epitaph-netblock`), `netblock_probe = "1.1.1.1:443"`, `thermal_resume_c = 75`, `thermal_poll_s = 15`** (added in this branch next to the existing `creature_network` and `thermal_limit_c`). `make_body` on a Pi now raises when the network cannot be blocked: the controller does not start with an open creature | C8: "no network" is made true for the model process (ADR-005) | |
 | C-P2-3 | 2 | C | **CLI (L): `epitaph calibrate`** is wired (`cli.cmd_calibrate`, out of `PLANNED`). Results: `<state_dir>/calibration/<class>-<model>.json`, copied to `bench/calibration/` in the repository (a subfolder, so the cost model's `bench/<class>-<model>-*.json` glob never reads it). `make_body` loads the reliable steps; the body squeezes to the calibrated level when it is below the creature's anonymous memory, else to `death_fraction` | C7 | |
 | C-P2-4 | 2 | C | **CI (E): shellcheck `tools/fault_pi.sh` and `deploy/sbin/epitaph-netblock`; run `tools/fault_pi.sh all --dry-run`** (no Pi, no lock; `tests/unit/test_fault_pi.py` already runs it) | The fault rows E drives at G2 | |
+
+## Phase 2 (decided by the integrator, 2026-10-01)
+
+- **Event `thermal`** {pause_s, cpu_c}: the controller waits before the next request while the
+  CPU is above `body.thermal_limit_c` (C9); each wait is one event. Displays may ignore it.
+- **`snapshot`** gains optional fields for the display (D7): `words[].fade`, `reload`,
+  `groups_left`, `quant`, `death`, `death_shown_ago`. Old consumers ignore them.
+- **Config**: `[display]` reload_dim_text, birth_card_model, card_char_ms, death_fade,
+  idle_step_seconds; `[body]` netblock_helper, netblock_probe, thermal_resume_c,
+  thermal_poll_s; `[verify]` max_kill_delay_s, advisory_at_full (ADR-028).
+- **Fault rows**: `tools/fault_matrix_pi.sh` names rows as BUILD_PLAN 10.4;
+  `tools/fault_pi.sh` accepts those names (`creature-network`, `controller-killed`) besides
+  its own, prints a PASS/FAIL line, exits 0/1, and 2 for a row it does not know.
+- **The network block fails closed**: on a Pi the controller refuses to start when the rule
+  for the creature cgroup cannot be loaded (ADR-005).

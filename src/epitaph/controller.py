@@ -554,6 +554,19 @@ class Life:
         )
         return k, reading
 
+    async def thermal_pause(self) -> None:
+        """Wait before the next request while the CPU is above `thermal_limit_c` (C9).
+
+        The life clock keeps running (a pause is lost time, like any other silence); each
+        wait is an event, so the supervisor sees progress."""
+        pause_s: Callable[[], float] | None = getattr(self.body, "thermal_pause_s", None)
+        while pause_s is not None and self.dead is None:
+            wait = pause_s()
+            if wait <= 0:
+                return
+            self.emit("thermal", pause_s=round(wait, 1), cpu_c=self.body.vitals().cpu_c)
+            await self.clock.sleep(wait)
+
     def _sampling(self, k: Knobs) -> Sampling:
         return sampling_for(
             self.cfg.section("sampling"), k, self.cur[0], seed=self.seed * 1000 + self.turn
@@ -561,6 +574,8 @@ class Life:
 
     async def thought(self, t: float) -> Spoken:
         """One turn: prepare, speak (generation and typing on the life clock), remember."""
+        await self.thermal_pause()
+        t = self.lived()
         k, _ = self.prepare(t)
         msgs = self.memory.messages()
         sampling = self._sampling(k)
