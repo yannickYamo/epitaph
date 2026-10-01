@@ -284,6 +284,34 @@ def cmd_display(args: argparse.Namespace) -> int:
     return remote.run(args)
 
 
+def cmd_outbox(args: argparse.Namespace) -> int:
+    """`epitaph outbox list|export`: the epitaphs kept on this machine (V1.5, no network).
+
+    `list` prints one line per life (`--json`: one JSON line each); `export` prints the JSON
+    lines of the lives from `--since` on, pending ones by default, for a poster or a person.
+    """
+    from epitaph.afterlife.outbox import Outbox, format_table
+
+    if args.state_dir:
+        state_dir = Path(args.state_dir).expanduser()
+    else:
+        state_dir = load_config(None, args.hardware).state_dir
+    status = args.status or ("pending" if args.action == "export" else "any")
+    records = [
+        r
+        for r in Outbox(state_dir).records()
+        if (status == "any" or r.get("status") == status) and int(r["life"]) >= (args.since or 0)
+    ]
+    if args.action == "export" or args.json:
+        for r in records:
+            print(json.dumps(r, ensure_ascii=False))
+    elif records:
+        print(format_table(records))
+    else:
+        print(f"no epitaphs in {state_dir / 'outbox'}", file=sys.stderr)
+    return 0
+
+
 def _stub(name: str) -> Callable[[argparse.Namespace], int]:
     _, arrives = PLANNED[name]
 
@@ -371,6 +399,19 @@ def build_parser() -> argparse.ArgumentParser:
     remote.add_arguments(p)
     p.set_defaults(fn=cmd_display)
     sub.add_parser("replay", help="replay a recorded life at any speed")
+
+    p = sub.add_parser("outbox", help="the epitaphs kept on this machine for later posts (V1.5)")
+    p.add_argument("action", choices=["list", "export"])
+    p.add_argument(
+        "--status",
+        choices=["pending", "withheld", "posted", "any"],
+        help="only lives with this status (list: any; export: pending)",
+    )
+    p.add_argument("--since", type=int, metavar="LIFE", help="only this life and later ones")
+    p.add_argument("--json", action="store_true", help="list as JSON lines")
+    p.add_argument("--state-dir", help="the state dir (default: from config)")
+    p.add_argument("--hardware", help="hardware overlay, for the default state dir")
+    p.set_defaults(fn=cmd_outbox)
 
     for name, (text, arrives) in PLANNED.items():
         p = sub.add_parser(name, help=f"{text} [planned: {arrives}]")

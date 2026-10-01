@@ -245,6 +245,20 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
 | `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
 
+## `[afterlife]`
+
+The outbox (V1.5 part 1, [AFTERLIFE.md](AFTERLIFE.md)): each life's epitaph, kept on the
+machine's disk for later posts. The blocklist that withholds an epitaph is in the language pack
+(`config/lang/<language>.toml`, `[afterlife] blocklist`).
+
+| Key | Default | What it does |
+|---|---|---|
+| `outbox` | `true` | Keep one record per life in `<state_dir>/outbox/epitaphs.jsonl` at its `death_shown`, and the latest postable epitaph in `<state_dir>/last_epitaph.txt` |
+| `epitaph_mode` | `"last_sentence"` | `last_sentence`: the last complete sentence of the last thought that has one; `last_words`: the final fragment, or the final sentence; `last_thought`: the whole final thought |
+| `max_epitaph_chars` | `240` | Longest epitaph, counted as X counts; a longer one keeps its end after "…" |
+| `max_post_chars` | `280` | X's limit for the epitaph plus `post_suffix`; checked at start |
+| `post_suffix` | `""` | Added after the epitaph in `post_text`; `{life}` is the life number |
+
 ## `[paths]`
 
 | Key | Default | What it does |
