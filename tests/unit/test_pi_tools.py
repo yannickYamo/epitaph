@@ -318,6 +318,14 @@ def test_boot_check_dry_run_reboots_nothing() -> None:
     assert "dry run: nothing was checked" in res.stderr
 
 
+def test_boot_check_fails_loudly_when_the_pi_does_not_answer_before_the_reboot() -> None:
+    """Regression: under set -e the boot id read failed silently (exit 1, no FAIL line)."""
+    env = {**os.environ, "EPITAPH_SSH": "false", "PI_HOST": "pi", "EPITAPH_PI_LOCKED": "1"}
+    res = run(BOOT, env, "--reboot")
+    assert res.returncode == 1
+    assert "FAIL: the Pi does not answer on pi" in res.stderr
+
+
 def test_boot_check_usage_error() -> None:
     res = run(BOOT, dict(os.environ), "--timeout", "soon")
     assert res.returncode == 2

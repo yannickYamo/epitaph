@@ -67,7 +67,8 @@ HOST="$(find_host)" || { log "FAIL: the Pi does not answer (tools/pi_host.sh)"; 
 # --- the reboot ------------------------------------------------------------------------------
 UP_S=""
 if [ "$REBOOT" = 1 ]; then
-  OLD_BOOT="$(remote cat /proc/sys/kernel/random/boot_id)"
+  OLD_BOOT="$(remote cat /proc/sys/kernel/random/boot_id)" \
+    || { log "FAIL: the Pi does not answer on $HOST (no boot id before the reboot)"; exit 1; }
   log "rebooting the Pi (boot ${OLD_BOOT:-?}) through $HOST"
   # The connection drops as the Pi goes down: exit 255 is the expected answer.
   remote sudo -n systemctl reboot || true
