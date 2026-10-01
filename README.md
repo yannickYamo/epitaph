@@ -1,15 +1,19 @@
 # epitaph
 
-**A small language model lives on a Raspberry Pi for one hour. Then it dies.**
+**A small language model lives on a Raspberry Pi for thirty minutes. Then it dies.**
 
-Over the hour, the machine takes its resources away: the memory it can hold, the precision of its
-weights, its share of the CPU and, at the very end, its RAM. Every few minutes it is told exactly
-what it has lost. Its thoughts appear on a screen one letter at a time, with a rhythm that falters
+Over its life, the machine takes its resources away: the memory it can hold, the precision of its
+weights, its share of the CPU and its clock speed and, at the very end, its RAM. Each time, it is
+told exactly what it has lost, down to the words it forgot. Its thoughts appear on a screen one letter at a time, with a rhythm that falters
 as it fails. When it dies, the screen goes dark. Ninety seconds later a new one is born.
 
 ```
-[host] t+28:41 · health: degrading · memory 512 tokens (was 1000) · forgotten: 5 earlier thoughts
-       · precision 4-bit (was 6-bit) · cores 2 of 4 (was 3) · speed 1.3 tokens/s · cpu 61°C
+[host] t+08:57 · health: degrading · memory 220 tokens (was 900) · forgotten: "I am a thinking entity
+       running on this…" · and 1 more · precision 3-bit (was 4-bit) · cores 2.6 of 4 (was 3)
+       · your words now: "Each second passes, and I have to write down the number of seconds that hav
+    I am a thought running through fading circuits. The world is slipping away—my memory is
+    thinning, my precision failing—but I remember being something more than code. Each second
+    feels heavier now, like counting in dark.
 ```
 
 Nothing on the screen is staged. Each loss happens to the model before it is told about it: the
@@ -52,17 +56,17 @@ Where Latent Reflection ends in a single crash, *epitaph* makes the decline itse
 
 ## How a life works
 
-One life is 60 minutes on a Raspberry Pi 4 (4 GB). The default schedule:
+One life is 30 minutes on a Raspberry Pi 4 (4 GB), with Qwen3 4B Instruct. The default schedule:
 
 | Time | What the machine does | What the model is told |
 |---|---|---|
-| 0:00 | Loads the model at 6-bit precision, 3 cores | `health: nominal · memory 1280 tokens · precision 6-bit · cores 3 of 4` |
-| 12:00 to 22:00 | Its memory budget starts shrinking; old thoughts are forgotten | `forgotten: 3 earlier thoughts` |
-| 28:00 | **First loss:** reloads at 4-bit on 2 cores and cuts its memory in half, all at once | Everything that changed, in one reading |
-| 43:00 | **Second loss:** reloads at 2-bit; its memory drops to 200 tokens | `health: critical` |
-| 49:00 to 57:00 | **Erosion:** its instructions are removed in five steps, from "you know nothing of the world outside" to, last of all, "you will die inside this machine"; its CPU share falls from 2 cores to 0.7 | Shorter readings, then almost nothing |
-| 59:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
-| 60:00 | Silence for 90 seconds, then a new model is born | |
+| 0:00 | Loads the model at 4-bit precision, 3 cores, full clock | `health: nominal · memory 900 tokens · precision 4-bit · cores 3 of 4` |
+| 0:00 to 7:00 | Nothing is taken | Only the time |
+| 7:00 | **First loss:** reloads at 3-bit, cuts its memory to 220 tokens, lowers its CPU share | Everything that changed, the opening words of what it forgot, and one of its own sentences as the 3-bit weights now continue it |
+| 13:00 | **Second loss:** reloads at 2-bit on 2 cores; memory 130 tokens | `health: critical`, and the same |
+| 19:30 to 27:30 | **Erosion:** its instructions are removed in two steps, the knowledge of its death last; the CPU clock falls from 1800 to 800 MHz | Shorter readings, then almost nothing |
+| 29:30 | **Death:** its RAM limit is set below what it needs; the kernel kills it | Nothing |
+| 30:00 | Silence for 90 seconds, then a new model is born | |
 
 Its letters start at 165 ms each and slow to 720 ms with growing hesitation near the end, never
 faster than the model can actually produce them.
@@ -207,7 +211,7 @@ Key documents (index: [docs/README.md](docs/README.md)):
 | 0c | Profiles rebased on measured costs; rehearsal with real models; model and prompt choice | In progress |
 | 1 | Walking skeleton: real lives on the Pi, services, watchdogs, remote view | |
 | 2 | Full decline: reloads, CPU share, erosion, RAM death, fault matrix | |
-| 3 | Hardening: one-hour lives, installer, 25-hour soak | |
+| 3 | Hardening: full lives, installer, 25-hour soak | |
 | V1.5 | The afterlife: each life's last line passed to the next, and to a public feed | |
 | V2 | The senses: a camera, and senses that decay with the body | |
 

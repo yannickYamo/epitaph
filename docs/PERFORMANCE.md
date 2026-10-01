@@ -8,8 +8,9 @@ comes from a run on the Pi 4 (or a laptop run charged at Pi 4 costs) recorded in
 
 ## The budget
 
-Everything is measured against one budget: the number of thoughts in a one-hour life, and whether
-each loss is followed by enough of them for the model to notice it.
+Everything is measured against one budget: the number of thoughts in a life, and whether each
+loss is followed by enough of them for the model to notice it. The life was one hour until the
+owner shortened it to thirty minutes (ADR-024); the tables below keep the figures of the time.
 
 | | Value |
 |---|---|
@@ -17,7 +18,8 @@ each loss is followed by enough of them for the model to notice it.
 | Writing speed, 3-4B models | 1.0-1.4 tokens/s |
 | Reading / writing, Qwen3 1.7B (Q8_0) | 6.0 / 1.65-1.84 tokens/s |
 | Reveal speed (owner decision 30) | 165 ms per letter at birth, 720 ms at the end |
-| Thoughts in the default one-hour life, measured costs | about 40 |
+| Thoughts in the one-hour life, Qwen3 1.7B, measured costs | about 40 |
+| Thoughts in the 30-minute life, Qwen3 4B, measured costs | about 12 |
 
 ## What changed, and what it bought
 
@@ -109,6 +111,29 @@ artist's choice, [CHECKPOINT_A.md](CHECKPOINT_A.md).
 |---|---|
 | Power: under-rated supply | Brownout and reboot under three-core load |
 | Official 5.1 V / 3 A supply | No under-voltage or throttling at four cores; 30-minute generation soak peaks at 56.5 °C with no fan |
+
+
+### Fitting thirty minutes
+
+A shorter life does not shorten the fixed costs: a reload is about two minutes of silence on the
+Pi whatever the lifespan, and each erosion step re-reads the whole context (the system prompt
+changes at the front of it), about three minutes late in life.
+
+| Qwen3 4B, 30 minutes | Thoughts | Thought-count rule |
+|---|---|---|
+| The one-hour shape compressed (two reloads, three erosion steps) | 13 | rules (a) and (b) fail at the one-hour minimums |
+| Per-profile minimums (2/1/1/3); erosion in two steps; reloads at 7:00 and 13:00 | **12** | met in the cost model, reload silences 144 s and 156 s |
+| Rehearsed with the real model, three seeds | 11-12 | met on two seeds; the third missed by seconds, fixed by moving erosion to 19:30 |
+
+Two costs the cost model did not see until the rehearsal showed it 1-2 minutes optimistic late in
+life: the echo (a raw completion of 18 tokens after each reload, about 40 s on the Pi) and the
+forgotten-thought quotes (about 15 tokens per reading). Both are charged now.
+
+### The CPU clock
+
+Spike S7: generation and prompt speed are linear in the cpufreq cap within 3% (1800 to 600 MHz,
+4-bit and 2-bit), with no throttling and 40-47 °C. The clock is a second slowdown that needs no
+restart, charged in the cost model as `cpu_share × MHz / 1800`.
 
 ## How the numbers are kept honest
 
