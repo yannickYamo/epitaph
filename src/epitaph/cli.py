@@ -107,6 +107,17 @@ def cmd_ctl(args: argparse.Namespace) -> int:
     return 1 if "error" in reply else 0
 
 
+def cmd_display(args: argparse.Namespace) -> int:
+    """`epitaph display`: draw the controller's events, here or through an SSH tunnel.
+
+    `--screen-present` exits 0 when a screen is connected and 1 when not (the display
+    unit's ExecCondition); see `epitaph.display.remote.run` for the other exit codes.
+    """
+    from epitaph.display import remote
+
+    return remote.run(args)
+
+
 def _stub(name: str) -> Callable[[argparse.Namespace], int]:
     _, arrives = PLANNED[name]
 
@@ -154,7 +165,14 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_arguments(p)
     p.set_defaults(fn=verify.run)
 
-    sub.add_parser("display", help="show a life live: local screen or --connect HOST")
+    from epitaph.display import remote
+
+    p = sub.add_parser(
+        "display",
+        help="show a life live: local screen or --connect HOST; --screen-present for systemd",
+    )
+    remote.add_arguments(p)
+    p.set_defaults(fn=cmd_display)
     sub.add_parser("replay", help="replay a recorded life at any speed")
 
     for name, (text, arrives) in PLANNED.items():
@@ -165,7 +183,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-# Subcommands with their own argument parsers (contract proposals D1, E1).
+# Subcommands with their own argument parsers (contract proposals D1, E1). `display` is
+# also in `build_parser` (same flags, from `remote.add_arguments`); it is passed through so
+# that `epitaph display --screen-present`, the display unit's ExecCondition, does not import
+# the rehearsal and backend modules on every boot.
 PASSTHROUGH = {
     "display": "epitaph.display.remote",
     "replay": "epitaph.display.replay",

@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import functools
 import json
 import socket
 import sys
@@ -29,6 +30,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from epitaph.display import presence
 from epitaph.events import subscribe
 
 Event = dict[str, Any]
@@ -177,60 +179,67 @@ async def reconnecting(
     on_state: Callable[[bool], None] = lambda _up: None,
     backoff: tuple[float, float] = (0.5, 5.0),
     stop: asyncio.Event | None = None,
+    fail_fast: bool = False,
 ) -> AsyncIterator[Event]:
     """Yield bus events until `stop` is set, resubscribing after every drop.
 
     Each subscription starts with a snapshot, which redraws the view. `on_state` is called
     with True on the first event of a subscription and False after each drop; the retry
     delay doubles from `backoff[0]` to `backoff[1]` seconds and resets once events flow.
+
+    With `fail_fast`, a ConnectionError from `connect` before any event has ever arrived
+    is raised (a tunnel that cannot be set up at all: wrong alias, no key); once the view
+    has been connected, every failure is retried. A refused or dropped bus is always
+    retried: the controller may simply not be up yet.
     """
     delay = backoff[0]
+    ever = False
     while stop is None or not stop.is_set():
         got_any = False
         try:
-            host, port = await connect()
-            async for event in subscribe(host, port):
-                if not got_any:
-                    got_any = True
-                    delay = backoff[0]
-                    on_state(True)
-                yield event
-        except (
-            OSError,
-            ConnectionError,
-            asyncio.IncompleteReadError,
-            json.JSONDecodeError,
-            ValueError,
-        ):
-            pass
+            address = await connect()
+        except ConnectionError:
+            if fail_fast and not ever:
+                raise
+            address = None
+        except OSError:
+            address = None
+        if address is not None:
+            try:
+                async for event in subscribe(*address):
+                    if not got_any:
+                        got_any = ever = True
+                        delay = backoff[0]
+                        on_state(True)
+                    yield event
+            except (OSError, asyncio.IncompleteReadError, json.JSONDecodeError, ValueError):
+                pass
         on_state(False)
         await asyncio.sleep(delay)
         delay = min(backoff[1], delay * 2)
 
 
-def screen_present(drm: Path = Path("/sys/class/drm")) -> bool:
-    """True when a display connector reports `connected` (the unit's ExecCondition, D6)."""
-    for status in sorted(drm.glob("card*-*/status")):
-        with contextlib.suppress(OSError):
-            if status.read_text().strip() == "connected":
-                return True
-    return False
+def screen_present(drm: Path | None = None) -> bool:
+    """True when a display connector reports `connected` (see `presence`; no overrides)."""
+    return presence.screen_present(drm)
 
 
-def pick_driver(configured: str, remote: bool, present: Callable[[], bool] = screen_present) -> str:
-    """`auto`: the terminal for a remote view, the screen when one is connected locally."""
+def pick_driver(configured: str, remote: bool, present: Callable[[], bool] | None = None) -> str:
+    """`auto`: the terminal for a remote view, the screen when one is connected locally.
+
+    `present` answers whether a screen is connected (default: `presence.detect`, which
+    honours `EPITAPH_SCREEN` and `[display] screen`).
+    """
     if configured in ("terminal", "screen"):
         return configured
     if remote:
         return "terminal"
-    return "screen" if present() else "terminal"
+    is_present = present or (lambda: presence.detect().present)
+    return "screen" if is_present() else "terminal"
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """The argument parser for `epitaph display`."""
-    p = argparse.ArgumentParser(
-        prog="epitaph display", description=(__doc__ or "").split("\n\n")[0]
-    )
+def add_arguments(p: argparse.ArgumentParser) -> None:
+    """Add the `epitaph display` flags to `p` (the CLI's subparser, or `build_parser`)."""
     p.add_argument(
         "--connect",
         metavar="HOST[,HOST...]",
@@ -239,6 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--driver", choices=["terminal", "screen"], default=None)
     p.add_argument("--port", type=int, default=None, help="bus port on the controller (7707)")
     p.add_argument("--local-port", type=int, default=0, help="local end of the tunnel (free port)")
+    p.add_argument("--ssh", default="ssh", help="ssh program for the tunnel (default: ssh)")
     p.add_argument("--layout", choices=["flow", "grid"])
     p.add_argument("--theme")
     p.add_argument("--size", help="window size WxH (screen driver)")
@@ -246,19 +256,46 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--hardware", help="hardware overlay for the [display] settings")
     p.add_argument("--profile")
-    p.add_argument("--screen-present", action="store_true", help="exit 0 if a screen is connected")
+    p.add_argument(
+        "--screen-present",
+        action="store_true",
+        help="exit 0 if a screen is connected, else 1 (the display unit's ExecCondition)",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The argument parser for `epitaph display`."""
+    p = argparse.ArgumentParser(
+        prog="epitaph display", description=(__doc__ or "").split("\n\n")[0]
+    )
+    add_arguments(p)
     return p
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run `epitaph display` until closed or interrupted.
+def check_screen(hardware: str | None = None, drm: Path | None = None) -> int:
+    """`--screen-present`: print why, and return 0 when a screen is connected, else 1.
 
-    Returns the exit code: 0 on a normal exit, 2 when the ssh tunnel cannot be set up, and
-    for `--screen-present`, 0 if a screen is connected and 1 if not.
+    Never raises: anything unexpected is printed on one line and counts as no screen, so a
+    headless boot skips the display unit instead of logging a traceback.
     """
-    args = build_parser().parse_args(argv)
+    try:
+        found = presence.detect(drm, hardware=hardware)
+    except Exception as e:  # the ExecCondition must answer, whatever happens
+        print(f"screen: no (error: {e})")
+        return 1
+    print(found.line())
+    return 0 if found.present else 1
+
+
+def run(args: argparse.Namespace) -> int:
+    """Run `epitaph display` with parsed `args` until closed or interrupted.
+
+    Returns the exit code: 0 on a normal exit, 2 when the ssh tunnel cannot be set up at
+    the start (after that, drops are retried forever), and for `--screen-present`, 0 if a
+    screen is connected and 1 if not.
+    """
     if args.screen_present:
-        return 0 if screen_present() else 1
+        return check_screen(args.hardware)
     from epitaph.display.app import display_config, drive, make_driver, parse_size
 
     cfg = display_config(args.hardware, args.profile)
@@ -271,7 +308,8 @@ def main(argv: list[str] | None = None) -> int:
     tunnel = None
     if args.connect:
         first, *rest = parse_hosts(args.connect)
-        tunnel = Tunnel(first, port, args.local_port, fallbacks=rest)
+        argv = functools.partial(tunnel_argv, ssh=args.ssh)
+        tunnel = Tunnel(first, port, args.local_port, argv=argv, fallbacks=rest)
 
     async def connect() -> tuple[str, int]:
         return await tunnel.ensure() if tunnel else ("127.0.0.1", port)
@@ -279,18 +317,24 @@ def main(argv: list[str] | None = None) -> int:
     def on_state(up: bool) -> None:
         driver.view.connected = up
 
-    async def run() -> None:
+    async def main_loop() -> None:
         try:
-            await drive(driver, reconnecting(connect, on_state), fps=args.fps, exit_when_done=False)
+            source = reconnecting(connect, on_state, fail_fast=tunnel is not None)
+            await drive(driver, source, fps=args.fps, exit_when_done=False)
         finally:
             if tunnel:
                 await tunnel.close()
 
     try:
-        asyncio.run(run())
+        asyncio.run(main_loop())
     except KeyboardInterrupt:
         pass
     except ConnectionError as e:
         print(f"epitaph display: {e}", file=sys.stderr)
         return 2
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m epitaph.display.remote`: parse `argv` and `run`."""
+    return run(build_parser().parse_args(argv))
