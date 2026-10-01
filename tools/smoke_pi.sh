@@ -23,7 +23,8 @@
 # Exit: 0 every life passes; 1 a life fails, is missing, or the run failed; 2 usage.
 #
 # Environment: PI_HOST (skip the alias probe), EPITAPH_PI_BIN (the epitaph command on the Pi;
-# default: on PATH, else /opt/epitaph/.venv/bin/epitaph, else ~/epitaph/.venv/bin/epitaph),
+# default: on PATH, else /opt/epitaph/venv/bin/epitaph (from deploy/install.sh), else
+# ~/epitaph/.venv/bin/epitaph),
 # EPITAPH_PI_STATE (default /var/lib/epitaph), EPITAPH_PI_TMP (default /var/tmp),
 # EPITAPH_RUN_ARGS (extra `epitaph run` arguments), EPITAPH_PYTHON (laptop Python, default
 # .venv/bin/python), EPITAPH_SSH (default ssh), EPITAPH_POLL_S (default 15).
@@ -122,7 +123,7 @@ FACTS="$(remote_script discover "$STATE" "${EPITAPH_PI_BIN:-}" <<'SH'
 state="$1"; epi="$2"
 if [ -z "$epi" ]; then
   epi="$(command -v epitaph || true)"
-  for c in /opt/epitaph/.venv/bin/epitaph "$HOME/epitaph/.venv/bin/epitaph"; do
+  for c in /opt/epitaph/venv/bin/epitaph "$HOME/epitaph/.venv/bin/epitaph"; do
     [ -n "$epi" ] || { [ -x "$c" ] && epi="$c"; }
   done
 fi
