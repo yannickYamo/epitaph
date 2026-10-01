@@ -121,7 +121,7 @@ dry_penalty_last_n = 256         # DRY window in tokens: 64 misses the last thou
 # `helper` is the root-owned helper that does it for real (the Pi overlay names it); empty:
 # the world is simulated (FakeWorld, about fake_processes processes), as on the laptop.
 enabled = true
-services = ["bluetooth", "cron", "avahi-daemon", "triggerhappy", "rsyslog", "systemd-timesyncd"]
+services = ["bluetooth", "cron", "avahi-daemon"]
 helper = ""
 fake_processes = 24
 fake_ram_mb = 2600               # the RAM a fake body reports taken at the death

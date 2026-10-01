@@ -27,6 +27,12 @@
 #                                           an nftables rule per creature cgroup, loaded by
 #                                           the body at every controller start
 #   /etc/sudoers.d/021_epitaph-netblock     the service user may run exactly that helper
+#   /usr/local/sbin/epitaph-world           the creature's surroundings (the dread plan): stops
+#                                           and starts the allowed services, the Wi-Fi radio,
+#                                           the board's LEDs, and restores them all
+#   /etc/sudoers.d/022_epitaph-world        the service user may run exactly that helper
+#   /etc/epitaph/world-services             the services a life may stop (root, 0644), written
+#                                           from [world] services of the config
 #   /etc/systemd/system/epitaph-{controller,display}.service
 #   /usr/local/sbin/epitaph-display-hotplug the display follows a screen plugged in or out
 #   /etc/systemd/system/epitaph-display-hotplug.{service,timer}
@@ -68,7 +74,7 @@ PREFIX=/opt/epitaph
 VENV="$PREFIX/venv"
 STATE=/var/lib/epitaph
 # helper name -> sudoers drop-in number (deploy/sbin/<name>, deploy/sudoers/<name>)
-HELPERS=(epitaph-clock:020 epitaph-netblock:021)
+HELPERS=(epitaph-clock:020 epitaph-netblock:021 epitaph-world:022)
 UNIT_DIR=/etc/systemd/system
 UNITS=(epitaph-controller.service epitaph-display.service
        epitaph-display-hotplug.service epitaph-display-hotplug.timer)
@@ -165,6 +171,19 @@ for entry in "${HELPERS[@]}"; do
     install_file "$TMP/sudoers-$name" "/etc/sudoers.d/${num}_$name" 0440 root:root || true
   fi
 done
+# The services a life may stop, from the config (default.toml and this machine's overlay); the
+# world helper refuses every other one. Written with the venv's Python: the package reads it.
+WORLD_ALLOW=/etc/epitaph/world-services
+if [ -x "$VENV/bin/python" ] \
+   && (cd / && EPITAPH_CONFIG_DIR="$SRC/config" "$VENV/bin/python" -m epitaph.body.pi_world \
+         allowlist) > "$TMP/world-services"; then
+  install_file "$TMP/world-services" "$WORLD_ALLOW" 0644 root:root || true
+  note "world services: $(grep -v '^#' "$TMP/world-services" | tr '\n' ' ')"
+elif [ "$MODE" = check ]; then
+  would "$WORLD_ALLOW (the venv is not installed yet)"
+else
+  fail "$WORLD_ALLOW: the allowed services could not be read from the config"
+fi
 install_file "$SRC/deploy/sbin/epitaph-display-hotplug" /usr/local/sbin/epitaph-display-hotplug \
   0755 root:root || true
 # (nft --version opens a netlink socket, which qemu-user lacks; dpkg knows the version too)

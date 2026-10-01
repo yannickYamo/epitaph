@@ -40,6 +40,7 @@ from epitaph.body.vitals import (
     machine_facts,
     read_cpu_temp,
 )
+from epitaph.body.world import World
 from epitaph.types import Cause, CreatureStatus, Knobs, MachineFacts, ProgressCounters, Vitals
 
 if TYPE_CHECKING:
@@ -221,6 +222,7 @@ class CgroupBody:
         netblock: NetBlock | None = None,
         death_levels: dict[tuple[str, str], int] | None = None,
         fs: Path = CGROUP_FS,
+        world: World | None = None,
     ) -> None:
         """`root` is the delegated cgroup below the cgroup root `fs`; nothing is touched
         until setup().
@@ -228,7 +230,8 @@ class CgroupBody:
         `vitals` defaults to a VitalsReader on `sys_paths`. `clock` defaults to a background
         CpuClock on `settings.clock_helper`, or none when that is empty; `netblock` to a
         NetBlock on `settings.netblock_helper`, or none. `death_levels` are the calibrated
-        death limits in MiB by (model, quant) (calibrate.load_calibration).
+        death limits in MiB by (model, quant) (calibrate.load_calibration). `world` (the Pi's
+        PiWorld) is restored with the clock, at every reset of the creature cgroup.
         """
         self.root = root
         self.settings = settings
@@ -251,6 +254,7 @@ class CgroupBody:
         self.netblock = netblock
         self.network = "open"  # BLOCKED once the rule is loaded for the creature cgroup
         self.death_levels = dict(death_levels or {})
+        self.world = world
         self.spawned: tuple[str, str] | None = None  # (model, quant) of the last spawn
         self.thermal = ThermalGuard(
             settings.thermal,
@@ -268,6 +272,7 @@ class CgroupBody:
         proc_cgroup: Path = Path("/proc/self/cgroup"),
         netblock: NetBlock | None = None,
         death_levels: dict[tuple[str, str], int] | None = None,
+        world: World | None = None,
     ) -> CgroupBody:
         """The body for the cgroup this process runs in (the controller's service cgroup).
 
@@ -287,7 +292,7 @@ class CgroupBody:
             raise CgroupError(
                 f"{path} is not delegated to this user (run under a Delegate=yes unit)"
             )
-        body = cls(path, settings, netblock=netblock, death_levels=death_levels, fs=fs)
+        body = cls(path, settings, netblock=netblock, death_levels=death_levels, fs=fs, world=world)
         body.setup()
         return body
 
@@ -445,12 +450,13 @@ class CgroupBody:
             self.clock.reset()
 
     def reset_creature_cgroup(self) -> None:
-        """Kill any leftover creature and restore the birth limits and the full clock.
+        """Kill any leftover creature and restore the birth limits, the full clock and the world.
 
         cpu.max unlimited, memory.high and memory.max off, swap 0, memory.oom.group on. The share,
         squeeze and kill cause are forgotten, and the OOM-kill count is taken as the new baseline
         so that an earlier life's kill is not read as this life's death. The clock helper is
-        always called here: a controller that crashed may have left the clock capped.
+        always called here: a controller that crashed may have left the clock capped. So is the
+        world's restore (the services, radio and lights a life took), for the same reason.
         """
         if self.populated():
             self._kill_all()
@@ -467,6 +473,8 @@ class CgroupBody:
         self._kill_cause = None
         self._oom_base = self.oom_kills()
         self.restore_clock(force=True)
+        if self.world is not None:
+            self.world.restore()
 
     def wrap_spawn(self, argv: list[str]) -> list[str]:
         """Argv that joins the creature cgroup and pins to `creature_cpus` (see wrap_argv).
@@ -663,6 +671,15 @@ class PlainBody:
         return self.thermal.pause_s()
 
 
+def make_pi_world(cfg: Config) -> World | None:
+    """The real world when the config names its helper (`[world] helper`, the Pi overlay)."""
+    if not str(cfg.get("world.helper", "") or ""):
+        return None
+    from epitaph.body.pi_world import PiWorld
+
+    return PiWorld.from_config(cfg)
+
+
 def make_body(
     cfg: Config, fs: Path = CGROUP_FS, proc_cgroup: Path = Path("/proc/self/cgroup")
 ) -> Body:
@@ -679,8 +696,9 @@ def make_body(
     if str(cfg.get("body.cgroups", "auto")) == "off":
         return PlainBody(settings)
     levels = load_calibration(calibration_dirs(cfg), cfg.hw_class)
+    world = make_pi_world(cfg)
     try:
-        return CgroupBody.delegated(settings, fs, proc_cgroup, death_levels=levels)
+        return CgroupBody.delegated(settings, fs, proc_cgroup, death_levels=levels, world=world)
     except (CgroupError, OSError) as e:
         if cfg.hw_class in ("pi4", "pi5"):
             raise CgroupError(f"cannot use the creature cgroup: {e}") from e
