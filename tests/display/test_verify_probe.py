@@ -253,7 +253,8 @@ def test_words_forgotten_in_a_reload_fade_over_fade_seconds() -> None:
 
     def kinds(now: float) -> list[tuple[str, str, float]]:
         frame = compose_flow(view, now, 48, 10)
-        assert frame.dim  # the reload dims everything
+        assert not frame.dim  # the cursor dims in a reload; the text stays readable
+        assert frame.cursor is not None and frame.cursor.mode == "dim"
         return [(s.text, s.kind, round(s.fade, 2)) for s in frame.spans]
 
     assert kinds(103.0) == [
@@ -264,7 +265,7 @@ def test_words_forgotten_in_a_reload_fade_over_fade_seconds() -> None:
         ("last", "live", 0.0),
         ("one", "live", 0.0),
     ]
-    assert [k for _, k, _ in kinds(106.0)[:3]] == ["forgotten"] * 3
+    assert [k for _, k, _ in kinds(106.0)] == ["live"] * 3  # the forgotten ones are gone
     assert view.bright_words(103.0) == 3
     # the fade keeps going after the reload ends
     view.handle(ev("reload_done", 104.0, seconds=4.0), 104.0)
@@ -281,6 +282,12 @@ def test_a_snapshot_during_the_reload_keeps_the_fade() -> None:
     snap = view.snapshot(52.0)
     assert snap["mode"] == "reloading"
     assert {w["state"] for w in snap["words"]} == {"fading"}
+    assert [w["fade"] for w in snap["words"]] == [pytest.approx(1 / 3, abs=1e-3)] * 2
+    assert (snap["reload"]["from"], snap["reload"]["to"]) == ("a", "b")
     again = LifeView(ViewSettings(fade_s=6.0))
     again.handle(snap, 0.0)
-    assert again.dimmed() and again.bright_words(0.0) == 0
+    assert again.mode == "reloading" and again.cursor(0.0) == "dim"
+    assert again.bright_words(0.0) == 0
+    # the fade resumes where it was (2 s of 6), not from the start
+    assert compose_flow(again, 0.0, 48, 4).spans[0].fade == pytest.approx(1 / 3, abs=1e-3)
+    assert "reloading a → b" in again.status_line(0.0)

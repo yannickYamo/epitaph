@@ -208,9 +208,12 @@ def test_cursor_modes_through_a_life() -> None:
     v.handle(ev("birth", model="m"), 1)
     assert v.cursor(1) == "on"
     v.handle(ev("reload", **{"from": "Q6_K", "to": "Q4_K_M"}), 2)
-    assert v.cursor(2) == "dim" and v.dimmed()
+    assert v.cursor(2) == "dim" and not v.dimmed()  # the cursor dims; the text stays readable
     f = compose_flow(v, 2.0, 20, 3)
-    assert f.dim and f.cursor is not None and f.cursor.mode == "dim"
+    assert not f.dim and f.cursor is not None and f.cursor.mode == "dim"
+    v.s.reload_dim_text = True
+    assert v.dimmed() and compose_flow(v, 2.0, 20, 3).dim
+    v.s.reload_dim_text = False
     v.handle(ev("reload_done", seconds=50), 3)
     assert v.cursor(3) != "dim" and not v.dimmed() and v.quant == "Q4_K_M"
     v.handle(ev("reload", **{"from": "Q4_K_M", "to": "Q2_K"}), 4)
@@ -235,8 +238,23 @@ def test_forget_fades_then_forgotten() -> None:
     assert v.bright_words(14.0) == 3
     v.handle(ev("forget", items=[{"turn": 1, "all": True}, {"turn": 99, "all": True}]), 12.0)
     assert [w.state_at(19.0, 8) for w in v.words()][:3] == ["forgotten", "forgotten", "fading"]
-    assert [s.kind for s in compose_flow(v, 30.0, 40, 4).spans][:3] == ["forgotten"] * 3
+    assert [v.word_state(w, 19.0)[0] for w in v.words()][:3] == ["forgotten"] * 2 + ["fading"]
+    # once faded, forgotten words are gone; the thought that held them leaves the screen
+    f = compose_flow(v, 30.0, 40, 4)
+    assert [s.kind for s in f.spans] == ["live", "live"]
+    assert f.text_rows() == ["", "", "", "four five"]
     assert next(iter(v.words())).fade_at(30.0, 0) == 1.0
+
+
+def test_a_partly_forgotten_thought_keeps_its_holes() -> None:
+    """Forgotten words leave an empty place, so the words kept never move."""
+    v = LifeView(ViewSettings(fade_s=2))
+    born(v)
+    thought(v, 1, "one two three", 0.0)
+    v.handle(ev("forget", items=[{"turn": 1, "upto_i": 0}]), 1.0)
+    assert compose_flow(v, 2.0, 20, 1).text_rows() == ["one two three"]
+    assert compose_flow(v, 3.0, 20, 1).text_rows() == ["    two three"]
+    assert [s.kind for s in compose_flow(v, 2.0, 20, 1).spans] == ["fading", "live", "live"]
 
 
 def test_inherited_words_keep_their_state() -> None:
@@ -252,13 +270,16 @@ def test_inherited_words_keep_their_state() -> None:
 
 
 def test_birth_card_until_first_word() -> None:
-    v = LifeView(ViewSettings(birth_card_s=4))
+    v = LifeView(ViewSettings(birth_card_s=4, reveal_life_number=True))
     v.handle(ev("birth_loading", life=7, model="llama", quant="Q6_K"), 0)
-    card = compose_flow(v, 0, 20, 3).card
-    assert card is not None and card[0] == "birth" and card[1][0] == "life 7"
-    assert "waking" in card[1]
+    f = compose_flow(v, 0, 20, 3)
+    assert f.card is not None and f.card[0] == "birth" and f.card[1][0] == "life 7"
+    assert f.card[1] == ["life 7", "llama · Q6_K", "waking"]
+    assert f.card_shown == [1, 0, 0]  # typed letter by letter
+    assert compose_flow(v, 30, 20, 3).card_shown == [6, 12, 6]
     v.handle(ev("birth", life=7, model="llama", quant="Q6_K"), 10)
-    assert v.card(11) is not None and v.card(11)[1][-1] == "awake"  # type: ignore[index]
+    card = v.card(11)
+    assert card is not None and card.lines[-1] == "waking" and card.start == 0
     assert v.card(15) is None
     v.handle(word(1, 0, "hi", 0), 12)
     assert v.card(12) is None
@@ -273,10 +294,16 @@ def test_death_card_after_the_last_letter_then_dark() -> None:
     v.handle(ev("death_shown", last_line="last", words_total=1), 1.0)
     v.handle(ev("silence", seconds=90, style="dark"), 1.0)
     assert v.card(2.0) is None and not v.dark(2.0)  # the last word is still typing
-    card = v.card(5.0)
-    assert card is not None and card[1] == ["life 1", "lived 59:30", "its memory was taken"]
-    assert v.card(13.0) is None and v.dark(13.0)
-    f = compose_flow(v, 13.0, 20, 3)
+    # the last word fades for fade_s (8 s) after its last letter (4.0), then the card
+    assert v.card(5.0) is None and compose_flow(v, 5.0, 20, 3).spans[0].kind == "fading"
+    card = v.card(12.0)
+    assert card is not None and list(card.lines) == ["lived 59:30", "its memory was taken"]
+    assert card.start == 12.0 and card.shown(12.0) == [1, 0]
+    # typed at the life's last cadence (1000 ms a letter), held 8 s after its last letter
+    assert card.times[1] - card.times[0] == pytest.approx(1.0)
+    assert v.card(card.end + 7.9) is not None
+    assert v.card(card.end + 8.1) is None and v.dark(card.end + 8.1)
+    f = compose_flow(v, card.end + 8.1, 20, 3)
     assert f.dark and not f.spans
 
 
@@ -286,10 +313,12 @@ def test_silence_styles() -> None:
     thought(v, 1, "words", 0.0)
     v.handle(ev("death", cause="weird"), 1)
     v.handle(ev("silence", seconds=90, style="death_card"), 1)
-    assert v.card(50) is not None and v.card(50)[1][-1] == "weird"  # type: ignore[index]
+    card = v.card(50)
+    assert card is not None and card.lines[-1] == "weird"
     v.s.silence_style = "last_words"
     assert v.card(50) is None and not v.dark(50)
     assert compose_flow(v, 50, 20, 2).text_rows()[-1] == "words"
+    assert compose_flow(v, 50, 20, 2).spans[0].kind == "live"  # the last words never fade
 
 
 def test_exhibit_closed_is_dark() -> None:
@@ -468,12 +497,16 @@ def test_grid_shows_live_words_and_a_gauge() -> None:
     assert gauge_bar(None, 4) == "░░░░"
 
 
-def test_grid_card_is_mapped() -> None:
-    v = LifeView()
-    v.handle(ev("birth_loading", life=3, model="naïve"), 0)
-    f = compose_grid(v, 0, 6, 16, "segment16")
+def test_grid_card_is_mapped_and_wrapped() -> None:
+    v = LifeView(ViewSettings(reveal_life_number=True))
+    v.handle(ev("birth_loading", life=3, model="naïve-model-with-a-long-name", quant="Q4"), 0)
+    f = compose_grid(v, 60, 6, 16, "segment16")
     assert f.card is not None and f.card[1][0] == "LIFE 3"
-    assert f.card[1][1].startswith("NAIVE")
+    assert f.card[1][1:] == ["NAIVE-MODEL-WITH", "-A-LONG-NAME .", "Q4", "WAKING"]
+    assert f.card_shown == [len(x) for x in f.card[1]]
+    early = compose_grid(v, 1.0, 6, 16, "segment16")  # typing: "life 3" done, then the model
+    assert early.card_shown is not None and early.card_shown[0] == 6
+    assert early.card_shown[-1] == 0
 
 
 # -- a whole simulated life ------------------------------------------------------------------------
