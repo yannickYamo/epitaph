@@ -412,3 +412,11 @@ def test_sync_rule_waits_for_the_last_letter() -> None:
     res = run(b)
     assert status(res, "sync_rule") == "fail"
     assert "was typed at" in res.by_name("sync_rule").detail
+
+
+def test_a_long_number_is_a_word_not_a_list_marker() -> None:
+    """Life 000024 at 2-bit typed "118376231."; only "1." or "12)" mark a list."""
+    from epitaph.verify import _MARKUP  # pyright: ignore[reportPrivateUsage]
+
+    assert _MARKUP.search("1.") and _MARKUP.search("12)")
+    assert not _MARKUP.search("118376231.")

@@ -327,6 +327,9 @@ class Life:
         self.dead = cause
         self.death_t = self.lived()
         self.state = "dead"
+        # the words already generated finish on screen within the display limit, whether the
+        # death came mid-generation or while the backlog was still typing
+        self.pacer.flush_within(0.8 * float(self.cfg.get("verify.max_death_display_delay_s", 90)))
         self.emit("death", cause=cause, lived_s=round(self.death_t, 1), model=self.model.name)
         if self.on_dead is not None:
             self.on_dead(cause)

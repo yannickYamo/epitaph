@@ -182,6 +182,7 @@ class Pacer:
         sentence_pause_ms: int = 700,
         hesitation_ms: tuple[int, int] = (400, 1200),
         hesitation_inside_from: float = 0.1,
+        max_letter_ms: float = 1200.0,
     ) -> None:
         """Build the pipeline; the keyword arguments mirror config's [output] and [reveal].
 
@@ -190,12 +191,15 @@ class Pacer:
         trusted once min_rate_sample_s seconds are measured. With adaptive off, letters follow
         the profile's floor alone. Pauses and hesitations are in milliseconds; a hesitation
         may fall inside a word once the knob's hesitation reaches hesitation_inside_from.
+        max_letter_ms caps the adaptive interval: at 2-bit a run of digits comes one token a
+        letter, and following the rate would type it at about a word a minute.
         """
         self.clock = clock
         self.rng = random.Random(seed)
         self.max_regenerations = max_regenerations
         self.adaptive = adaptive
         self.rate_margin = rate_margin
+        self.max_letter_ms = max_letter_ms
         self.rate_window_s = rate_window_s
         self.min_rate_sample_s = min_rate_sample_s
         self.word_gap_ms = word_gap_ms
@@ -247,6 +251,7 @@ class Pacer:
             sentence_pause_ms=int(rev.get("sentence_pause_ms", 2100)),
             hesitation_ms=(int(hes[0]), int(hes[1])),
             hesitation_inside_from=float(rev.get("hesitation_inside_from", 0.1)),
+            max_letter_ms=float(rev.get("max_letter_ms", 1200)),
         )
 
     # -- the generation rate -------------------------------------------------------------
@@ -303,18 +308,21 @@ class Pacer:
         """At death: the words still queued finish typing within `seconds` from now. Their
         rhythm keeps its shape, only faster when it would not fit (BUILD_PLAN 5.7 step 8;
         verify's max_death_display_delay_s)."""
-        self._flush_by = self.clock.elapsed() + max(0.0, seconds)
+        by = self.clock.elapsed() + max(0.0, seconds)
+        self._flush_by = by if self._flush_by is None else min(self._flush_by, by)
 
     def _fit(self, tw: TimedWord) -> TimedWord:
         """Scale a word's cadence so it and the words after it end by the flush deadline."""
         if self._flush_by is None:
             return tw
         own = sum(tw.char_ms) + tw.pause_after_ms + tw.hesitate_before_ms
-        need_ms = own * (1 + len(self._queue))  # this word as a measure for those after it
+        # an equal share of what is left for this word and each word after it, so the last
+        # one ends by the deadline whatever their lengths
         left_ms = (self._flush_by - self.clock.elapsed()) * 1000
-        if need_ms <= left_ms or need_ms <= 0:
+        share = max(left_ms, 0.0) / (1 + len(self._queue))
+        if own <= share or own <= 0:
             return tw
-        k = max(left_ms, 0.0) / need_ms
+        k = share / own
         return replace(
             tw,
             char_ms=tuple(round(c * k) for c in tw.char_ms),
@@ -425,7 +433,7 @@ class Pacer:
         r = self.rate() if self.adaptive else None
         if r is None or r <= 0:
             return floor
-        return max(floor, 1000.0 / (self.rate_margin * r))
+        return max(floor, min(1000.0 / (self.rate_margin * r), self.max_letter_ms))
 
     def cadence(self, word: Word, knobs: Knobs) -> TimedWord:
         """Letter timings for one word: one entry per character of its text."""
