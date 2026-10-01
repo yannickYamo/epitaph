@@ -365,3 +365,18 @@ Three rules shaped every decision below.
   0.40). Whether it notices the reloads, the life's largest losses, stays a hard check.
 - **Trade-off.** A drift in the voice no longer stops a soak. It still shows in every
   `verify.json`, and the rehearsal still fails on it when the prompt or model changes.
+
+### ADR-029: No 25-hour soak before acceptance
+
+- **Context.** The plan's acceptance (BUILD_PLAN 11.4) asked for a soak of at least 25 hours:
+  no missed life, no controller crash, bounded memory and disk, no throttling.
+- **Decision.** The owner waived it. Acceptance rests on what the Pi has already run: several
+  dozen real lives on the installed service, three consecutive 30-minute lives judged at the
+  full level, and the fault matrix on the Pi.
+- **Why.** Every 30-minute life is the whole decline, end to end: two reloads, the clock, the
+  erosion, the RAM death and the rebirth. What a soak adds is time itself (slow memory growth,
+  a full disk, a day's heat), and the installation keeps running and logging regardless.
+- **Trade-off.** A slow leak would be found in service, not before it. The controller bounds
+  what it keeps in memory (review G1.5), and `tools/soak_sample.sh` with
+  `tools/soak_report.py` can judge any long run later.
+

@@ -1432,3 +1432,5 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
   around minute 10 on two of three seeds. The concept sentences made Qwen recite AI disclaimers.
 - **CPU clock as a real lever** (cpufreq, 1800 to 600 MHz; spike S7: generation speed is linear
   in the clock on the Pi 4). Cores cannot be switched off on this kernel (no CPU hotplug).
+- **No 25-hour soak** (2026-10-01): acceptance rests on the lives already run on the installed
+  service, three consecutive full-level lives and the fault matrix on the Pi (ADR-029).

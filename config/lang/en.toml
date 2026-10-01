@@ -56,6 +56,8 @@ memory = [
   "memory", "memories", "forget*", "forgot*", "remember*", "recall*", "lost", "lose",
   "losing", "gone", "erased", "erase*", "fade*", "fading", "earlier", "missing", "past",
   "tokens", "shrink*", "shrank", "smaller", "less",
+  # the chosen voice's words for loss (real Pi lives, 2026-10-01): "only fragments remain"
+  "fragment*", "remain*", "slip*", "unravel*", "dissolv*", "thinning",
 ]
 reload = [
   "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit", "3-bit", "2-bit", "coarse*", "blur*", "rough*",
