@@ -423,12 +423,12 @@ model rule (ADR-030) and the dynamic stream are unchanged.
 | 21:00 | | clock 1200 MHz | |
 | 22:00 | IV. darkness (terminal) | 2.0 cores | |
 | 22:50 | | screen 50% | |
-| 23:40, 24:30 | | 1.5 cores; clock 1000 MHz | |
+| 23:40, 24:30 | | 1.7 cores; clock 1000 MHz | |
 | 25:20 | | memory 150 | |
-| 26:10 | | 1.2 cores (the floor) | |
+| 26:10 | | 1.5 cores (the floor) | |
 | 27:00 | | screen 25% | |
 | 27:50 | | memory 100 (its last thought) | |
-| end-0:50 | | clock 800 MHz (the floor) | |
+| end-0:50 | | clock 900 MHz (the floor) | |
 | end-0:30 | death | the RAM | `ram <MB> MB taken`, on screen at once |
 
 A keyframe's `world` list is performed once at its moment; `[world] services` is the allowed
@@ -436,23 +436,36 @@ list. Readings name a loss only when it was performed; the health labels are nev
 mark the movements for rule (a), `between_health = 2`), and neither is the precision of a model
 that cannot change. A reading after birth is about 20 tokens (`estimate.reading_tokens.quiet`).
 
-**The fit.** With the shorter readings and the deeper end (compute at the end 0.53 cores'
-worth against 3.0 at birth), `epitaph estimate --fit-pace` finds a faster birth than before:
+**The fit.** A first fit (220 ms a letter at birth, gamma 0.5, a 10-minute lead, floors of 1.2
+cores and 800 MHz, every cost 15% slower) passed the estimate but starved on the real model: three
+of six rehearsed lives waited 33 s, 75 s and 107 s for words in the last minutes. The 4B fills
+its 70 tokens (94% in the rehearsal, against the assumed 85%), and the rehearsed generation ran
+behind the estimate's. A stream replay now assumes 95% (`estimate.stream_fill`), every cost 30%
+slower (`estimate.stream_margin`), and the floors are 1.5 cores and 900 MHz (compute at the end
+0.75 cores' worth against 3.0 at birth).
+
+Starvation is also not monotonic in the pace: with the buffer bounded at two thoughts, a slower
+screen can hold the writer back long enough to starve where a faster one did not (at a 30%
+margin, 271-280 ms passed, 283-307 starved, 310 passed again). `--fit-pace` now keeps a pace only
+when it and the six paces 4 ms apart just slower than it never starve, with the margin and with
+half as much again. Such a pace leaves about a thought unshown at the death at the measured
+costs, so the backlog allowed is 40 words:
 
 ```
 $ epitaph estimate --profile pi4/default --hardware pi4-4gb --fit-pace
-fastest curve that never starves: stream_letter_ms = 220, stream_gamma = 0.5, stream_lead_s = 600 (6 words unshown at death at the measured costs)
-profile pi4/default: 14 thoughts in 30 min -> PASS
-  note: speed last 5 min / first 5 min 0.22 (limit < 0.40): 1.26 -> 0.28 tokens/s
-  note: stream 220 -> 522 ms/letter, 37.0 / 21.2 / 15.6 words/min at birth / middle / end (gamma 0.5, lead 600 s); costs 15% slower: never starves; letters waiting every 5 min: 0, 183, 169, 226, 226, 164 (max 287); backlog at death 0 words (0 s of typing)
-  note: 14 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
+fastest curve that never starves: stream_letter_ms = 255, stream_gamma = 0.75, stream_lead_s = 600 (35 words unshown at death at the measured costs)
+profile pi4/default: 10 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.28 (limit < 0.40): 1.26 -> 0.35 tokens/s
+  note: stream 255 -> 721 ms/letter, 33.8 / 15.8 / 11.9 words/min at birth / middle / end (gamma 0.75, lead 600 s); costs 30% slower: never starves; letters waiting every 5 min: 0, 179, 89, 273, 202, 212 (max 343); backlog at death 26 words (127 s of typing)
+  note: 10 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
 ```
 
-| Life time | 0:00 | 10:00 | 15:00 | 18:00 | 21:00 to death |
-|---|---|---|---|---|---|
-| ms a letter | 220 | 242 | 399 | 467 | 522 |
+| Life time | 0:00 | 8:00 | 12:00 | 15:00 | 18:00 | 21:00 to death |
+|---|---|---|---|---|---|---|
+| ms a letter | 255 | 292 | 388 | 566 | 666 | 721 |
 
-The estimate's thoughts end on screen at 3.7, 4.9, 6.1 (I), 7.4, 8.7, 10.0, 11.5, 13.2 (II),
-15.2, 17.6, 20.3 (III), 23.1, 26.0, 28.9 minutes (IV): about three shown thoughts in each
-movement. The text runs a thought or so behind the machine; each reading is shown right before
-the thought that answers it, so a loss always appears before its answer.
+At the measured costs the thoughts end on screen at 3.7, 5.2, 6.6 (I), 8.2, 9.8, 11.7 (II),
+14.1, 17.5, 21.4 (III) and 25.5 minutes (IV), with a thought cut at the death: three shown in
+each of the first three movements, one or two in the last. The text runs a thought or so behind
+the machine; each reading is shown right before the thought that answers it, so a loss always
+appears before its answer.

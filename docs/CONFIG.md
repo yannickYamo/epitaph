@@ -94,8 +94,8 @@ the smallest changes a reading reports.
 | `comma_pause_ms` | `750` | Pause after a comma or similar |
 | `sentence_pause_ms` | `2100` | Pause after a sentence |
 | `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
-| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 220, fitted with `epitaph estimate --fit-pace`) |
-| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.5) |
+| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 255, fitted with `epitaph estimate --fit-pace`) |
+| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.75) |
 | `stream_lead_s` | `0` | `stream` mode: how far ahead the curve looks at the hardware, since the text on screen runs behind the model (`pi4/default`: 600) |
 | `stream_max_slowdown_per_min` | `0.15` | `stream` mode: the pace slows by at most this share a minute, so a hardware step is a gentle slope; it never speeds up again |
 | `stream_max_letter_ms` | `2000` | `stream` mode: the slowest the curve may go |
@@ -276,6 +276,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | Key | Default | What it does |
 |---|---|---|
 | `fill` | `0.85` | Share of `max_tokens` a thought actually uses |
+| `stream_fill` | `0.95` | The same in a `stream` replay: the 4B fills its thoughts (0.94 in the rehearsed lives of ADR-031) |
 | `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 20 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on |
 | `system_tokens_per_group` | `30` | Size of one persona group |
 | `mechanics_tokens` | `70` | Size of the mechanics |
@@ -283,8 +284,8 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `letters_per_word` | `4.7` | Letters per word |
 | `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
 | `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
-| `stream_max_backlog_words` | `8` | `epitaph estimate --fit-pace`: a curve may leave at most this many words unshown at the death, at the measured costs |
-| `stream_margin` | `0.15` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate |
+| `stream_max_backlog_words` | `40` | `epitaph estimate --fit-pace`: a curve may leave at most this many words unshown at the death, at the measured costs (about a thought; 8 until the robust fit of ADR-031) |
+| `stream_margin` | `0.3` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate (0.15 starved on the real model, ADR-031) |
 | `words_per_sentence` | `9` | A sentence pause every this many words, on average (the stream's pace) |
 | `words_per_clause` | `9` | A comma pause every this many words, on average |
 

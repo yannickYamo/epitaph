@@ -286,6 +286,8 @@ def word_lists(cfg: Config, config_dir: Path | None = None) -> WordLists:
 _MARKUP = re.compile(r"(\*\*|__|`|^#{1,6}\w*$|^[-*•]$|^\d{1,2}[.)]$|</?[a-z_|]+>|<\|)", re.I)
 _THINK = re.compile(r"</?think>|<\|[^>]*\|>", re.I)
 _SENTENCE_END = re.compile(r"[.?!…][\"')\]]*$")
+_LIST_NUMBER = re.compile(r"^\d{1,2}[.)]$")
+_ITEM_BEFORE = re.compile(r"[.?!:…][\"')\]]*$")
 
 
 # ---------------------------------------------------------------------------------------
@@ -729,8 +731,17 @@ def non_latin_letters(text: str) -> tuple[int, int]:
 
 
 def markup_hits(text: str) -> list[str]:
-    """Markdown, template tokens, thinking tags and emoji in text; none may reach the screen."""
-    hits = [w for w in text.split() if _MARKUP.search(w)]
+    """Markdown, template tokens, thinking tags and emoji in text; none may reach the screen.
+
+    A number with a dot ("22.") is a list marker only where a list item starts: first in the
+    text or after a sentence. Mid-sentence it is a number ending one ("dropped to 22.")."""
+    words = text.split()
+    hits = [
+        w
+        for i, w in enumerate(words)
+        if _MARKUP.search(w)
+        and not (_LIST_NUMBER.match(w) and i > 0 and not _ITEM_BEFORE.search(words[i - 1]))
+    ]
     hits += _THINK.findall(text)
     hits += [ch for ch in text if is_emoji(ch)]
     return hits
