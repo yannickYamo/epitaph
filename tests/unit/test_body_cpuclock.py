@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -94,6 +95,30 @@ def test_missing_helper_never_calls_sudo(monkeypatch: pytest.MonkeyPatch, tmp_pa
     helper.write_text("")
     assert CpuClock(str(helper)).set(700)
     assert called == [[str(helper), "700"]]
+
+
+def test_background_clock_never_blocks_the_caller() -> None:
+    """Regression: sudo (up to 10 s) ran on the controller's event loop and could stall the
+    watchdog pings. In the background the call returns at once and runs in order."""
+    gate = threading.Event()
+    r = FakeRunner()
+
+    def slow(argv: Sequence[str]) -> int:
+        gate.wait(5)
+        return r(argv)
+
+    c = CpuClock("h", slow, background=True)
+    assert c.set(900) and c.set(900) and c.reset()  # none of these waits for the helper
+    assert r.calls == [] and c.mhz is None
+    gate.set()
+    c.wait_idle()
+    assert r.args == ["900", "reset"] and c.mhz == 1800
+
+
+def test_the_controller_body_runs_the_clock_in_the_background(fs: Path) -> None:
+    body = CgroupBody(fs / REL, CgroupSettings(clock_helper="/absent/helper"), sys_paths=SysPaths())
+    assert body.clock is not None
+    assert body.clock._pool is not None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_body_sets_clock_only_when_it_changes(fs: Path) -> None:
