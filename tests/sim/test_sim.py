@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from epitaph.clock import Schedule
 from epitaph.config import Config, load_config
 from epitaph.costmodel import estimate, load_costs
 from epitaph.sim import simulate
@@ -26,11 +27,14 @@ def test_each_profile_dies_the_right_way(name: str, cause: str) -> None:
 
 
 def test_event_order_and_lifecycle() -> None:
-    r = simulate(load_config("pi4/default", "pi4-4gb"), lives=2)
+    cfg = load_config("pi4/default", "pi4-4gb")
+    r = simulate(cfg, lives=2)
     first = [e["type"] for e in r.events if e["life"] == 1]
     assert first[:5] == ORDER_START
     assert first[-3:] == ["death", "death_shown", "silence"]
-    assert first.count("reload") == 2 and first.count("erosion") == 5
+    assert first.count("reload") == 2 and first.count("erosion") == len(
+        Schedule(cfg.profile).erosion_times()
+    )
     assert {e["life"] for e in r.events} == {1, 2}
 
 

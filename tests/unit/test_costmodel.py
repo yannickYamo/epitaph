@@ -4,8 +4,16 @@ import json
 
 import pytest
 
+from epitaph.clock import Schedule
 from epitaph.config import load_config
-from epitaph.costmodel import Costs, estimate, format_report, load_costs
+from epitaph.costmodel import (
+    RULE_DEFAULTS,
+    Costs,
+    estimate,
+    format_report,
+    load_costs,
+    rule_minimums,
+)
 from tests.conftest import v6_config
 
 
@@ -107,6 +115,8 @@ def test_speed_decline_is_checked() -> None:
     for kf in cfg.profile.keyframes:
         if "cpu_share" in kf.values and kf.values["cpu_share"] < 2.0:
             kf.values["cpu_share"] = 2.0
+        if "cpu_mhz" in kf.values:
+            kf.values["cpu_mhz"] = 1800.0  # the clock lever slows it too (spike S7)
     report = estimate(cfg, load_costs(cfg))
     assert any(v.rule == "speed" for v in report.violations), format_report(report)
     ok = estimate(load_config("pi4/default", "pi4-4gb"), load_costs(cfg))
@@ -151,3 +161,32 @@ def test_slot_handover_shortens_reloads_and_fits_the_4b() -> None:
     assert reports["slot"].thoughts > reports["reread"].thoughts
     assert reports["slot"].ok, format_report(reports["slot"])
     assert not reports["reread"].ok
+
+
+def test_rule_minimums_default_to_the_one_hour_values() -> None:
+    assert rule_minimums(Schedule(v6_config().profile)) == RULE_DEFAULTS
+
+
+def test_the_thirty_minute_life_sets_its_own_minimums() -> None:
+    need = rule_minimums(Schedule(load_config("pi4/default", "pi4-4gb").profile))
+    assert need == {
+        "between_health": 2,
+        "after_reload": 1,
+        "per_erosion_step": 1,
+        "after_erosion_start": 3,
+    }
+
+
+def test_a_raised_minimum_is_reported_with_its_value() -> None:
+    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg.profile.settings["rules"] = {"after_erosion_start": 40}
+    report = estimate(cfg, load_costs(cfg))
+    assert any(v.rule == "d" and "need 40" in v.detail for v in report.violations)
+
+
+@pytest.mark.parametrize("rules", [{"after_reload": 0}, {"bogus": 2}, "x"])
+def test_bad_minimums_are_refused(rules: object) -> None:
+    cfg = load_config("pi4/default", "pi4-4gb")
+    cfg.profile.settings["rules"] = rules
+    with pytest.raises(ValueError):
+        rule_minimums(Schedule(cfg.profile))

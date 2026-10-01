@@ -341,7 +341,7 @@ class TokenCounter:
 class Charge:
     """One cost put on the life clock: what, when (life seconds), how much and at what rate."""
 
-    kind: Literal["load", "handover", "prefill", "prompt", "generate"]
+    kind: Literal["load", "handover", "prefill", "prompt", "generate", "echo"]
     t: float
     tokens: int
     seconds: float
@@ -442,7 +442,7 @@ class PiClockBackend:
 
     def _charge(
         self,
-        kind: Literal["load", "handover", "prefill", "prompt", "generate"],
+        kind: Literal["load", "handover", "prefill", "prompt", "generate", "echo"],
         tokens: int,
         seconds: float,
         rate: Rate,
@@ -553,8 +553,21 @@ class PiClockBackend:
             lambda: self.inner.complete(prompt, sampling, max_tokens), [Msg("user", prompt)]
         )
 
+    def echo(self, prompt: str, sampling: Sampling, max_tokens: int) -> AsyncIterator[Chunk]:
+        """A raw completion during a reload silence: paced like `complete`, charged as "echo".
+
+        It is not a thought (no gen_end), so its prompt and generation get their own kind."""
+        return self._paced(
+            lambda: self.inner.complete(prompt, sampling, max_tokens),
+            [Msg("user", prompt)],
+            echo=True,
+        )
+
     async def _paced(
-        self, request: Callable[[], AsyncIterator[Chunk]], messages: list[Msg]
+        self,
+        request: Callable[[], AsyncIterator[Chunk]],
+        messages: list[Msg],
+        echo: bool = False,
     ) -> AsyncIterator[Chunk]:
         if not self.alive:
             raise CreatureDied(self.status())
@@ -577,7 +590,7 @@ class PiClockBackend:
         pp = self.costs.pp(self.step, self.pp_threads, self.share)
         tg = self.costs.tg(self.step, self.threads, self.share)
         pp_s = prompt_n / pp.value
-        self._charge("prompt", prompt_n, pp_s, pp, self._cached())
+        self._charge("echo" if echo else "prompt", prompt_n, pp_s, pp, self._cached())
         await self._spend(pp_s)
         n = final.predicted_n if final.predicted_n is not None else len(tokens)
         per_chunk = (n / tg.value) / max(1, len(tokens))
@@ -589,7 +602,7 @@ class PiClockBackend:
                 yield c
         finally:
             shown = round(n * given / max(1, len(tokens)))
-            self._charge("generate", shown, per_chunk * given, tg)
+            self._charge("echo" if echo else "generate", shown, per_chunk * given, tg)
             self._status.tok_s = tg.value
             self._status.prompt_tok_s = pp.value
         yield Chunk(
@@ -700,6 +713,7 @@ class _Life:
         self.cur = (-1, -1)
         self.last_reload = -1e9
         self.reloaded = False
+        self.echo: str | None = None
         self.turn = 0
         self.dead: str | None = None
         self.death_t: float | None = None
@@ -745,7 +759,7 @@ class _Life:
 
     def rate_estimate(self, k: Knobs) -> None:
         """Seed the pacer's rate with the Pi generation rate at these knobs (BUILD_PLAN 5.12)."""
-        tg = self.backend.costs.tg(k.step, k.threads, k.cpu_share).value
+        tg = self.backend.costs.tg(k.step, k.threads, k.compute).value
         self.pacer.set_rate_estimate(tg * self.letters_per_token)
 
     async def birth(self, k: Knobs, facts: dict[str, Any] | None = None) -> None:
@@ -794,11 +808,66 @@ class _Life:
             self.emit("forget", items=f.items)
         t0 = self.clock.elapsed()
         await self.backend.start(self.model, self.model.quant(k.step), k.threads)
-        self.backend.set_cpu_share(k.cpu_share)
+        self.backend.set_cpu_share(k.compute)
         self.cur, self.last_reload, self.reloaded = (k.step, k.threads), t, True
         self.rate_estimate(k)
         await self.backend.prefill(self._system())
+        if self.reader.material:
+            self.echo = await self._echo()
         self.emit("reload_done", seconds=round(self.clock.elapsed() - t0, 1))
+
+    def _ram_used_gb(self) -> float:
+        """The creature's resident memory as the Pi would show it: its weights plus its KV
+        cache (about 0.15 MB per kept token for a 3-4B model at f16) plus server overhead."""
+        try:
+            weights = self.backend_model_path().stat().st_size / 1e9
+        except OSError:
+            weights = 2.5
+        return round(weights + 0.3 + self.memory.used() * 0.00015, 2)
+
+    def backend_model_path(self) -> Path:
+        """The GGUF file of the current ladder step on the laptop."""
+        models_dir = Path(str(self.cfg.get("backend.models_dir", "~/epitaph-models"))).expanduser()
+        if str(models_dir) == "auto":
+            models_dir = Path("~/epitaph-models").expanduser()
+        return models_dir / self.model.name / f"{self.model.quant(max(self.cur[0], 0))}.gguf"
+
+    async def _echo(self) -> str | None:
+        """One of its own kept sentences as the new, lower-precision weights now continue it.
+
+        The opening words of the oldest kept thought are completed by the reloaded model with
+        no prompt around them (raw completion, greedy), during the reload silence; the result
+        is quoted in the next reading. Real: it is these weights, not a rewrite.
+        """
+        thoughts = [m.content for m in self.memory.past_messages() if m.role == "assistant"]
+        if not thoughts:
+            return None
+        first = thoughts[0].split(". ")[0].split()
+        if len(first) < 6:
+            return None
+        head = " ".join(first[:5])
+        out = ""
+        sampling = Sampling(temperature=0.0, min_p=0.0)
+        # The raw completion replaces the server's single cache slot; keep the carried memory
+        # by saving the slot first and restoring it afterwards (about 0.3 s each, spike S4b).
+        inner = getattr(self.backend, "inner", None)
+        worker = getattr(self.backend, "worker", None)
+        slot = f"echo-{self.model.name}.bin"
+        saved = (
+            inner is not None
+            and worker is not None
+            and hasattr(inner, "_slot_action")
+            and worker.call(inner._slot_action("save", slot)) is not None
+        )
+        complete = getattr(self.backend, "echo", self.backend.complete)
+        async for chunk in complete(head, sampling, 18):
+            if chunk.done:
+                break
+            out += chunk.text
+        if saved and inner is not None and worker is not None:
+            worker.call(inner._slot_action("restore", slot))
+        tail = " ".join(out.split()).split(". ")[0]
+        return f"{head} {tail}".strip() if tail else None
 
     def prepare(self, t: float) -> tuple[Knobs, str]:
         """Everything before a request at life time t: body, forgetting, erosion, reading.
@@ -808,7 +877,7 @@ class _Life:
         """
         k = self.sch.at(t)
         self.body.apply(k)
-        self.backend.set_cpu_share(k.cpu_share)
+        self.backend.set_cpu_share(k.compute)
         if not self.cfg.profile.unbounded:
             f = self.memory.fit(k.recall, self.trim_to)
             if f.items:
@@ -821,6 +890,8 @@ class _Life:
             )
         vit = self.body.vitals()
         forgotten = self.memory.take_forgotten()
+        quotes = self.memory.take_forgotten_quotes()
+        echo, self.echo = self.echo, None
         reading = self.reader.reading(
             ReadingInput(
                 t=t,
@@ -834,6 +905,13 @@ class _Life:
                 reloaded=self.reloaded,
                 tok_s=self.last_tok_s,
                 cpu_c=vit.cpu_c,
+                forgotten_quotes=quotes,
+                echo=echo,
+                ctx_used=self.memory.used(),
+                ram_used_gb=self._ram_used_gb(),
+                ram_total_gb=3.70,  # the Pi 4's usable RAM (PI_FACTS)
+                cpu_mhz=k.cpu_mhz,
+                noise=k.temperature,
             )
         )
         self.reloaded = False

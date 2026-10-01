@@ -232,6 +232,8 @@ def request_body(
         body["seed"] = sampling.seed
     if sampling.latin_only:
         body["grammar"] = LATIN_GRAMMAR
+    if sampling.logit_bias:
+        body["logit_bias"] = [[w, b] for w, b in sampling.logit_bias]
     if messages is not None:
         body["messages"] = [{"role": m.role, "content": m.content} for m in messages]
         body["max_tokens"] = max_tokens
