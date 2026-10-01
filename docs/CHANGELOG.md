@@ -12,3 +12,15 @@
   in the rehearsed hour, reload silences 101 s and 116 s.
 - Next: a voice closer to Latent Reflection's (introspective, questioning, poetic, facing its end
   without announcing it), then the schedule fitted to the 4B for every profile.
+
+## The voice and the 30-minute life (2026-09-30)
+- A thin prompt (50 words) and quiet readings: the full picture at birth, then only what was
+  taken (ADR-023; prompt log round 4).
+- Material readings: a reading quotes the opening words of each forgotten thought, and after a
+  reload, five of its own words as the degraded weights continue them (ADR-026).
+- The life is 30 minutes; thought-count minimums are set per profile (ADR-024, PROFILES.md).
+- The CPU clock is a decay knob, linear in speed on the Pi 4 (spike S7, ADR-025).
+- No temperature in the readings; silent word penalties against clichés.
+- Blind panel of three judge models: the three new 30-minute lives scored 39.3, 29.7 and 29.0 of
+  60 against 23.7 for the best one-hour life (prompt log round 5).
+

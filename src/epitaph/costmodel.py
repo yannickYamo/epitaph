@@ -42,10 +42,10 @@ import statistics
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from epitaph.clock import Schedule
-from epitaph.config import REPO_ROOT, Config, reading_tokens, system_tokens
+from epitaph.config import REPO_ROOT, Config, profile_rules, reading_tokens, system_tokens
 from epitaph.mind.memory import approx_tokens
 from epitaph.mind.prompt import Persona
 from epitaph.types import RuleReport, RuleViolation
@@ -456,33 +456,9 @@ def _count(times: list[float], a: float, b: float) -> int:
     return sum(1 for x in times if a <= x < b)
 
 
-RULE_DEFAULTS: dict[str, int] = {
-    "between_health": 3,
-    "after_reload": 2,
-    "per_erosion_step": 1,
-    "after_erosion_start": 4,
-}
-
-
 def rule_minimums(sch: Schedule) -> dict[str, int]:
-    """The thought-count minimums for this profile: its [rules] table over RULE_DEFAULTS.
-
-    The defaults were set for a one-hour life. A shorter life has fewer thoughts for the same
-    fixed costs (two reloads), so it may lower them; every loss still needs one thought."""
-    raw: object = sch.profile.settings.get("rules", {})
-    if not isinstance(raw, dict):
-        raise ValueError("profile [rules] must be a table")
-    table = cast("dict[str, object]", raw)
-    unknown = sorted(set(table) - set(RULE_DEFAULTS))
-    if unknown:
-        raise ValueError(f"unknown profile rules: {unknown}")
-    out = dict(RULE_DEFAULTS)
-    for k, v in table.items():
-        n = int(str(v))
-        if n < 1:
-            raise ValueError(f"profile rule {k} must be at least 1")
-        out[k] = n
-    return out
+    """The thought-count minimums for this profile (config.profile_rules)."""
+    return profile_rules(sch.profile.settings)
 
 
 def check_rules(report: RuleReport, sch: Schedule, end: float) -> None:

@@ -5,9 +5,8 @@ import json
 import pytest
 
 from epitaph.clock import Schedule
-from epitaph.config import load_config
+from epitaph.config import RULE_DEFAULTS, ConfigError, load_config
 from epitaph.costmodel import (
-    RULE_DEFAULTS,
     Costs,
     estimate,
     format_report,
@@ -184,9 +183,9 @@ def test_a_raised_minimum_is_reported_with_its_value() -> None:
     assert any(v.rule == "d" and "need 40" in v.detail for v in report.violations)
 
 
-@pytest.mark.parametrize("rules", [{"after_reload": 0}, {"bogus": 2}, "x"])
+@pytest.mark.parametrize("rules", [{"after_reload": 0}, {"bogus": 2}, {"after_reload": 1.5}, "x"])
 def test_bad_minimums_are_refused(rules: object) -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     cfg.profile.settings["rules"] = rules
-    with pytest.raises(ValueError):
+    with pytest.raises(ConfigError):
         rule_minimums(Schedule(cfg.profile))

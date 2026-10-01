@@ -161,6 +161,7 @@ async def run_life(
                 )
             vit = body.vitals()
             forgotten = memory.take_forgotten()
+            quotes = memory.take_forgotten_quotes()
             reading = reader.reading(
                 ReadingInput(
                     t=t,
@@ -171,6 +172,7 @@ async def run_life(
                     cores_total=body.facts().cores,
                     form=k.readings,
                     forgotten=forgotten,
+                    forgotten_quotes=quotes,
                     reloaded=reloaded,
                     tok_s=last_tok_s,
                     cpu_c=vit.cpu_c,
@@ -192,6 +194,7 @@ async def run_life(
                 quant=model.quant(cur[0]),
                 threads=cur[1],
                 cpu_share=k.cpu_share,
+                cpu_mhz=k.cpu_mhz,
                 cores_effective=k.cpu_share,
                 tok_s=costs.tg(cur[0], cur[1], k.compute),
                 cpu_c=vit.cpu_c,

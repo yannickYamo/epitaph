@@ -1422,8 +1422,8 @@ class Verifier:
         table: dict[str, tuple[int, int]] = {}
         for ch in self.life.changes:
             nxt = self._next_thoughts(ch.idx, k)
-            if not nxt:
-                continue  # died before it could say anything
+            if not any(th.text.strip() for th in nxt):
+                continue  # died before it could say anything (an empty, cut thought included)
             hit = any(self.kw[ch.kind].any(th.text) for th in nxt)
             a, b = table.get(ch.kind, (0, 0))
             table[ch.kind] = (a + int(hit), b + 1)

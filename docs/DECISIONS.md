@@ -287,7 +287,7 @@ Three rules shaped every decision below.
   after it. Keeping both, every loss is still answered by at least one thought and every health
   label by two. Each erosion step makes the whole context re-read (the system prompt changes at
   the front), about three minutes late in life, so five steps would leave losses unanswered.
-- **Evidence.** `epitaph estimate`: 12 thoughts, reload silences 144 s and 156 s, every rule met;
+- **Evidence.** `epitaph estimate`: 12 thoughts, reload silences 144 s and 152 s, every rule met;
   rehearsed lives in [PROMPT_LOG.md](PROMPT_LOG.md), round 5. The cost model now also charges
   what material readings add (ADR-026), after rehearsals showed it 1-2 minutes optimistic late
   in life.
@@ -299,9 +299,9 @@ Three rules shaped every decision below.
 
 - **Context.** The owner asked for more real levers on the machine. The persona says its
   processors are taken from it.
-- **Decision.** A keyframe may set `cpu_mhz` (the cpufreq cap, 600-1800 MHz), interpolated like
-  the CPU share. Generation and prompt speed scale with both (`Knobs.compute`). The 30-minute
-  life keeps the full clock until erosion, then lowers it to 800 MHz.
+- **Decision.** A keyframe may set `cpu_mhz` (the cpufreq cap, 600-1800 MHz), stepped: a clock
+  cap is set at a moment, as on the machine. Generation and prompt speed scale with both (`Knobs.compute`). The 30-minute
+  life keeps the full clock until erosion, then lowers it in three steps to 600 MHz.
 - **Why.** It is a second, independent physical loss that needs no restart, and it is measurable.
   Switching cores off would be more literal, but CPU hotplug is not available on the Pi 4 kernel.
 - **Evidence.** Spike S7 ([SPIKE.md](SPIKE.md)): speed is linear in the clock within 3% for
