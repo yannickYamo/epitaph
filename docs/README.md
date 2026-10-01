@@ -5,8 +5,16 @@
 | Document | What it answers |
 |---|---|
 | [DESIGN.md](DESIGN.md) | What the piece is, and how each artistic principle becomes an engineering constraint |
-| [DECISIONS.md](DECISIONS.md) | Why the system is built the way it is: 23 decision records with their evidence and trade-offs |
+| [DECISIONS.md](DECISIONS.md) | Why the system is built the way it is: 28 decision records with their evidence and trade-offs |
 | [PERFORMANCE.md](PERFORMANCE.md) | What we measured on the Raspberry Pi 4, what we changed, and what it bought |
+
+## Running it
+
+| Document | Contents |
+|---|---|
+| [INSTALLATION.md](INSTALLATION.md) | Setting the piece up in a room: hardware, placement, power, cooling, network, exhibition hours, wall label, credits, the install on a Pi |
+| [CONFIG.md](CONFIG.md) | Every configuration key, its default and what it does, kept in step with the files by a test |
+| [WRITING_A_DISPLAY.md](WRITING_A_DISPLAY.md) | How to build a new display on the event stream |
 
 ## Specification and evidence
 
@@ -18,14 +26,13 @@
 | [PROFILES.md](PROFILES.md) | How each life schedule was fitted to measured costs |
 | [PROMPT_LOG.md](PROMPT_LOG.md) | Every change to the prompt and sampling, with the metrics it produced |
 | [CHECKPOINT_A.md](CHECKPOINT_A.md) | The model and persona choice, with real transcripts from rehearsed lives |
-| [GATES.md](GATES.md) | Every acceptance criterion and the command that proves it |
-| [WRITING_A_DISPLAY.md](WRITING_A_DISPLAY.md) | How to build a new display on the event stream |
+| [GATES.md](GATES.md) | Every acceptance criterion and the command that proves it, including the soak report (`tools/soak_report.py`) |
 
 ## Operating the Pi
 
 | Document | Contents |
 |---|---|
-| [PI_FACTS.md](PI_FACTS.md) | The target machine, and lessons learned operating it |
+| [PI_FACTS.md](PI_FACTS.md) | The target machine, the installed services, and lessons learned operating it |
 | [PI_CHANGES.md](PI_CHANGES.md) | Every system change made to the Pi |
 | [PI_LOCK.md](PI_LOCK.md) | How work on the single Pi is serialised |
 
@@ -35,4 +42,4 @@ The project was built by a team of AI coding agents working in parallel from the
 Their phase reports, open questions and contract proposals are kept in [process/](process/):
 [reports](process/reports/), [QUESTIONS.md](process/QUESTIONS.md),
 [CONTRACT_CHANGES.md](process/CONTRACT_CHANGES.md). [CHANGELOG.md](CHANGELOG.md) summarises each
-phase.
+phase. [CONTRIBUTING.md](../CONTRIBUTING.md) describes how to work on the code.
