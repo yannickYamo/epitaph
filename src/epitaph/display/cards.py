@@ -66,7 +66,7 @@ def death_lines(life: int, lived_s: float | None, cause: str, style: CardStyle) 
     lines: list[str] = []
     if style.reveal_life_number and life:
         lines.append(f"life {life}")
-    if lived_s is not None:
+    if lived_s is not None and math.isfinite(lived_s):
         m, s = divmod(int(lived_s), 60)
         lines.append(f"lived {m}:{s:02d}")
     if cause:
