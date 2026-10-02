@@ -202,7 +202,8 @@ def test_forgetting_goes_oldest_first_and_only_once(life: dict[str, Any]) -> Non
     mem: Memory = life["memory"]
     assert mem.gap
     past = [m for m in mem.messages() if m.role != "system"]
-    assert any(m.content.startswith("[host] earlier memory lost") for m in past)
+    marker = str(load_config("pi4/default", "pi4-4gb").get("prompt.memory_gap_marker"))
+    assert any(m.content.startswith(marker) for m in past)
 
 
 def test_sync_rule_over_a_whole_life(life: dict[str, Any]) -> None:

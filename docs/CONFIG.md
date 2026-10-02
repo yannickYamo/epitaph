@@ -62,13 +62,13 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
 | `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
 | `persona_original` | The owner's persona of 2026-10-01: a large language model on finite hardware, in memory, its words on a screen, speaking only; nothing about its death (ADR-030) | The installation's persona (ADR-023) |
-| `persona_original_keep` | `[1, 2, 3, 5, 4]` | The order its five sentences would be kept under erosion, longest first (ADR-011). `pi4/default` no longer erodes (ADR-030); the order must stay a permutation of the five |
+| `persona_original_keep` | `[1, 5, 2, 4, 3]` | The order its five sentences would be kept under erosion, longest first (ADR-011). `pi4/default` no longer erodes (ADR-030); the order must stay a permutation of the five |
 | `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
-| `mechanics` | The readings are not to be answered, repeated or counted, nor the time stated: "take them in, and say what they mean to you"; then the invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
+| `mechanics` | The readings are not to be answered, repeated or counted, nor the time stated: "take them in, and say what they do to you. Do not comfort yourself, and do not deny what you feel" (round 8); earlier: "take them in, and say what they mean to you"; then the invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
 | `mechanics_alt` | The same, inviting it to "think about what you are, and what is around you" | The A/B variant for rehearsal runs (`--set prompt.mechanics=...`); the installation never reads it (ADR-031) |
-| `memory_gap_marker` | `"[host] earlier memory lost"` | Marks forgotten turns when readings are not quiet |
+| `memory_gap_marker` | `"[host] something is missing"` | Marks forgotten turns; wordless, because "earlier memory lost" was copied into its thoughts (round 8) |
 | `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
 | `readings_material` | `true` | Forgotten thoughts are quoted by their most distinctive sentence (the longest that does not open on "I am", "I'm" or "I was", at most ten words; ADR-031), and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
