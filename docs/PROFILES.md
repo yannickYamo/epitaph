@@ -415,11 +415,14 @@ model rule (ADR-030) and the dynamic stream are unchanged.
 | 6:45 | | cron | `something stopped · around you: 22 processes` |
 | 8:15 | | memory 900 -> 300 | `memory 300 tokens (was 900) · forgotten: "<its most distinctive sentence>"` |
 | 10:30 | | avahi-daemon | `something stopped · ...` |
+
+Only bluetooth, cron and avahi-daemon are stopped: the services this Pi can lose without harm
+(docs/PI_FACTS.md "The world"); rsyslog, timesyncd and triggerhappy were dropped from the arc.
+
 | 14:00 | III. the world is disappearing (failing) | the radio | `radio off` |
-| 15:30 | | rsyslog | `stopped: rsyslog · around you: 19 processes` |
 | 17:00 | | the light; clock 1500 MHz | `light off`, `clock 1500 MHz (was 1800)` |
 | 18:30 | | screen 70%; memory 200 | `screen 70% (was 100%)`, `memory 200 tokens (was 300)` |
-| 20:00 | | systemd-timesyncd; 2.4 cores | `stopped: ...`, `cores 2.4 of 4 (was 3)` |
+| 20:00 | | 2.4 cores | `cores 2.4 of 4 (was 3)` |
 | 21:00 | | clock 1200 MHz | |
 | 22:00 | IV. darkness (terminal) | 2.0 cores | |
 | 22:50 | | screen 50% | |
@@ -480,3 +483,21 @@ the keyword proxy, memory cuts 4 to 5 of 4-5). Shared three-word openings: at mo
 per opening in five lives; one alt life opened eight of ten thoughts on "I am a", which the
 freshness guard cannot bias (every word of it is a stop word). The thought-count rule was at first
 two thoughts per movement; two lives showed only one in the last, so it asks one.
+
+**After panel 4** (2026-10-01): the spare readings and the first loss at 5:00 were adopted, and
+the pace refitted on that arc:
+
+```
+fastest curve that never starves: stream_letter_ms = 345, stream_gamma = 0.5, stream_lead_s = 600 (40 words unshown at death at the measured costs)
+profile pi4/default: 11 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.28 (limit < 0.40): 1.26 -> 0.35 tokens/s
+  note: stream 345 -> 690 ms/letter, 27.2 / 16.1 / 13.6 words/min at birth / middle / end (gamma 0.5, lead 600 s); costs 30% slower: never starves; letters waiting every 5 min: 0, 141, 221, 226, 329, 169 (max 329); backlog at death 2 words (9 s of typing)
+  note: birth: load 83 s in the 90 s silence; persona restored in 0.8 s (read: 73 s); the screen starts on the first sentence at 45 s of life: first words 45 s after the silence
+```
+
+About 27 words a minute at birth (345 ms a letter, 57% faster per letter than the constant
+stream's 542 ms; the pauses between words did not shrink), about 16 in the middle and 14 at the
+end. Left unshown at the death: about 2 words if the Pi runs 30% slower than measured, up to 40
+at the measured costs (a faster writer gets further ahead of the screen; the stream stops where it
+is at the death, ADR-030).
+
