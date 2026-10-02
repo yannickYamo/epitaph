@@ -126,11 +126,15 @@ def test_readings_come_from_the_mind() -> None:
     # The first reading comes after the system prompt was read at birth (ADR-013).
     # It says what is there, never what it means (ADR-031): no health label. Spare at birth
     # (prompt.readings_spare_birth, panel 4): awake and what is around it, no inventory; the
-    # wordless pack (en_words) gives no time and no count.
-    birth = [lang.r("boot"), lang.form("full", "around_birth").format(n=0)]
-    assert cfg.get("prompt.language") == "en_words" and lang.r("time") == ""
-    assert readings[0] == "[host] " + lang.r("sep").join(birth)
-    assert not any("tokens/s" in x or "speed" in x for x in readings)  # readings_speed off
+    # sensing pack (en_sense, round 9) gives no time, only what is around it at birth.
+    assert cfg.get("prompt.language") == "en_sense" and lang.r("time") == ""
+    before, _, after = lang.form("full", "around_birth").partition("{n}")
+    head = "[host] " + lang.r("boot") + lang.r("sep") + before
+    assert readings[0].startswith(head) and readings[0].endswith(after)
+    assert readings[0][len(head) : len(readings[0]) - len(after)].isdigit()
+    # readings_speed off: no tokens per second, in either form ("speed {speed} tokens/s",
+    # "{speed}/s"); en_sense's "the speed you woke with" is the compute, not the token rate
+    assert not any("/s" in x for x in readings)
     assert any("forgotten:" in x for x in readings)
     assert not any("health" in x or "terminal" in x for x in readings)
     assert readings[-1].split(" ")[0] == lang.r("prefix")  # with what changed, or bare

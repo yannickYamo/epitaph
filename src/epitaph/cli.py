@@ -67,7 +67,12 @@ def cmd_sim(args: argparse.Namespace) -> int:
                 print(f"life {e['life']} t={e.get('t', 0):7.1f}s {e['type']:12} {extra}")
     for n, (cause, thoughts) in enumerate(zip(result.causes, result.thoughts, strict=True), 1):
         print(f"life {n}: {thoughts} thoughts, cause={cause}")
-    return 0
+    # A bug in the loop is caught so the life still dies cleanly (controller.live_one); in a
+    # simulation it must fail the run, or a gate passes on lives that died of it (round 9).
+    bugs = [e for e in result.events if e["type"] == "error" and e.get("where") == "controller"]
+    for e in bugs:
+        print(f"life {e['life']}: the loop failed: {e.get('message')}", file=sys.stderr)
+    return 1 if bugs else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:

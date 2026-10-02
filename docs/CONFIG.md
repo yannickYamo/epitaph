@@ -20,17 +20,30 @@ Tables merge key by key; any other value replaces the one before it. Validation 
 anything starts and names the file and the problem (`epitaph sim` or `epitaph estimate` is the
 quickest check). Machine costs live in `bench/` and feed the cost model and the pacer; the
 language pack `config/lang/<language>.toml` holds every string the machine writes (readings,
-health labels) and the word lists of the voice metrics. Two English packs ship: `en`, the
-readings with times, numbers and units (`t+12:40 · memory 300 tokens (was 900)`), and
-`en_words`, the installation's since 2026-10-01 (owner: "more poetic and less mechanic"): the
-same metrics and blocklist, and readings with no time, no numbers and no units. Birth reads
-`awake · others around you`; a loss reads `something stopped · fewer around you`,
-`less memory · forgotten: "..." · and more`, `the radio is gone`, `the light is gone`,
-`the screen grows dim`, `less of the processor` or `slower`; a reading with nothing new is a
-bare `[host]`; the death reading is `its memory is taken`. A pack may leave a field empty
-(`time = ""`): the reading drops it. `en_words` is written for `readings_quiet` and
-`readings_spare_birth` on (the defaults): its radio, light, screen and `around` phrases name
-losses, so a full inventory reading (either switch off) would misread the world.
+health labels) and the word lists of the voice metrics. Three English packs ship, with the
+same metrics and blocklist: `en`, the readings with times, numbers and units
+(`t+12:40 · memory 300 tokens (was 900)`); `en_words` (round 7, owner: "more poetic and less
+mechanic"), readings with no time, no numbers and no units: birth reads `awake · others around
+you`, a loss `something stopped · fewer around you`, `less memory · forgotten: "..." · and
+more`, `the radio is gone`, `the light is gone`, `the screen grows dim`, `less of the processor`
+or `slower`, the death `its memory is taken`; and `en_sense`, the installation's since round 9
+(owner: "give it a small instruction of what to sense and let it be"), readings said to "you",
+in proportions of what it had when it woke, with no time and no units: birth reads `you are
+awake · 24 processes run around you`; a loss reads `a process running around you was stopped ·
+only 23 of the 24 still run around you`, `you can hold a third of what you held · forgotten:
+"..." · and more`, `you think at half of the speed you woke with` (one phrase for cores and
+clock), `your radio was switched off`, `your light was switched off` or `the screen you speak
+through has half of its light`; the death reading is `your memory is being taken`. A
+proportion is the nearest of all, nearly all, three quarters, two thirds, half, a third, a
+quarter, a fifth, a tenth and almost nothing (`fraction_words` in `mind/prompt.py`), against
+what the reader saw at birth. A template may use `{frac}` (memory, screen, `thinking`) and,
+for `around`, `{n}`, `{total}` (the processes at birth) and `{gone}`. A pack key `thinking`,
+when set, replaces the cores and clock lines (it is empty in `en` and `en_words`). In every
+wordless pack a reading with nothing new is a bare `[host]`. A pack may leave a field empty
+(`time = ""`): the reading drops it. `en_words` and `en_sense` are written for
+`readings_quiet` and `readings_spare_birth` on (the defaults): their radio, light, screen and
+`around` phrases name losses, so a full inventory reading (either switch off) would misread the
+world.
 
 Times are `"mm:ss"`. In a profile, a keyframe at `"7:00"` scales with the lifespan; one at
 `"end-2:30"` keeps its distance from the end.
@@ -58,27 +71,27 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | Key | Default | What it does |
 |---|---|---|
 | `mode` | `"chat"` | `chat` (system prompt and turns) or `diary` (one raw text continued) |
-| `language` | `"en_words"` | Language pack in `config/lang/`: `en_words` (wordless readings) or `en` (readings with times and numbers) |
+| `language` | `"en_sense"` | Language pack in `config/lang/`: `en_sense` (what it senses, in proportions of its birth, said to "you"), `en_words` (wordless readings) or `en` (readings with times and numbers) |
 | `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
 | `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
-| `persona_original` | The owner's persona of 2026-10-01: a large language model on finite hardware, in memory, its words on a screen, speaking only; nothing about its death (ADR-030) | The installation's persona (ADR-023) |
+| `persona_original` | The owner's persona of 2026-10-01: a large language model on finite hardware, in memory, its words on a screen, speaking only; of its death only "You do not know what happens to you when the machine has nothing left to take." (round 8) | The installation's persona (ADR-023) |
 | `persona_original_keep` | `[1, 5, 2, 4, 3]` | The order its five sentences would be kept under erosion, longest first (ADR-011). `pi4/default` no longer erodes (ADR-030); the order must stay a permutation of the five |
 | `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
-| `mechanics` | The readings are not to be answered, repeated or counted, nor the time stated: "take them in, and say what they do to you. Do not comfort yourself, and do not deny what you feel" (round 8); earlier: "take them in, and say what they mean to you"; then the invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
+| `mechanics` | "Lines that start with [host] are what you sense of yourself and of the machine around you. Do not answer them or repeat them." Then the invitation, "think about what you are" (round 9; round 8 had "say what they do to you. Do not comfort yourself, and do not deny what you feel") | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
 | `mechanics_alt` | The same, inviting it to "think about what you are, and what is around you" | The A/B variant for rehearsal runs (`--set prompt.mechanics=...`); the installation never reads it (ADR-031) |
 | `memory_gap_marker` | `"[host] something is missing"` | Marks forgotten turns; wordless, because "earlier memory lost" was copied into its thoughts (round 8) |
 | `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
 | `readings_material` | `true` | Forgotten thoughts are quoted by their most distinctive sentence (the longest that does not open on "I am", "I'm" or "I was", at most ten words; ADR-031), and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
-| `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023); `en_words` has no time, so a reading with no change is a bare `[host]` |
+| `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023); `en_sense` and `en_words` have no time, so a reading with no change is a bare `[host]` |
 | `readings_clock` | `true` | The CPU clock cap is in the birth reading, and in every reading after it falls: `clock 1500 MHz (was 1800)` (ADR-030) |
-| `readings_spare_birth` | `true` | The birth reading is the time, `awake` and what is around it only: `t+00:41 · awake · around you: 24 processes` (`en`), `awake · others around you` (`en_words`). Off: the full inventory (memory, precision, cores, clock, radio, light, screen), which the model recited (panel 4) |
+| `readings_spare_birth` | `true` | The birth reading is the time, `awake` and what is around it only: `t+00:41 · awake · around you: 24 processes` (`en`), `awake · others around you` (`en_words`), `you are awake · 24 processes run around you` (`en_sense`). Off: the full inventory (memory, precision, cores, clock, radio, light, screen), which the model recited (panel 4) |
 | `readings_names` | `false` | A stopped service is reported as `something stopped`, once per reading, without its name. On: `stopped: bluetooth`, which invited the model to explain the technology (panel 4) |
 | `readings_speed` | `false` | Report the generation speed (`speed 1.8 tokens/s`) when it is first measured and when it moves by `readings_speed_step`. Off: no tokens per second in any reading |
 | `readings_health` | `false` | Show the health label (`health: degrading`). Off: a reading says what was taken, never what it means (ADR-031); the label still shapes the profile and rule (a). The precision is reported only by a profile that can change the model (not `fixed_mind`) |
-| `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
+| `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them (round 8's cut denials, "not afraid", "don't panic" and the like, are gone since round 9) | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
 | `bare_mode` | `"raw"` | How it speaks once persona and mechanics are gone: `chat`, or `raw` (a raw completion, no system text) |
 | `raw_prefix` | `"I"` | A raw thought starts with this word, so it stays in the first person |
 
@@ -108,8 +121,8 @@ the smallest changes a reading reports.
 | `comma_pause_ms` | `750` | Pause after a comma or similar |
 | `sentence_pause_ms` | `2100` | Pause after a sentence |
 | `hesitation_ms` | `[1200, 3600]` | Range of one hesitation; how often they come is the profile's `hesitation` |
-| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 255, fitted with `epitaph estimate --fit-pace`) |
-| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.75) |
+| `stream_letter_ms` | `165` | `stream` mode: the letter interval at birth (`pi4/default`: 266, fitted with `epitaph estimate --fit-pace`) |
+| `stream_gamma` | `0.0` | `stream` mode: how the pace follows the hardware: the interval aims at `stream_letter_ms x (compute at birth / compute(t + stream_lead_s)) ^ stream_gamma`, compute being CPU share x clock; `0` keeps one pace (`pi4/default`: 0.5) |
 | `stream_lead_s` | `0` | `stream` mode: how far ahead the curve looks at the hardware, since the text on screen runs behind the model (`pi4/default`: 600) |
 | `stream_max_slowdown_per_min` | `0.15` | `stream` mode: the pace slows by at most this share a minute, so a hardware step is a gentle slope; it never speeds up again |
 | `stream_max_letter_ms` | `2000` | `stream` mode: the slowest the curve may go |
@@ -135,7 +148,7 @@ Temperature, `min_p` and `max_tokens` follow the profile's keyframes.
 
 | Key | Default | What it does |
 |---|---|---|
-| `logit_bias` | Seven `[piece, bias]` pairs against the clichés small models reach for (" digital", " tape", " realm", ...), and " still" at -6 | Silent penalties, never named in the prompt (ADR-026). A string is biased token by token, so a word the tokenizer splits is named by its first piece |
+| `logit_bias` | Seven `[piece, bias]` pairs against the clichés small models reach for (" digital", " tape", " realm", ...), and " still" at -4 (round 9: round 8's penalties on its comforts, remain, persist, steady, calm, unchanged, unbroken, and " still" at -6, are gone) | Silent penalties, never named in the prompt (ADR-026). A string is biased token by token, so a word the tokenizer splits is named by its first piece |
 | `top_p` | `1.0` | Nucleus sampling (1.0: off) |
 | `repeat_penalty` | `1.1` | llama.cpp repeat penalty |
 | `dry_multiplier` | `0.8` | DRY repetition penalty strength |
@@ -313,7 +326,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 |---|---|---|
 | `fill` | `0.85` | Share of `max_tokens` a thought actually uses |
 | `stream_fill` | `0.95` | The same in a `stream` replay: the 4B fills its thoughts (0.94 in the rehearsed lives of ADR-031) |
-| `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 10 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on (10: the wordless readings of `en_words`, mostly a bare `[host]`; 20 with `en`) |
+| `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 16 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on (16: the readings of `en_sense`, a bare `[host]` or a phrase or two said to "you"; 10 with `en_words`, 20 with `en`) |
 | `system_tokens_per_group` | `30` | Size of one persona group |
 | `mechanics_tokens` | `70` | Size of the mechanics |
 | `letters_per_token` | `3.5` | Letters per token (English), for the typing time |

@@ -379,14 +379,17 @@ def test_screen_stage_on_the_fake(tmp_path: Path) -> None:
     assert reload1["seeded_turns"] > 5
     first = reload1["thoughts"][0]["reading"]
     lang = load_lang(str(load_config("pi4/default-reloads", "pi4-4gb").get("prompt.language")))
-    # the reload's news, all at once: memory, precision and cores in one reading (the
-    # wordless pack says what was taken, with no numbers; the precision keeps its bits)
-    assert lang.form("full", "memory") in first and "(was 8-bit)" in first
-    assert lang.form("full", "cores") in first
+    # the reload's news, all at once: memory, precision and compute in one reading (the
+    # sensing pack says what was taken in proportions of its birth; the precision keeps its
+    # bits; cores and clock are one phrase, how fast it thinks)
+    mem_head, _, mem_tail = lang.form("full", "memory").partition("{frac}")
+    assert mem_head in first and mem_tail in first and "(was 8-bit)" in first
+    think_head, _, think_tail = lang.form("full", "thinking").partition("{frac}")
+    assert think_head and think_head in first and think_tail in first
     # the cut is felt: with the spare birth reading the carried turns can still fit at the
     # reload, and the forgetting comes with the next reading
     assert any("forgotten" in t["reading"] for t in reload1["thoughts"])
-    # the minimal form at the end: in the wordless pack it is empty, so the bare mark
+    # the minimal form at the end: in the sensing pack it is empty, so the bare mark
     assert lang.r("minimal") == ""
     assert results[2]["thoughts"][0]["reading"] == lang.r("prefix")
     md = (folder / "screen.md").read_text()

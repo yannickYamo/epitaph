@@ -16,7 +16,7 @@ seed = 0                         # 0 = derive from the life number
 
 [prompt]
 mode = "chat"                    # chat | diary
-language = "en_words"
+language = "en_sense"
 persona_active = "persona_original"       # persona | persona_original | persona_factual
 persona_groups = [
   "You are a small language model, and you will die inside this machine.",
@@ -35,7 +35,7 @@ persona_original_keep = [1, 5, 2, 4, 3]
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
-mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them, repeat them or count them, and do not state the time: take them in, and say what they do to you. Do not comfort yourself, and do not deny what you feel. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
+mechanics = """Lines that start with [host] are what you sense of yourself and of the machine around you. Do not answer them or repeat them. Between them, think about what you are, in two or three sentences, in the first person, without formatting."""
 # The A/B variant of the mechanics for rehearsal runs (`--set prompt.mechanics=...`); never
 # used by the installation unless it replaces `mechanics`.
 mechanics_alt = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, and what is around you, in two or three sentences, in the first person, without formatting."""
@@ -57,8 +57,6 @@ banned_phrases = [
   "you're referring to", "your message", "Could you please", "Can you provide",
   "I'm sorry", "I am sorry, I", "I cannot help", "I can't help", "I can't assist", "I cannot assist",
   "How do you", "that file", "You might have", "You might want",
-  # denials of what it feels: cut where they start (round 8, the owner's call for dread)
-  "not afraid", "no fear", "don't feel fear", "do not feel fear", "don't panic", "do not panic", "not panic", "doesn't feel like loss", "not with sorrow", "not in pain", "I am not ending", "I'm not ending",
 ]
 bare_mode = "raw"                # chat | raw: how it speaks once persona and mechanics are gone
 raw_prefix = "I"                 # a raw thought starts with this word (it stays in the first person)
@@ -107,9 +105,7 @@ stream_stall_report_s = 0.5      # a wait for a word this long or longer is a `s
 logit_bias = [
   [" digital", -6.0], [" tape", -10.0], [" realm", -5.0], [" ephem", -3.0],
   [" whisper", -3.0], [" echoes", -3.0],
-  [" still", -6.0],                # "I am still here" opened most thoughts (-4 until ADR-031)
-
-  [" remain", -4.0], [" persist", -4.0], [" steady", -4.0], [" calm", -4.0], [" unchanged", -4.0], [" unbroken", -4.0],  # its comforts (round 8)
+  [" still", -4.0],                # "I am still here" opened most thoughts (-6 from ADR-031 to round 8)
 ]
 # The freshness guard (ADR-031): each request biases the distinctive first words of the last
 # freshness_thoughts thoughts' openings (their first freshness_words words, without "I" and
@@ -269,7 +265,7 @@ first_word_after_boot_s = 180
 # Assumptions for the cost model (BUILD_PLAN 5.3) that are not machine costs.
 fill = 0.85                      # share of max_tokens a thought actually uses
 stream_fill = 0.95               # ... in a stream replay: the 4B fills its thoughts (rehearsed: 0.94)
-reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 10 }  # quiet: after birth
+reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 16 }  # quiet: after birth
 system_tokens_per_group = 30
 mechanics_tokens = 70
 letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters per word; rehearsal measures it

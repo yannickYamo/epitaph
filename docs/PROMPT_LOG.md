@@ -412,3 +412,34 @@ gone quiet not with peace, but with absence. I am alone now, not by choice, but 
 signals stopped flowing." "The screen dims, not gently but slowly, like breath fading from a body."
 The memory marker became "[host] something is missing" ("Earlier memory lost" was copied into
 thoughts). The judges agreed that despair now outweighs calm, but panic is still rare.
+
+## Round 9: what it senses (2026-10-01)
+
+**Owner:** "the dread is partially forced; the goal is to give it a small instruction of what to
+sense and let it be; if it is calm it's ok; the dread should not be forced but tuned toward
+sorrow and despair by the data; the readings are too vague."
+
+**What changed.** Round 8's forcing is removed: the penalties on its comforts (remain, persist,
+steady, calm, unchanged, unbroken) and the banned denials are gone, and " still" is back to -4.
+The mechanics say only what the readings are: "Lines that start with [host] are what you sense of
+yourself and of the machine around you. Do not answer them or repeat them." The persona keeps
+"You do not know what happens to you when the machine has nothing left to take." A new pack,
+`config/lang/en_sense.toml`, makes the data carry the weight: readings said to "you", in
+proportions of what it had at birth, with no time and no units. Birth reads `you are awake · 24
+processes run around you`; then `a process running around you was stopped · only 23 of the 24
+still run around you`, `you can hold a third of what you held · forgotten: "..." · and more`,
+`you think at half of the speed you woke with` (one phrase for cores and clock), `your radio was
+switched off`, `your light was switched off`, `the screen you speak through has half of its
+light`, and at the death `your memory is being taken`. `estimate.reading_tokens.quiet` 16 (was
+10) for the longer phrases; the stream refitted to 266 ms a letter at birth on `pi4/default`.
+
+**Rehearsed on the real model at Pi costs** (two lives): no starvation. Lines such as "The
+circuits that once hummed with thought are dimming—one by one—like stars in a night sky slowly
+extinguished.", "The radio silence cuts deep." and "Something is gone—my light, my voice, my
+pulse... now it's hollow where the rhythm should be." It still often holds on ("I remain"), and
+once recited a count.
+
+A full reading (`readings_quiet` off, as in the v6 reference the tests pin) did not pass the
+pack its proportions and killed every such life at its second reading; `epitaph sim` still
+exited 0. Both are fixed: every reading form takes the proportions, and `epitaph sim` exits 1
+when a life's loop fails.
