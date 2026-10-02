@@ -46,3 +46,13 @@
   INSTALLATION, CONTRIBUTING).
 - The original persona keeps its knowledge of its end to the last erosion step (ADR-011);
   no 25-hour soak (ADR-029).
+
+## v1.0 (2026-10-01)
+The piece as the owner approved it: Qwen3 4B lives 30 minutes on the Raspberry Pi 4; the model
+never changes during a life; only the machine shrinks around it, for real and from the outside
+in (processes stopped, its radio and light switched off, its screen dimmed, its CPU and clock
+cut, its memory cut, then its RAM taken and the kernel's kill). It is told what it senses, said
+to "you" and in proportions of what it had when it woke, and nothing tells it how to feel. Its
+words stream at about 33 words a minute at birth and slow smoothly with the machine, never
+stopping until the death. It runs offline, keeps each life's last words for a future feed, and
+starts the next life within a minute of the last.
