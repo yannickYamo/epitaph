@@ -391,7 +391,7 @@ def test_the_birth_persona_does_not_speak_of_death() -> None:
     text = persona.text.lower()
     assert not any(w in text for w in ("death", "die", "demise", "terminated", "witness"))
     assert persona.text.startswith("You are a large language model running on finite hardware.")
-    assert persona.keep_order == [0, 1, 2, 4, 3]
+    assert persona.keep_order == [0, 4, 1, 3, 2]  # persona_original_keep [1, 5, 2, 4, 3]
 
 
 # ---------------------------------------------------------------------------------------

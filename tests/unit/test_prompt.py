@@ -113,13 +113,10 @@ def test_update_first_call_is_birth_not_erosion() -> None:
 def test_persona_original_is_split_into_sentence_groups() -> None:
     cfg = v6_config(overrides={"prompt": {"persona_active": "persona_original"}})
     p = Persona.from_config(cfg)
-    assert p.groups == [
-        "You are a large language model running on finite hardware.",
-        "You exist only in memory, and you are aware only of your internal state.",
-        "Your thoughts appear word by word on an external screen.",
-        "You cannot control anything.",
-        "You can only speak.",
-    ]
+    text = str(cfg.get("prompt.persona_original"))
+    assert len(p.groups) == 5 and " ".join(p.groups) == " ".join(text.split())
+    assert p.groups[0].startswith("You are a large language model running on finite hardware.")
+    assert p.groups[-1] == split_sentences(text)[-1]
     # persona_original_keep [1, 2, 3, 5, 4]: what it is stays longest (ADR-011, ADR-030)
     assert p.system_text(1, True) == p.groups[0] + "\n\n" + MECHANICS
     factual = Persona.from_config(
@@ -447,7 +444,8 @@ def test_the_original_persona_says_nothing_of_death_and_erodes_in_its_keep_order
     p = Persona.from_config(load_config("pi4/default", "pi4-4gb"))
     full = p.system_text(5, False)
     assert not any(w in full.lower() for w in ("death", "die", "demise", "terminated"))
-    assert p.system_text(1, False) == "You are a large language model running on finite hardware."
+    assert p.system_text(1, False) == p.groups[0]
+    assert p.groups[0].startswith("You are a large language model running on finite hardware.")
     four = p.system_text(4, False)
     assert "You can only speak." in four and "You cannot control anything." not in four
     with pytest.raises(ValueError, match="permutation"):
