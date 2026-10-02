@@ -253,11 +253,22 @@ def test_cache_reuse_holds_through_every_loss(life: dict[str, Any]) -> None:
     """Decision A3 on a whole life: apart from the birth and the re-read after a reload, no
     request re-reads more than a quarter of its prompt (or 64 tokens, for the tiny prompts
     at the end), the first loss (the marker) included. The fake backend models
-    llama-server's `--cache-reuse` scan (spike S2f)."""
+    llama-server's `--cache-reuse` scan (spike S2f).
+
+    One exception, by design (mind/memory.py): a live trim cuts words only inside the last
+    remaining turn, and that one turn is re-read: its thought (at most the `max_tokens` it
+    was written with) and the reading and marker around it."""
+    sch: Schedule = life["schedule"]
     reqs: list[tuple[float, int, int, bool, bool]] = life["requests"]
+    cut_inside = {
+        e["t"] for e in of(life, "forget") if any("upto_i" in item for item in e["items"])
+    }
     first_loss = next(i for i, r in enumerate(reqs) if r[4])
     for i, (t, prompt_n, total, after_reload, _) in enumerate(reqs):
         if i == 0 or after_reload:
             continue
-        assert prompt_n <= max(64, 0.25 * total), (life["profile"], i, t, prompt_n, total)
+        bound = max(64, 0.25 * total)
+        if t in cut_inside:
+            bound = max(bound, sch.at(reqs[i - 1][0]).max_tokens + 32)
+        assert prompt_n <= bound, (life["profile"], i, t, prompt_n, total)
     assert not reqs[first_loss][3] or life["profile"] == "pi4/skeleton-1200"

@@ -501,3 +501,29 @@ end. Left unshown at the death: about 2 words if the Pi runs 30% slower than mea
 at the measured costs (a faster writer gets further ahead of the screen; the stream stops where it
 is at the death, ADR-030).
 
+**Round 7: wordless readings** (2026-10-01, owner: "more poetic and less mechanic", and the
+stream at least 50% faster at birth; docs/PROMPT_LOG.md). The readings no longer give the time,
+counts or units (`prompt.language = "en_words"`), so a reading after birth is about 10 tokens
+(`estimate.reading_tokens.quiet`, was 20). A thought may run to 90 tokens (was 70); the clock
+floor at end-0:50 is 750 MHz (was 900), so compute at the end is 1.5 cores at 750 MHz and the
+speed decline stays under 0.40 (0.38). The stream replay assumes every cost 20% slower
+(`estimate.stream_margin`, was 30%; three rehearsed lives at Pi costs never starved at the
+fitted pace), and `--fit-pace` gives 257 ms a letter at birth, gamma 0.5, a 10-minute lead:
+
+```
+$ epitaph estimate --profile pi4/default --hardware pi4-4gb
+profile pi4/default: 10 thoughts in 30 min -> PASS
+  note: speed last 5 min / first 5 min 0.38 (limit < 0.40): 1.26 -> 0.47 tokens/s
+  note: stream 257 -> 563 ms/letter, 33.8 / 20.0 / 15.4 words/min at birth / middle / end (gamma 0.5, lead 600 s); costs 20% slower: never starves; letters waiting every 5 min: 0, 118, 122, 277, 277, 221 (max 367); backlog at death 26 words (99 s of typing)
+  note: birth: load 77 s in the 90 s silence; persona restored in 0.8 s (read: 70 s); the screen starts on the first sentence at 45 s of life: first words 45 s after the silence
+  note: 10 thoughts shown; costs from bench (6 files) over overlay pi4-4gb; cache reuse assumed
+```
+
+About 34 words a minute at birth (257 ms a letter: 2.1 times the constant stream's speed per
+letter, 1.76 times its 19.2 words a minute; 24% more words a minute than panel 4's 345 ms), 20 in
+the middle and 15 at the end, where the letters come at 563 ms.
+
+The shorter readings also leave `pi5/unbounded`'s context unfilled in 90 minutes at ctx 6144
+(the life ended at the deadline); its ctx is now **4096**, which fills at 60 minutes on both Pi 5
+overlays (`context full at 60.0 min (cause=full)`, 50 thoughts); the simulator dies `full` at
+57 minutes.

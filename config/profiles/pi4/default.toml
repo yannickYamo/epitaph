@@ -23,7 +23,7 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 [reveal]
 mode = "stream"
 # fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 345           # at birth; 690 ms at the end
+stream_letter_ms = 257           # at birth; 563 ms at the end
 stream_gamma = 0.5               # the slowing follows the hardware's compute, to this power
 stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15
@@ -46,7 +46,7 @@ cpu_share = 3.0
 cpu_mhz = 1800
 temperature = 0.70
 min_p = 0.08
-max_tokens = 70
+max_tokens = 90
 pause_s = 3
 persona_groups = 5
 mechanics = true
@@ -151,7 +151,7 @@ recall = 100                     # its last thought
 [[keyframe]]
 at = "end-0:50"
 phase = "darkness"
-cpu_mhz = 900                    # the floor of its clock
+cpu_mhz = 750                    # the floor of its clock
 
 # The RAM is taken at end-0:30 (death above). No reload and no erosion: rules (b)-(d) have
 # nothing to count. Rule (a) asks each movement (health label) for an answered thought: the

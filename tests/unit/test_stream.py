@@ -431,12 +431,13 @@ def test_the_estimate_of_pi4_default_never_starves_and_reports_the_stream() -> N
     assert rep.ok, rep.violations
     st = rep.stream
     assert st is not None and st.stalls == [] and st.first_starvation is None
-    assert st.margin == pytest.approx(0.30)
+    assert st.margin == pytest.approx(float(cfg.get("estimate.stream_margin")))
     # The owner's "at least 50% faster" than the constant stream (542 ms a letter, 19.2 words
-    # a minute): the letters at birth come at least half again as fast. The pauses between
-    # words and sentences are the constant stream's at birth, so the words a minute gain less
-    # (panel 4's arc, refitted: 345 ms, 27.2 words a minute, 42% faster).
-    assert st.letter_ms <= 542 / 1.5 and 1.4 * 19.2 <= st.wpm <= 45
+    # a minute): the letters at birth come at least half again as fast, and so do the words a
+    # minute, pauses included (round 7, wordless readings: 257 ms, 33.8 words a minute; panel
+    # 4's arc had 345 ms and 27.2, 42% faster).
+    assert st.letter_ms == cfg.get("reveal.stream_letter_ms")
+    assert st.letter_ms <= 542 / 1.5 and 1.5 * 19.2 <= st.wpm <= 45
     assert st.first_words_s <= 45 and any(n.startswith("birth: ") for n in rep.notes)
     assert st.wpm > st.wpm_middle > st.wpm_end and st.letter_ms_end > st.letter_ms
     assert st.max_buffer_letters > 0 and len(st.buffer) == 30
@@ -612,8 +613,10 @@ def test_the_curve_is_constant_without_gamma_and_never_falls_with_it() -> None:
     assert values[0] == 250 and values == sorted(values)
     for t in range(0, 1740, 1):  # never more than 15% slower within a minute
         assert values[t + 60] <= values[t] * 1.15 + 1e-6
-    # it follows the hardware: compute at the end is 1.5 x 900/1800 of 3.0 at birth
-    end = 250 * (3.0 / (1.5 * 900 / 1800)) ** 1.0
+    # it follows the hardware: compute at the end (CPU share x clock) against birth's
+    birth, last = sch.at(0), sch.at(1800)
+    ratio = (birth.cpu_share * birth.cpu_mhz) / (last.cpu_share * last.cpu_mhz)
+    end = 250 * ratio**1.0
     assert 3 * 250 < values[-1] <= end + 1e-6  # toward it, at most 15% a minute
     assert values[1019] == 250  # nothing slows before the first hardware step at 17:00
 

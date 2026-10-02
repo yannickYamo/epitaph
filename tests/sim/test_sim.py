@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from epitaph.clock import Schedule
 from epitaph.config import Config, load_config
 from epitaph.costmodel import estimate, load_costs
+from epitaph.mind.prompt import load_lang
 from epitaph.sim import simulate
 from tests.conftest import v6_config
 
@@ -120,16 +119,21 @@ def test_every_memory_cut_emits_forget_the_reload_included() -> None:
 
 def test_readings_come_from_the_mind() -> None:
     """The simulator writes the real readings, marker included (mind.prompt.Reader)."""
-    r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
+    cfg = load_config("pi4/default-reloads", "pi4-4gb")
+    lang = load_lang(str(cfg.get("prompt.language")))
+    r = simulate(cfg)
     readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
     # The first reading comes after the system prompt was read at birth (ADR-013).
     # It says what is there, never what it means (ADR-031): no health label. Spare at birth
-    # (prompt.readings_spare_birth, panel 4): awake and what is around it, no inventory.
-    assert re.fullmatch(r"\[host\] t\+0\d:\d\d · awake · around you: \d+ processes", readings[0])
+    # (prompt.readings_spare_birth, panel 4): awake and what is around it, no inventory; the
+    # wordless pack (en_words) gives no time and no count.
+    birth = [lang.r("boot"), lang.form("full", "around_birth").format(n=0)]
+    assert cfg.get("prompt.language") == "en_words" and lang.r("time") == ""
+    assert readings[0] == "[host] " + lang.r("sep").join(birth)
     assert not any("tokens/s" in x or "speed" in x for x in readings)  # readings_speed off
     assert any("forgotten:" in x for x in readings)
     assert not any("health" in x or "terminal" in x for x in readings)
-    assert readings[-1].startswith("[host] ")
+    assert readings[-1].split(" ")[0] == lang.r("prefix")  # with what changed, or bare
     vitals = [e for e in r.events if e["type"] == "vitals"]
     assert vitals[0]["marker"] is False and vitals[-1]["marker"] is True
 
