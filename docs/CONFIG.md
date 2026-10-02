@@ -20,7 +20,17 @@ Tables merge key by key; any other value replaces the one before it. Validation 
 anything starts and names the file and the problem (`epitaph sim` or `epitaph estimate` is the
 quickest check). Machine costs live in `bench/` and feed the cost model and the pacer; the
 language pack `config/lang/<language>.toml` holds every string the machine writes (readings,
-health labels) and the word lists of the voice metrics.
+health labels) and the word lists of the voice metrics. Two English packs ship: `en`, the
+readings with times, numbers and units (`t+12:40 · memory 300 tokens (was 900)`), and
+`en_words`, the installation's since 2026-10-01 (owner: "more poetic and less mechanic"): the
+same metrics and blocklist, and readings with no time, no numbers and no units. Birth reads
+`awake · others around you`; a loss reads `something stopped · fewer around you`,
+`less memory · forgotten: "..." · and more`, `the radio is gone`, `the light is gone`,
+`the screen grows dim`, `less of the processor` or `slower`; a reading with nothing new is a
+bare `[host]`; the death reading is `its memory is taken`. A pack may leave a field empty
+(`time = ""`): the reading drops it. `en_words` is written for `readings_quiet` and
+`readings_spare_birth` on (the defaults): its radio, light, screen and `around` phrases name
+losses, so a full inventory reading (either switch off) would misread the world.
 
 Times are `"mm:ss"`. In a profile, a keyframe at `"7:00"` scales with the lifespan; one at
 `"end-2:30"` keeps its distance from the end.
@@ -48,7 +58,7 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | Key | Default | What it does |
 |---|---|---|
 | `mode` | `"chat"` | `chat` (system prompt and turns) or `diary` (one raw text continued) |
-| `language` | `"en"` | Language pack in `config/lang/` |
+| `language` | `"en_words"` | Language pack in `config/lang/`: `en_words` (wordless readings) or `en` (readings with times and numbers) |
 | `persona_active` | `"persona_original"` | Which persona the system prompt starts with: `persona` (the five groups below), `persona_original` or `persona_factual`; a single text is split into five groups for erosion |
 | `persona_groups` | Five sentences, in the order erosion removes them from the end: the knowledge of its death is the first group, so it goes last | The `persona` persona, one string per erosion group |
 | `persona_original` | The owner's persona of 2026-10-01: a large language model on finite hardware, in memory, its words on a screen, speaking only; nothing about its death (ADR-030) | The installation's persona (ADR-023) |
@@ -56,15 +66,15 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `persona_factual` | A plain statement of the machine and the decline | A third persona for comparison |
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
-| `mechanics` | Four sentences on the readings and one invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
+| `mechanics` | The readings are not to be answered, repeated or counted, nor the time stated: "take them in, and say what they mean to you"; then the invitation, "think about what you are" | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
 | `mechanics_alt` | The same, inviting it to "think about what you are, and what is around you" | The A/B variant for rehearsal runs (`--set prompt.mechanics=...`); the installation never reads it (ADR-031) |
 | `memory_gap_marker` | `"[host] earlier memory lost"` | Marks forgotten turns when readings are not quiet |
 | `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
 | `readings_material` | `true` | Forgotten thoughts are quoted by their most distinctive sentence (the longest that does not open on "I am", "I'm" or "I was", at most ten words; ADR-031), and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
-| `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023) |
+| `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023); `en_words` has no time, so a reading with no change is a bare `[host]` |
 | `readings_clock` | `true` | The CPU clock cap is in the birth reading, and in every reading after it falls: `clock 1500 MHz (was 1800)` (ADR-030) |
-| `readings_spare_birth` | `true` | The birth reading is the time, `awake` and what is around it only: `t+00:41 · awake · around you: 24 processes`. Off: the full inventory (memory, precision, cores, clock, radio, light, screen), which the model recited (panel 4) |
+| `readings_spare_birth` | `true` | The birth reading is the time, `awake` and what is around it only: `t+00:41 · awake · around you: 24 processes` (`en`), `awake · others around you` (`en_words`). Off: the full inventory (memory, precision, cores, clock, radio, light, screen), which the model recited (panel 4) |
 | `readings_names` | `false` | A stopped service is reported as `something stopped`, once per reading, without its name. On: `stopped: bluetooth`, which invited the model to explain the technology (panel 4) |
 | `readings_speed` | `false` | Report the generation speed (`speed 1.8 tokens/s`) when it is first measured and when it moves by `readings_speed_step`. Off: no tokens per second in any reading |
 | `readings_health` | `false` | Show the health label (`health: degrading`). Off: a reading says what was taken, never what it means (ADR-031); the label still shapes the profile and rule (a). The precision is reported only by a profile that can change the model (not `fixed_mind`) |
@@ -303,7 +313,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 |---|---|---|
 | `fill` | `0.85` | Share of `max_tokens` a thought actually uses |
 | `stream_fill` | `0.95` | The same in a `stream` replay: the 4B fills its thoughts (0.94 in the rehearsed lives of ADR-031) |
-| `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 20 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on |
+| `reading_tokens` | `{ full = 45, short = 28, minimal = 10, quiet = 10 }` | Size of a reading in each form; `quiet` stands for every reading after birth when `prompt.readings_quiet` is on (10: the wordless readings of `en_words`, mostly a bare `[host]`; 20 with `en`) |
 | `system_tokens_per_group` | `30` | Size of one persona group |
 | `mechanics_tokens` | `70` | Size of the mechanics |
 | `letters_per_token` | `3.5` | Letters per token (English), for the typing time |
@@ -311,7 +321,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 | `cache_reuse_works` | `true` | Edits to the memory re-read only what changed (spike S2) |
 | `speed_monotonic` | `"fail"` | Speed must never rise across a reload: `fail` makes it a rule, `warn` only prints it |
 | `stream_max_backlog_words` | `40` | `epitaph estimate --fit-pace`: a curve may leave at most this many words unshown at the death, at the measured costs (about a thought; 8 until the robust fit of ADR-031) |
-| `stream_margin` | `0.3` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate (0.15 starved on the real model, ADR-031) |
+| `stream_margin` | `0.2` | A `stream` profile is replayed with every machine cost this much slower; any starvation fails the estimate (0.15 starved on the real model, ADR-031). 0.30 until round 7 (PROMPT_LOG): three rehearsed lives at Pi costs never starved at the 257 ms pace fitted with 0.20 |
 | `words_per_sentence` | `9` | A sentence pause every this many words, on average (the stream's pace) |
 | `words_per_clause` | `9` | A comma pause every this many words, on average |
 | `kv_bytes_per_token` | `147456` | Size of the KV cache per token (f16, Qwen3 4B), for the persona restore's time |

@@ -378,12 +378,17 @@ def test_screen_stage_on_the_fake(tmp_path: Path) -> None:
     reload1 = results[1]
     assert reload1["seeded_turns"] > 5
     first = reload1["thoughts"][0]["reading"]
-    # the reload's news, all at once: memory, precision and cores in one reading
-    assert "(was 900)" in first and "(was 8-bit)" in first and "(was 3)" in first
+    lang = load_lang(str(load_config("pi4/default-reloads", "pi4-4gb").get("prompt.language")))
+    # the reload's news, all at once: memory, precision and cores in one reading (the
+    # wordless pack says what was taken, with no numbers; the precision keeps its bits)
+    assert lang.form("full", "memory") in first and "(was 8-bit)" in first
+    assert lang.form("full", "cores") in first
     # the cut is felt: with the spare birth reading the carried turns can still fit at the
     # reload, and the forgetting comes with the next reading
     assert any("forgotten" in t["reading"] for t in reload1["thoughts"])
-    assert results[2]["thoughts"][0]["reading"].count("·") == 1  # the minimal form at the end
+    # the minimal form at the end: in the wordless pack it is empty, so the bare mark
+    assert lang.r("minimal") == ""
+    assert results[2]["thoughts"][0]["reading"] == lang.r("prefix")
     md = (folder / "screen.md").read_text()
     assert "| qwen3-1.7b | persona |" in md
 

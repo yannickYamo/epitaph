@@ -16,7 +16,7 @@ seed = 0                         # 0 = derive from the life number
 
 [prompt]
 mode = "chat"                    # chat | diary
-language = "en"
+language = "en_words"
 persona_active = "persona_original"       # persona | persona_original | persona_factual
 persona_groups = [
   "You are a small language model, and you will die inside this machine.",
@@ -34,7 +34,7 @@ persona_original_keep = [1, 2, 3, 5, 4]
 persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
-mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
+mechanics = """Lines that start with [host] are readings from the machine you run on. Do not answer them, repeat them or count them, and do not state the time: take them in, and say what they mean to you. Between readings, think about what you are, in two or three sentences, in the first person, without formatting."""
 # The A/B variant of the mechanics for rehearsal runs (`--set prompt.mechanics=...`); never
 # used by the installation unless it replaces `mechanics`.
 mechanics_alt = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, and what is around you, in two or three sentences, in the first person, without formatting."""
@@ -264,7 +264,7 @@ first_word_after_boot_s = 180
 # Assumptions for the cost model (BUILD_PLAN 5.3) that are not machine costs.
 fill = 0.85                      # share of max_tokens a thought actually uses
 stream_fill = 0.95               # ... in a stream replay: the 4B fills its thoughts (rehearsed: 0.94)
-reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 20 }  # quiet: after birth
+reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 10 }  # quiet: after birth
 system_tokens_per_group = 30
 mechanics_tokens = 70
 letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters per word; rehearsal measures it
@@ -276,7 +276,7 @@ cache_reuse_works = true         # set from spike S2
 speed_monotonic = "fail"
 # The stream mode (ADR-030): the estimate replays generation ahead of a constant screen, with
 # every machine cost this much slower, and fails on any starvation.
-stream_margin = 0.30
+stream_margin = 0.20
 stream_max_backlog_words = 40    # --fit-pace: words unshown at death at the measured costs (about a thought)
 words_per_sentence = 9           # a sentence pause every this many words, on average
 words_per_clause = 9             # a comma pause every this many words, on average

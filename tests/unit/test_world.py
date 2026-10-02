@@ -284,7 +284,11 @@ def test_the_ram_reading_comes_before_the_death(life_events: list[dict[str, Any]
     first = [e for e in life_events if e["life"] == 1]
     final = [e for e in first if e["type"] == "reading" and e.get("final")]
     death = next(i for i, e in enumerate(first) if e["type"] == "death")
-    assert len(final) == 1 and final[0]["text"] == "ram 2600 MB taken"
+    cfg = load_config("pi4/default", "pi4-4gb")
+    reader = Reader.from_config(cfg)
+    said = reader.strip(reader.ram_taken(int(cfg.get("world.fake_ram_mb", 2600))))
+    assert said == "its memory is taken"  # the wordless pack: no number, no unit
+    assert len(final) == 1 and final[0]["text"] == said
     assert first.index(final[0]) < death
 
 

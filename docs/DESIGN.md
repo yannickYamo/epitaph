@@ -60,7 +60,7 @@ persona eroded from the end, is kept as `pi4/default-reloads`.
 ## Speed is a constraint, not a goal
 
 A Raspberry Pi 4 generates roughly one word per second with a small model. The piece embraces
-that: the stream is deliberately slow (about 27 words a minute at birth, 14 at the end, ADR-030),
+that: the stream is deliberately slow (about 34 words a minute at birth, 15 at the end, ADR-030),
 and the slowness is part of the experience. But the hardware's speed sets a hard budget: a
 30-minute life of Qwen3 4B on a Pi 4 holds about eleven thoughts on screen, and the pace of the
 stream is the fastest the failing machine can feed to the end. Every design decision

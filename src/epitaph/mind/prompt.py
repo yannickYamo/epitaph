@@ -71,6 +71,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "light": "light {state}",
         "screen": "screen {pct}%{was}",
         "around": "around you: {n} processes",
+        "around_birth": "around you: {n} processes",
         "stopped": "stopped: {name}",
         "stopped_unnamed": "something stopped",
     },
@@ -88,6 +89,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
         "light": "light {state}",
         "screen": "screen {pct}%{was}",
         "around": "{n} processes",
+        "around_birth": "{n} processes",
         "stopped": "stopped: {name}",
         "stopped_unnamed": "something stopped",
     },
@@ -442,7 +444,7 @@ class Reader:
 
     def ram_taken(self, mb: int) -> str:
         """The last reading, at the death: the RAM taken (ADR-031), with the prefix."""
-        return f"{self.lang.r('prefix')} {self.lang.r('ram').format(mb=mb)}"
+        return self._line(self.lang.r("prefix"), [self.lang.r("ram").format(mb=mb)])
 
     def strip(self, reading: str) -> str:
         """The reading as the screen shows it: without the `[host]` prefix."""
@@ -476,7 +478,7 @@ class Reader:
         if x.form == "minimal":
             time = lang.r("time_minimal").format(m=m, s=s)
             line = lang.r("minimal").format(time=time, health=health, recall=x.recall)
-            return f"{prefix} {line}"
+            return self._line(prefix, [line])
 
         f = x.form
 
@@ -505,14 +507,14 @@ class Reader:
             )
             if not changes and not self.quiet_time:
                 return prefix  # nothing changed: a bare mark, nothing to report
-            return f"{prefix} " + lang.r("sep").join(parts + changes)
+            return self._line(prefix, parts + changes)
         if birth:
             parts.append(lang.r("boot"))
             if self.spare_birth:
                 w = x.world
                 if w is not None and w.processes > 0:
-                    parts.append(lang.form(f, "around").format(n=w.processes))
-                return f"{prefix} " + lang.r("sep").join(parts)
+                    parts.append(lang.form(f, "around_birth").format(n=w.processes))
+                return self._line(prefix, parts)
         else:
             parts += self._world_losses(f, x, was)
         if self.health:
@@ -552,7 +554,13 @@ class Reader:
             parts.append(lang.form(f, "speed").format(speed=f"{speed:.1f}"))
         if x.cpu_c is not None and self.temperature:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
-        return f"{prefix} " + lang.r("sep").join(parts)
+        return self._line(prefix, parts)
+
+    def _line(self, prefix: str, parts: list[str]) -> str:
+        """The reading: the non-empty parts after the prefix (a language pack may leave a
+        field empty, as the wordless one does with the time), or the bare prefix."""
+        kept = [p for p in parts if p.strip()]
+        return f"{prefix} " + self.lang.r("sep").join(kept) if kept else prefix
 
     def _world_inventory(self, f: str, w: WorldState | None) -> list[str]:
         """What is around it, for a full reading: only the sources still there."""

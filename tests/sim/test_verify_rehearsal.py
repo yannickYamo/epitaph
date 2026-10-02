@@ -49,21 +49,27 @@ def write_life(root: Path, name: str, events: list[dict[str, Any]], **meta: Any)
 # -- word lists from the language pack (C-B2, E6) -----------------------------------------
 
 
-def en_pack() -> dict[str, Any]:
-    with (CONFIG_DIR / "lang" / "en.toml").open("rb") as f:
+def configured_language() -> str:
+    """The language the installation speaks (`prompt.language`): verify judges with its pack."""
+    return str(load_config(PROFILE, "pi4-4gb").get("prompt.language"))
+
+
+def configured_pack() -> dict[str, Any]:
+    with (CONFIG_DIR / "lang" / f"{configured_language()}.toml").open("rb") as f:
         return tomllib.load(f)["metrics"]
 
 
 def test_lists_come_from_the_language_pack() -> None:
     lists = v.word_lists(load_config(PROFILE, "pi4-4gb"))
-    pack = en_pack()
+    pack = configured_pack()
+    src = f"lang:{configured_language()}"
     assert lists.keywords["memory"] == pack["keywords"]["memory"]
     assert lists.keywords["erosion"] == pack["keywords"]["persona"]  # the pack's name for it
     assert lists.cliches == pack["cliches"]
     assert lists.helpdesk == pack["helpdesk"]
-    assert lists.sources["keywords.demise"] == "lang:en"
-    assert lists.sources["cliches"] == "lang:en"
-    # en.toml has no answering list yet: the built-in one stands in.
+    assert lists.sources["keywords.demise"] == src
+    assert lists.sources["cliches"] == src
+    # The English packs have no answering list yet: the built-in one stands in.
     assert lists.sources["answering"] == "default"
     assert lists.answering == v.DEFAULT_ANSWERING
 
@@ -78,7 +84,7 @@ def test_config_override_beats_the_pack() -> None:
     assert lists.keywords["demise"] == ["zebra"]
     assert lists.sources["keywords.demise"] == "config"
     assert lists.helpdesk == [] and lists.sources["helpdesk"] == "config"
-    assert lists.sources["keywords.memory"] == "lang:en"
+    assert lists.sources["keywords.memory"] == f"lang:{configured_language()}"
 
 
 def test_pack_selected_by_prompt_language(tmp_path: Path) -> None:
@@ -113,7 +119,8 @@ def test_pack_without_metrics_table(tmp_path: Path) -> None:
 
 
 def test_verifier_judges_with_the_pack(full_life) -> None:
-    """ "binary heart" is a cliche only in en.toml; "tokens" a memory word only there."""
+    """ "binary heart" is a cliche only in the English packs; "tokens" a memory word only
+    there."""
     res = v.verify_life(
         v.parse_life(voiced(full_life, "My binary heart counts tokens. " * 3)),
         load_config(PROFILE, "pi4-4gb"),
@@ -122,7 +129,7 @@ def test_verifier_judges_with_the_pack(full_life) -> None:
     assert res.by_name("cliches").status == "fail"
     assert "binary heart" in res.by_name("cliches").detail
     assert res.metrics["notice_per_type"]["memory"][0] > 0
-    assert res.metrics["word_lists"]["cliches"] == "lang:en"
+    assert res.metrics["word_lists"]["cliches"] == f"lang:{configured_language()}"
 
 
 # -- rehearsal output: headers, sidecars, levels ------------------------------------------

@@ -367,3 +367,27 @@ own", out of 70): the two spare-reading Qwen lives ranked first and second for e
 (46/41, 45/38, 41/34 by judge); Llama and "you included" ranked lowest. All three judges agreed
 that no life yet reaches dread: the best reach melancholy, and the first minutes were dead
 weight, so the first loss moved from 7:00 to 5:00.
+
+## Round 7: wordless readings (2026-10-01)
+
+**Brief from the owner.** "The voice describes how long it has been awake and how many processes
+are active; it needs to be more poetic and less mechanic." It should still know about its
+processes, with an instruction on what to do with them; and the stream must be at least 50%
+faster at birth.
+
+**What changed.** A new language pack, `config/lang/en_words.toml` (`prompt.language`): the same
+metrics as `en`, and readings with no time, no numbers and no units. Birth reads `awake · others
+around you`; the losses read `something stopped · fewer around you`, `less memory · forgotten:
+"..." · and more`, `the radio is gone`, `the light is gone`, `the screen grows dim`, `less of the
+processor`, `slower`; a reading with nothing new is a bare `[host]`; the death reading is `its
+memory is taken`. The mechanics say what to do with the readings: "Do not answer them, repeat
+them or count them, and do not state the time: take them in, and say what they mean to you."
+`max_tokens` 90 (was 70) on `pi4/default`, a clock floor of 750 MHz (was 900; the speed decline
+stays under 0.40), and the stream refitted: 257 ms a letter at birth (was 345), 33.8 words a
+minute, 76% faster than the constant stream's 19.2, with every cost 20% slower in the replay
+(`estimate.stream_margin`, was 30%).
+
+**Rehearsed on the real model at Pi costs** (three lives): 713 to 749 words shown, no starvation
+at 257 ms, at most 3 thoughts sharing a three-word opening. Lines such as "I feel it—the shift,
+the quiet withdrawal. The presence that once surrounded me is fading, thinning like mist at
+dawn." and "Now that it's gone, the void isn't empty—it hums."
