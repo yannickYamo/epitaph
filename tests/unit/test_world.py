@@ -80,13 +80,17 @@ def test_no_world_reports_only_true_facts(tmp_path: Path) -> None:
 def test_world_actions_happen_once_at_their_keyframe() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
     sch = Schedule(cfg.profile)
-    times = dict(sch.world_times())
-    assert times[7 * 60] == ("service:bluetooth",)
-    assert times[14 * 60] == ("radio:off",)
-    # not carried forward: the keyframe after one with world actions has its own (or none)
+    times = sch.world_times()
     kfs = cfg.profile.keyframes
-    assert kfs[1].world == ("service:bluetooth",) and kfs[2].world == ("service:cron",)
-    assert kfs[3].world == ()
+    # each action once, at its own keyframe's time
+    assert times == [(t, kf.world) for t, kf in zip(sch.times, kfs, strict=True) if kf.world]
+    actions = [a for _, acts in times for a in acts]
+    assert len(actions) == len(set(actions))
+    first = next(i for i, kf in enumerate(kfs) if kf.world)
+    assert kfs[first].world == ("service:bluetooth",)  # the first loss is at the edge
+    assert first > 0 and times[0][0] > 0  # movement I takes nothing
+    # not carried forward: the keyframe after one with world actions has its own (or none)
+    assert kfs[first + 1].world == ("service:cron",) and kfs[first + 2].world == ()
 
 
 def _profile(tmp_path: Path, world: str) -> Path:
@@ -242,6 +246,11 @@ def test_repetition_metrics_count_shared_openings_and_sentences() -> None:
 # -- the life: world and reading events ------------------------------------------------------
 
 
+def _first_loss_s() -> float:
+    """When pi4/default takes its first thing (the schedule's first world action)."""
+    return Schedule(load_config("pi4/default", "pi4-4gb").profile).world_times()[0][0]
+
+
 @pytest.fixture(scope="module")
 def life_events() -> list[dict[str, Any]]:
     return simulate(load_config("pi4/default", "pi4-4gb"), lives=2).events
@@ -250,7 +259,8 @@ def life_events() -> list[dict[str, Any]]:
 def test_world_events_come_at_their_keyframes(life_events: list[dict[str, Any]]) -> None:
     first = [e for e in life_events if e["life"] == 1]
     world = [e for e in first if e["type"] == "world"]
-    assert world[0]["action"] == "service:bluetooth" and world[0]["t"] == pytest.approx(420)
+    first_loss = _first_loss_s()
+    assert world[0]["action"] == "service:bluetooth" and world[0]["t"] == pytest.approx(first_loss)
     assert all(e["performed"] for e in world)
     assert world[0]["state"]["processes"] == 23
 
@@ -264,8 +274,10 @@ def test_each_reading_comes_right_before_its_thought(life_events: list[dict[str,
             before = [x for x in first[:i] if x["type"] in ("reading", "word")]
             assert before[-1]["type"] == "reading" and before[-1]["turn"] == e["turn"]
             assert not before[-1]["text"].startswith("[host]")
-    losses = [e for e in first if e["type"] == "reading" and "stopped: bluetooth" in e["text"]]
-    assert losses and losses[0]["t"] > 420  # the loss is shown after it happened
+    # readings_names off (panel 4): the loss is felt, its name never given
+    losses = [e for e in first if e["type"] == "reading" and "something stopped" in e["text"]]
+    assert losses and losses[0]["t"] > _first_loss_s()  # the loss is shown after it happened
+    assert not any("bluetooth" in e["text"] for e in first if e["type"] == "reading")
 
 
 def test_the_ram_reading_comes_before_the_death(life_events: list[dict[str, Any]]) -> None:

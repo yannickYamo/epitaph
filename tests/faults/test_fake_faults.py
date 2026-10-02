@@ -280,15 +280,24 @@ def test_deadline_during_a_reload() -> None:
 
 def test_death_with_a_full_pacing_queue() -> None:
     """The deadline falls while a whole thought waits to be typed (generation ten times faster
-    than typing, a 4:15 smoke life): the 20-odd words it really generated are typed at pace
-    after the death, then death_shown (5.8). The installation's own late thoughts hold about
-    eight words, so a short deadline life fills the queue instead."""
-    cfg = load_config("pi4/smoke-300", "pi4-4gb", lifespan_s=255)
-    ev = run(cfg, backend_cls=with_faults(tg_factor=0.1))
+    than typing, a smoke life cut a second after its last thought was generated): the 20-odd
+    words it really generated are typed at pace after the death, then death_shown (5.8). The
+    installation's own late thoughts hold about eight words, so a short deadline life fills
+    the queue instead. The deadline is placed from a life without it (nothing before the
+    deadline depends on the lifespan), so a change of the readings does not move it off."""
+    faults = with_faults(tg_factor=0.1)
+    whole = run(load_config("pi4/smoke-300", "pi4-4gb"), backend_cls=faults)
+    generated = [e["t"] for e in of(whole, "gen_end") if e["t"] < 298]
+    cfg = load_config("pi4/smoke-300", "pi4-4gb", lifespan_s=int(generated[-1]) + 2)
+    ev = run(cfg, backend_cls=faults)
     death, shown = of(ev, "death")[0], of(ev, "death_shown")[0]
     assert death["cause"] == "deadline"
     late = [e for e in of(ev, "word") if e["t"] > death["t"]]
     assert len(late) >= 20
+    # the rest of the last thought, every word of it, in order
+    last = of(ev, "thought_end")[-1]
+    assert {e["turn"] for e in late} == {last["turn"]}
+    assert last["text"].endswith(" ".join(e["text"] for e in late))
     for a, b in itertools.pairwise(late):  # at pace: never faster than typed
         assert b["t"] - a["t"] >= (sum(a["char_ms"]) + a["pause_after_ms"]) / 1000 - 0.01
     assert shown["t"] >= late[-1]["t"] and shown["words_total"] == len(of(ev, "word"))

@@ -64,6 +64,9 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `readings_temperature` | `false` | Include the CPU temperature in readings (off: one number at birth made it invent a fever) |
 | `readings_quiet` | `true` | After birth, a reading gives only the time and what changed (ADR-023) |
 | `readings_clock` | `true` | The CPU clock cap is in the birth reading, and in every reading after it falls: `clock 1500 MHz (was 1800)` (ADR-030) |
+| `readings_spare_birth` | `true` | The birth reading is the time, `awake` and what is around it only: `t+00:41 · awake · around you: 24 processes`. Off: the full inventory (memory, precision, cores, clock, radio, light, screen), which the model recited (panel 4) |
+| `readings_names` | `false` | A stopped service is reported as `something stopped`, once per reading, without its name. On: `stopped: bluetooth`, which invited the model to explain the technology (panel 4) |
+| `readings_speed` | `false` | Report the generation speed (`speed 1.8 tokens/s`) when it is first measured and when it moves by `readings_speed_step`. Off: no tokens per second in any reading |
 | `readings_health` | `false` | Show the health label (`health: degrading`). Off: a reading says what was taken, never what it means (ADR-031); the label still shapes the profile and rule (a). The precision is reported only by a profile that can change the model (not `fixed_mind`) |
 | `banned_phrases` | Helpdesk phrases, and phrases that answer the readings as if a person wrote them | Never shown: the pacer holds back words that could start one, and a thought that opens with one is regenerated (`max_regenerations`) or cut |
 | `bare_mode` | `"raw"` | How it speaks once persona and mechanics are gone: `chat`, or `raw` (a raw completion, no system text) |

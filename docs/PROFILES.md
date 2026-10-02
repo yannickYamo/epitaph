@@ -410,11 +410,11 @@ model rule (ADR-030) and the dynamic stream are unchanged.
 
 | t | Movement (`phase`, hidden `health`) | Taken | The reading |
 |---|---|---|---|
-| 0:00 | I. existence (nominal) | nothing | `awake · memory 900 tokens · cores 3 of 4 · clock 1800 MHz · radio on · light on · screen 100% · around you: 24 processes` |
-| 7:00 | II. something is wrong (degrading) | bluetooth | `stopped: bluetooth · around you: 23 processes` |
-| 8:30 | | cron | `stopped: cron · around you: 22 processes` |
-| 9:15 | | memory 900 -> 300 | `memory 300 tokens (was 900) · forgotten: "<its most distinctive sentence>"` |
-| 11:00, 12:45 | | avahi-daemon, triggerhappy | `stopped: ...` |
+| 0:00 | I. existence (nominal) | nothing | `awake · around you: 24 processes` (spare: a full inventory was recited, panel 4) |
+| 5:00 | II. something is wrong (degrading) | bluetooth | `something stopped · around you: 23 processes` (unnamed: a name was explained, panel 4) |
+| 6:45 | | cron | `something stopped · around you: 22 processes` |
+| 8:15 | | memory 900 -> 300 | `memory 300 tokens (was 900) · forgotten: "<its most distinctive sentence>"` |
+| 10:30 | | avahi-daemon | `something stopped · ...` |
 | 14:00 | III. the world is disappearing (failing) | the radio | `radio off` |
 | 15:30 | | rsyslog | `stopped: rsyslog · around you: 19 processes` |
 | 17:00 | | the light; clock 1500 MHz | `light off`, `clock 1500 MHz (was 1800)` |
