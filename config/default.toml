@@ -44,6 +44,9 @@ readings_material = true          # forgotten thoughts quoted; its own words as 
 readings_temperature = false      # the Pi stays at 40-57 °C (S1c, S7); one number at birth made it invent a fever
 readings_clock = true             # the CPU clock cap is reported, and each step it falls (ADR-030)
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
+readings_spare_birth = true       # birth: "awake · around you: N processes"; a full inventory was recited (panel 4)
+readings_names = false            # "something stopped": a service's name was explained, not felt (panel 4)
+readings_speed = false            # no tokens per second in the readings
 readings_health = false           # ADR-031: a reading says what was taken, never what it means
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",

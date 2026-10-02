@@ -346,3 +346,24 @@ seed 2, "I'm not made".
 
 **Adopted:** the 30-minute life with material readings, the CPU clock, no temperature and the
 silent penalties (ADR-024 to ADR-026).
+
+## Round 6: the dread plan (2026-10-01)
+
+**Brief from the owner.** The world is taken from the outside in, for real, and the model is told
+only the facts; it should sense that something is wrong, realize its environment is
+disappearing and fall into dread, never forced. The model never changes during a life (ADR-030,
+ADR-031).
+
+| Variant | What changed | Result |
+|---|---|---|
+| Full readings | Birth inventory of every field; losses named ("stopped: cron") | Recited its inventory for minutes; explained each service ("Cron has been stopped—this suggests a pause in scheduled tasks") |
+| **Spare readings** | Birth "awake · around you: N processes"; "something stopped"; no tokens per second | **Kept.** No recital, no explanations; losses felt ("Each loss is a note, though no one hears it") |
+| Spare + "you included" | Persona adds "Anything running on this machine can be stopped, you included." | More defiant, not more afraid ("I am here. I always have been.") |
+| Spare + "what is happening to you" | The one invitation changed | Status reports and invented hours ("Six hours have passed") |
+| Llama 3.2 3B, spare | The other candidate model, fixed for the life | Stable across three seeds this time, but assistant disclaimers ("a tool for providing information") and despair stated before it is earned |
+
+Blind panel 4 (three judges, eight lives, seven criteria including "the dread arrives on its
+own", out of 70): the two spare-reading Qwen lives ranked first and second for every judge
+(46/41, 45/38, 41/34 by judge); Llama and "you included" ranked lowest. All three judges agreed
+that no life yet reaches dread: the best reach melancholy, and the first minutes were dead
+weight, so the first loss moved from 7:00 to 5:00.

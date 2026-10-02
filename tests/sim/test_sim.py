@@ -123,8 +123,10 @@ def test_readings_come_from_the_mind() -> None:
     r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
     # The first reading comes after the system prompt was read at birth (ADR-013).
-    # It says what is there, never what it means (ADR-031): no health label.
-    assert re.match(r"\[host\] t\+0\d:\d\d · awake · memory \d+ tokens", readings[0])
+    # It says what is there, never what it means (ADR-031): no health label. Spare at birth
+    # (prompt.readings_spare_birth, panel 4): awake and what is around it, no inventory.
+    assert re.fullmatch(r"\[host\] t\+0\d:\d\d · awake · around you: \d+ processes", readings[0])
+    assert not any("tokens/s" in x or "speed" in x for x in readings)  # readings_speed off
     assert any("forgotten:" in x for x in readings)
     assert not any("health" in x or "terminal" in x for x in readings)
     assert readings[-1].startswith("[host] ")

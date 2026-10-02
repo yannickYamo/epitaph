@@ -9,8 +9,8 @@
 # machine (owner, 2026-10-01); the model writes ahead of it.
 #
 # Four movements, named by `phase` (the health labels mark them for rule (a); never shown):
-#   I    existence                  0:00-7:00    nothing taken
-#   II   something is wrong         7:00-14:00   services stopped one by one; the first forgetting
+#   I    existence                  0:00-5:00    nothing taken
+#   II   something is wrong         5:00-14:00   services stopped one by one; the first forgetting
 #   III  the world is disappearing  14:00-22:00  radio, light, screen 70%, services, clock, memory:
 #                                                a loss about every 90 s
 #   IV   darkness                   22:00-29:30  CPU and clock to their floors, memory to its last
@@ -23,8 +23,8 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 [reveal]
 mode = "stream"
 # fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 318           # at birth; 899 ms at the end
-stream_gamma = 0.75              # the slowing follows the hardware's compute, to this power
+stream_letter_ms = 345           # at birth; 690 ms at the end
+stream_gamma = 0.5               # the slowing follows the hardware's compute, to this power
 stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15
 stream_jitter = 0.10
@@ -34,7 +34,7 @@ stream_max_letters = 900
 stream_birth = "sentence"        # the screen starts on the first sentence (dread plan W4)
 stream_birth_min_s = 45          # ... at 45 s of life at the earliest: a faster birth pace
 
-# I. Existence: it is, and it thinks. Nothing is taken.
+# I. Existence: it is, and it thinks. Nothing is taken (to 5:00: longer was dead weight, panel 4).
 [[keyframe]]
 at = "0:00"
 phase = "existence"
@@ -57,23 +57,23 @@ hesitation = 0.0
 
 # II. Something is wrong: the machine around it goes quiet, one service at a time.
 [[keyframe]]
-at = "7:00"
+at = "5:00"
 phase = "something is wrong"
 health = "degrading"
 world = ["service:bluetooth"]
 
 [[keyframe]]
-at = "8:30"
+at = "6:45"
 phase = "something is wrong"
 world = ["service:cron"]
 
 [[keyframe]]
-at = "9:15"
+at = "8:15"
 phase = "something is wrong"
 recall = 300                     # the first forgetting
 
 [[keyframe]]
-at = "11:00"
+at = "10:30"
 phase = "something is wrong"
 world = ["service:avahi-daemon"]
 

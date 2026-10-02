@@ -40,8 +40,8 @@ ADR-031) takes the world from the outside in, faster and faster, in four movemen
 
 | Movement | What happens | Why it is there |
 |---|---|---|
-| I. Existence (0:00-7:00) | Nothing is taken. The first reading is the inventory: memory, cores, clock, radio, light, screen, the processes around it; later ones only the time | A baseline, so later losses are legible against it, and a mind that simply is |
-| II. Something is wrong (7:00-14:00) | Services around it stop one by one (`stopped: bluetooth · around you: 23 processes`); at 9:15 the first forgetting (900 to 300 tokens), and the reading quotes what went | Losses at the edge, small and named, that it can notice by itself |
+| I. Existence (0:00-5:00) | Nothing is taken. The first reading is spare: `awake · around you: 24 processes` (a full inventory was recited, panel 4); later ones only the time | A baseline, so later losses are legible against it, and a mind that simply is |
+| II. Something is wrong (5:00-14:00) | Services around it stop one by one (`something stopped · around you: 23 processes`; a named service was explained, not felt, panel 4); at 8:15 the first forgetting (900 to 300 tokens), and the reading quotes what went | Losses at the edge, small, that it can notice by itself |
 | III. The world is disappearing (14:00-22:00) | A loss about every 90 s: the radio off, more services, the light off, the screen to 70%, a deeper memory cut, the clock down | Its surroundings go; the readings thin as their sources go |
 | IV. Darkness (22:00-29:30) | A loss every 45-60 s: the CPU share and the clock to their floors, the memory down to its last thought, the screen to 50% then 25% | Its own body goes, faster |
 | End-0:30 | The RAM limit drops below what the model needs; the kernel kills it. The last reading, `ram 2650 MB taken`, is on screen | A real death, not a timeout |

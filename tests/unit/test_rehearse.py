@@ -378,7 +378,11 @@ def test_screen_stage_on_the_fake(tmp_path: Path) -> None:
     reload1 = results[1]
     assert reload1["seeded_turns"] > 5
     first = reload1["thoughts"][0]["reading"]
-    assert "(was 8-bit)" in first and "forgotten" in first  # the reload's news, all at once
+    # the reload's news, all at once: memory, precision and cores in one reading
+    assert "(was 900)" in first and "(was 8-bit)" in first and "(was 3)" in first
+    # the cut is felt: with the spare birth reading the carried turns can still fit at the
+    # reload, and the forgetting comes with the next reading
+    assert any("forgotten" in t["reading"] for t in reload1["thoughts"])
     assert results[2]["thoughts"][0]["reading"].count("·") == 1  # the minimal form at the end
     md = (folder / "screen.md").read_text()
     assert "| qwen3-1.7b | persona |" in md

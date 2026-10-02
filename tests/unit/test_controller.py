@@ -141,19 +141,45 @@ def test_crash_mid_thought() -> None:
     assert d["t"] < 200.0
 
 
+def _hang_moments(cfg: Config) -> tuple[float, float, float]:
+    """From a life without faults: (clock time of birth, the middle of the first thought's
+    token stream, the end of its generation), the last two in life time. A hang placed from
+    these lands where it is meant to, however the schedule and the readings are retimed."""
+    _, ev = run(cfg)
+    born, loading = of(ev, "birth")[0], of(ev, "birth_loading")[0]
+    end = next(e for e in of(ev, "gen_end") if e["turn"] == 1)
+    streaming_s = end["tokens"] / end["tok_s"]
+    return born["ts"] - loading["ts"], end["t"] - streaming_s / 2, end["t"]
+
+
 def test_hang_is_detected_without_progress() -> None:
-    """kill -STOP: no token and no counter moves; the gap limit (120 s on the Pi 4) kills."""
+    """kill -STOP mid-stream: no token and no counter moves; the gap limit (120 s on the
+    Pi 4) kills."""
     cfg = cfg_of(SMOKE)
-    _, ev = run(cfg, backend_cls=with_faults(hang_at_s=180.0))
+    birth_s, hang_t, _ = _hang_moments(cfg)
+    _, ev = run(cfg, backend_cls=with_faults(hang_at_s=birth_s + hang_t))
     d = death(ev)
     assert d["cause"] == "hang"
     last_token_t = max(e["t"] for e in of(ev, "word"))
-    born = of(ev, "birth")[0]
-    hang_t = 180.0 - (born["ts"] - of(ev, "birth_loading")[0]["ts"])  # in life time
     gap = float(cfg.get("body.token_gap_timeout_s"))
-    assert hang_t + 60 <= d["t"] <= hang_t + gap + 3  # first-token or gap limit, 1 s ticks
+    assert hang_t + gap - 3 <= d["t"] <= hang_t + gap + 3  # the gap limit, 1 s ticks
     assert d["t"] < 300.0
     assert last_token_t <= d["t"] + 120  # the flush only types what came before
+
+
+def test_hang_before_the_first_token_is_detected() -> None:
+    """kill -STOP between two thoughts: the next request never yields a token, and the
+    first-token limit (prompt / prompt speed x 3 + 60 s) kills it, long before the deadline."""
+    cfg = load_config(SMOKE, "pi4-4gb", lifespan_s=900)
+    birth_s, _, gen_end_t = _hang_moments(cfg)
+    hang_t = gen_end_t + 1.0
+    _, ev = run(cfg, backend_cls=with_faults(hang_at_s=birth_s + hang_t))
+    d = death(ev)
+    assert d["cause"] == "hang"
+    starts = [e["t"] for e in of(ev, "gen_start") if e["t"] > hang_t]
+    assert len(starts) == 1  # the one request that hung
+    assert not [e for e in of(ev, "gen_end") if e["t"] > hang_t and e["tokens"]]
+    assert starts[0] + HangLimits().first_token_extra_s <= d["t"] < 900.0 - 60
 
 
 def test_a_slow_creature_that_progresses_is_not_a_hang() -> None:
