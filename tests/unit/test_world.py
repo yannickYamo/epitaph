@@ -218,7 +218,7 @@ def test_the_guard_stacks_on_the_static_bias_with_twins() -> None:
     s = sampling_for(section, sch.at(0), 0, extra_bias=((" still", -3.0), (" here", -3.0)))
     bias = dict(s.logit_bias)
     # stacked on the static bias, and every spaced word with its space-less twin
-    assert bias[" still"] == -9.0 and bias["still"] == -9.0 and bias[" here"] == -3.0
+    assert bias[" still"] == -7.0 and bias["still"] == -7.0 and bias[" here"] == -3.0
     assert bias["here"] == -3.0 and bias[" digital"] == -6.0 and bias["digital"] == -6.0
 
 
@@ -275,7 +275,10 @@ def test_each_reading_comes_right_before_its_thought(life_events: list[dict[str,
             assert before[-1]["type"] == "reading" and before[-1]["turn"] == e["turn"]
             assert not before[-1]["text"].startswith("[host]")
     # readings_names off (panel 4): the loss is felt, its name never given
-    losses = [e for e in first if e["type"] == "reading" and "something stopped" in e["text"]]
+    cfg = load_config("pi4/default", "pi4-4gb")
+    unnamed = Reader.from_config(cfg).lang.form("full", "stopped_unnamed")
+    assert unnamed == "a process running around you was stopped"  # en_sense (round 9)
+    losses = [e for e in first if e["type"] == "reading" and unnamed in e["text"]]
     assert losses and losses[0]["t"] > _first_loss_s()  # the loss is shown after it happened
     assert not any("bluetooth" in e["text"] for e in first if e["type"] == "reading")
 
@@ -287,7 +290,7 @@ def test_the_ram_reading_comes_before_the_death(life_events: list[dict[str, Any]
     cfg = load_config("pi4/default", "pi4-4gb")
     reader = Reader.from_config(cfg)
     said = reader.strip(reader.ram_taken(int(cfg.get("world.fake_ram_mb", 2600))))
-    assert said == "its memory is taken"  # the wordless pack: no number, no unit
+    assert said == "your memory is being taken"  # the sensing pack: no number, no unit
     assert len(final) == 1 and final[0]["text"] == said
     assert first.index(final[0]) < death
 

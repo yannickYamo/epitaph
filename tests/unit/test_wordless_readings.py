@@ -1,5 +1,8 @@
 """The wordless readings (config/lang/en_words.toml, round 7): what happened in plain words,
-with no time, no numbers and no units (owner, 2026-10-01: "more poetic and less mechanic")."""
+with no time, no numbers and no units (owner, 2026-10-01: "more poetic and less mechanic").
+
+The installation moved to the sensing pack in round 9 (tests/unit/test_sense_readings.py);
+these tests pin en_words through `prompt.language`, so the pack stays tested as it is."""
 
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from epitaph.mind.prompt import Reader, ReadingInput, load_lang
 from epitaph.sim import simulate
 
 PROFILE = "pi4/default"
+WORDLESS = {"prompt": {"language": "en_words"}}
 
 
 def R(**kw: Any) -> ReadingInput:
@@ -22,12 +26,12 @@ def R(**kw: Any) -> ReadingInput:
 
 
 def reader() -> Reader:
-    cfg = load_config(PROFILE, "pi4-4gb")
+    cfg = load_config(PROFILE, "pi4-4gb", overrides=WORDLESS)
     assert cfg.get("prompt.language") == "en_words"
     return Reader.from_config(cfg)
 
 
-def test_the_installation_reads_the_wordless_pack() -> None:
+def test_the_wordless_pack() -> None:
     lang = load_lang("en_words")
     assert lang.r("time") == "" and lang.r("time_minimal") == "" and lang.r("minimal") == ""
     assert lang.form("full", "around_birth") == "others around you"
@@ -67,10 +71,10 @@ def test_the_minimal_form_is_the_bare_mark() -> None:
 
 
 def test_no_reading_after_birth_has_a_number_over_a_simulated_life() -> None:
-    """Over a whole life of the installation, no reading after birth holds a digit: no time,
-    no count, no unit. A quoted forgotten sentence is the model's own words, not the
-    machine's, so it is left out of the check."""
-    events = simulate(load_config(PROFILE, "pi4-4gb")).events
+    """Over a whole life of the installation's profile in the wordless pack, no reading after
+    birth holds a digit: no time, no count, no unit. A quoted forgotten sentence is the model's
+    own words, not the machine's, so it is left out of the check."""
+    events = simulate(load_config(PROFILE, "pi4-4gb", overrides=WORDLESS)).events
     readings = [e["reading"] for e in events if e["type"] == "vitals"]
     readings += [e["text"] for e in events if e["type"] == "reading" and e.get("final")]
     assert len(readings) > 10

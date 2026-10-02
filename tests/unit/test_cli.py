@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from epitaph.cli import main
+from epitaph.mind.prompt import Reader
 
 
 def test_sim_and_estimate(capsys) -> None:
@@ -8,6 +13,22 @@ def test_sim_and_estimate(capsys) -> None:
     assert "cause=deadline" in capsys.readouterr().out
     assert main(["estimate", "--profile", "pi4/default", "--hardware", "pi4-4gb"]) == 0
     assert "PASS" in capsys.readouterr().out
+
+
+def test_sim_fails_when_the_loop_fails(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression (round 9): a reading that raised (KeyError on a pack's `{frac}`) killed every
+    life at its second reading, and `epitaph sim` still exited 0, so the gate passed."""
+    real = Reader.reading
+
+    def broken(self: Reader, x: Any) -> str:
+        if self.count >= 1:
+            raise KeyError("frac")
+        return real(self, x)
+
+    monkeypatch.setattr(Reader, "reading", broken)
+    argv = ["sim", "--profile", "pi4/smoke-300", "--hardware", "pi4-4gb", "--quiet"]
+    assert main(argv) == 1
+    assert "the loop failed: KeyError('frac')" in capsys.readouterr().err
 
 
 def test_stub_names_owner(capsys) -> None:

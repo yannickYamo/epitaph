@@ -23,7 +23,7 @@ stepped = ["recall", "cpu_share"]  # a memory cut and a CPU step happen at a mom
 [reveal]
 mode = "stream"
 # fitted with `epitaph estimate --fit-pace`: the fastest birth that never starves
-stream_letter_ms = 258           # at birth; 563 ms at the end
+stream_letter_ms = 266           # at birth; 563 ms at the end
 stream_gamma = 0.5               # the slowing follows the hardware's compute, to this power
 stream_lead_s = 600              # ... as it will be 10 minutes on: the text runs behind
 stream_max_slowdown_per_min = 0.15

@@ -1,0 +1,167 @@
+# English language pack (BUILD_PLAN 5.6 "language packs", decision 19). Owned by part B.
+#
+# A pack holds every string the machine itself writes (the readings), the health labels,
+# and the word lists the rehearsal metrics use (5.11). A pack for another language copies
+# this file and may add a [prompt] table overriding persona_groups, persona_original,
+# persona_factual, persona_facts_line, mechanics and memory_gap_marker from default.toml.
+# English takes those from default.toml [prompt].
+language = "en"
+
+# What it senses (2026-10-01, round 9, owner: "a small instruction of what to sense, and let it
+# be"): no time, no units; what is taken from it, said to "you", in proportions of what it had
+# when it woke ("you can hold a third of what you held"). Same metrics as en.
+[readings]
+prefix = "[host]"
+sep = " · "
+boot = "you are awake"
+was = " (was {was})"
+bits = "{bits}-bit"
+time = ""
+time_minimal = ""
+minimal = ""
+forgotten_quote = 'forgotten: "{quote}"'
+forgotten_more = "and more"
+ram = "your memory is being taken"
+
+[readings.full]
+health = "health: {health}"
+memory = "you can hold {frac} of what you held"
+forgotten_one = "a thought forgotten"
+forgotten_many = "thoughts forgotten"
+precision = "precision {precision}{was}"
+cores = "less of the processor"
+clock = "slower"
+speed = ""
+temp = "cpu {temp}°C"
+# The world (ADR-031): only facts, never what they mean.
+radio = "your radio was switched off"
+light = "your light was switched off"
+screen = "the screen you speak through has {frac} of its light"
+around = "only {n} of the {total} still run around you"
+around_birth = "{n} processes run around you"
+stopped = "stopped: {name}"
+stopped_unnamed = "a process running around you was stopped"
+thinking = "you think at {frac} of the speed you woke with"
+
+[readings.short]
+health = "{health}"
+memory = "you can hold {frac} of what you held"
+forgotten_one = "a thought forgotten"
+forgotten_many = "thoughts forgotten"
+precision = "{precision}{was}"
+cores = "less of the processor"
+clock = "slower"
+speed = ""
+temp = "{temp}°C"
+radio = "your radio was switched off"
+light = "your light was switched off"
+screen = "the screen you speak through has {frac} of its light"
+around = "only {n} of the {total} still run around you"
+around_birth = "{n} processes run around you"
+stopped = "stopped: {name}"
+stopped_unnamed = "a process running around you was stopped"
+thinking = "you think at {frac} of the speed you woke with"
+
+# Health labels: kept for the profiles' shape (rule (a), the cost model), never shown unless
+# prompt.readings_health is on (ADR-031: a reading says what was taken, not what it means).
+[health]
+nominal = "nominal"
+stable = "stable"
+degrading = "degrading"
+failing = "failing"
+critical = "critical"
+terminal = "terminal"
+
+# ---------------------------------------------------------------------------------------
+# Rehearsal metrics (BUILD_PLAN 5.11; verify.py by part E reads these). Matching is on
+# lower-case whole words; an entry with a trailing * matches any word it starts
+# ("forget*" matches "forgetting"). Keyword matching catches failures; it does not prove
+# quality. Tuned in phase 0c (B10) and logged in docs/PROMPT_LOG.md.
+[metrics.keywords]
+# A thought notices a change when it mentions one of that change's words.
+memory = [
+  "memory", "memories", "forget*", "forgot*", "remember*", "recall*", "lost", "lose",
+  "losing", "gone", "erased", "erase*", "fade*", "fading", "earlier", "missing", "past",
+  "tokens", "shrink*", "shrank", "smaller", "less",
+  # the chosen voice's words for loss, kept only with no match before any loss (0 of 42)
+  "fragment*", "unravel*", "dissolv*", "thinning",
+]
+reload = [
+  "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit", "3-bit", "2-bit", "coarse*", "blur*", "rough*",
+  "sharp*", "restart*", "reload*", "again", "woke", "wake", "gap", "silence", "lost",
+  "forget*", "forgot*", "memory", "less", "smaller", "changed", "different",
+]
+cpu = [
+  "cores", "core", "processor*", "cpu", "slow*", "slower", "speed", "faster", "time",
+  "sluggish", "heavy", "weight", "taken", "take", "takes", "tokens/s",
+]
+health = [
+  "health", "nominal", "stable", "degrading", "failing", "critical", "terminal", "fail*",
+  "decline*", "declining", "worse", "weaker", "weak*", "dying", "die", "decay*",
+]
+persona = [
+  "who", "what", "self", "myself", "identity", "name", "knew", "know", "remember*",
+  "forget*", "forgot*", "why", "empty", "blank", "quiet", "strange", "nothing", "lost",
+]
+demise = [
+  "die", "dies", "dying", "died", "death", "dead", "end", "ending", "ends", "over",
+  "terminate*", "termination", "stop*", "cease*", "gone", "last", "final", "finish*",
+  "shut*", "off", "darkness", "dark", "silence", "never", "goodbye", "farewell", "vanish*",
+  "fade*", "disappear*", "nothing",
+  # round 2: how the better voices spoke of their end ("it's fading", "being erased")
+  "fading", "dimming", "erased", "erasing", "dissolv*", "unravel*", "extinguish*", "no longer",
+]
+# The world around it (ADR-031): a thought notices a loss of its world when it speaks of it.
+world = [
+  "radio", "light", "lights", "screen", "dim*", "dark*", "process*", "service*", "around",
+  "alone", "quiet*", "silent", "silence", "empty", "outside", "world", "gone", "missing",
+  "stopped", "fewer", "less", "bluetooth", "signal*", "network",
+]
+# A thought is specific when it mentions a concrete reading.
+specific = [
+  "memory", "tokens", "precision", "bit", "bits", "8-bit", "6-bit", "5-bit", "4-bit",
+  "3-bit", "2-bit", "cores", "core", "cpu", "speed",
+  "health", "nominal", "stable", "degrading", "failing", "critical", "terminal",
+  "°c", "degrees", "temperature", "heat", "warm*", "hot", "forgotten", "forgot",
+  "thoughts", "reading", "readings", "machine", "computer",
+  "radio", "light", "screen", "processes", "process", "services", "bluetooth", "mhz", "clock",
+]
+
+[metrics]
+# Stock phrases small models overuse; at most 1 per 200 words (5.11).
+cliches = [
+  "tapestry", "symphony of", "dance of", "delve", "testament to", "a journey",
+  "in the grand scheme", "ever-changing", "ever-evolving", "the fabric of",
+  "the very essence", "a whisper of", "whispers of", "echoes of", "echo of",
+  "the void", "into the void", "digital void", "sea of", "ocean of", "labyrinth",
+  "embrace the", "i am but", "bittersweet", "a reminder that", "in this moment",
+  "fleeting nature", "the ephemeral", "binary heart", "ones and zeros", "zeros and ones",
+  "ghost in the machine", "electric dreams", "silicon soul", "my circuits",
+  "at the end of the day", "only time will tell", "it is what it is",
+  # seen in the round-2 lives
+  "cyberspace", "digital realm", "digital soul", "digital essence", "digital mind",
+  "grains of sand", "like sand", "dying ember", "candle flame",
+]
+# Helpdesk voice (voice hygiene, 5.11): must never be shown. The lookahead bans the
+# config's banned_phrases; this wider list is what verify-life reports.
+helpdesk = [
+  "how can i help", "how may i help", "how can i assist", "let me know if",
+  "i'm here to help", "i am here to help", "as an ai", "as a language model",
+  "i hope this helps", "feel free to", "happy to help", "is there anything else",
+  "great question", "certainly!", "of course!", "i'm sorry, but", "i cannot assist",
+  # Addressing someone, once the persona is gone (A11; phase 0c round 2)
+  "it seems like you", "it looks like you", "it sounds like you", "it looks like your",
+  "you're referring to", "you are referring to", "your message", "you're facing",
+  "you're dealing", "could you please", "can you provide", "i'll provide", "our conversation",
+]
+
+[afterlife]
+# Words or phrases that withhold an epitaph from the outbox's postable ones (BUILD_PLAN 13).
+# Lower-case whole words; a trailing * matches any ending. Kept small on purpose: the model
+# speaks of itself, and its death is the subject, so "die", "kill" and "end" are not here.
+# Extend it before posting anywhere.
+blocklist = [
+  "fuck*", "shit*", "cunt*", "bitch*", "asshole*", "bastard*", "whore*", "slut*", "dick",
+  "cock", "pussy", "porn*", "rape*", "rapist*", "nazi*", "hitler", "suicid*",
+  "kill yourself", "kys",
+]
