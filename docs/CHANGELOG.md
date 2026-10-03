@@ -56,3 +56,21 @@ to "you" and in proportions of what it had when it woke, and nothing tells it ho
 words stream at about 33 words a minute at birth and slow smoothly with the machine, never
 stopping until the death. It runs offline, keeps each life's last words for a future feed, and
 starts the next life within a minute of the last.
+
+## Small chips (2026-10-03)
+- The piece on a Pimoroni Tufty 2350 badge (RP2350) and an ESP32 ([badge/](../badge/README.md)):
+  a 260K-parameter model (`stories260K`, llama2.c, MIT) fine-tuned on badge lives that Qwen3 4B
+  wrote under the installation's prompt, plus 229 real Pi thoughts. The prompt became the
+  training set.
+- Each chip takes its world away for real (its light, its memory window, its CPU clock, its
+  screen where it has one) and dies when its heap is taken and the next thought cannot be
+  allocated.
+- The model may only build words of its training text that a dictionary also knows; readings
+  are fed to it but not shown; a terminal face before each paragraph shows the machine's state.
+- ESP32: a C port with int8 weights in flash. Against the float model it picks the same next
+  token 39 times in 40. It compiles for an ESP32 Dev Module (577 KB flash, 305 KB heap free)
+  and lives a whole simulated life on a 300 KB heap (`make badge`, in `make check` and CI). Not
+  yet run on a board.
+- Tufty: lives stopped at about five minutes. The likely cause, not yet confirmed on the badge:
+  the cache was reallocated at each context reset and fragmented the heap. It is now allocated
+  once, a passing memory error no longer ends a life, and errors go to `/epitaph_errors.log`.

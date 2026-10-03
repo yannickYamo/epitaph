@@ -78,6 +78,9 @@ jobs:
       - name: Thought-count rule on every Pi 4 profile
         run: make estimate
 
+      - name: Small chips (int8 ESP32 engine against the float model; a simulated ESP32 life)
+        run: make badge
+
       # --- extras -------------------------------------------------------------------------
       - name: Coverage floors (80% overall; 90% on the strict modules and verify.py)
         run: |

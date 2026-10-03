@@ -29,7 +29,7 @@ Issues = "https://github.com/yannickYamo/epitaph/issues"
 
 [project.optional-dependencies]
 display = ["pygame>=2.5"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5", "ruff>=0.6", "pyright>=1.1.380", "pillow>=10", "pytesseract>=0.3"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5", "ruff>=0.6", "pyright>=1.1.380", "pillow>=10", "pytesseract>=0.3", "numpy>=1.26"]
 
 [project.scripts]
 epitaph = "epitaph.cli:main"
@@ -67,6 +67,10 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 # Docstrings are required on the public API in src/; tests and one-off tools are exempt.
 "tests/**" = ["D1"]
 "tools/**" = ["D1", "E501"]  # tables and usage examples read better unwrapped
+"badge/tools/**" = ["D1", "E402", "E501"]  # host tools, like tools/**; the engine is imported from the app folder
+# MicroPython on the badge: the runtime injects badge, screen, color, font, run; the display
+# mode is set before the imports.
+"badge/tufty/**" = ["F821", "E402", "D1", "SIM105", "UP031"]  # no contextlib; % is cheapest
 
 [tool.pyright]
 include = ["src"]
