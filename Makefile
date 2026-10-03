@@ -5,15 +5,15 @@ PROFILES_PI4 := pi4/default pi4/default-reloads pi4/smoke-300 pi4/skeleton-1200 
 # Pi 5: simulated and estimated only, on both overlays (BUILD_PLAN 3.2, 11.8).
 PROFILES_PI5 := pi5/default pi5/skeleton-600 pi5/unbounded
 
-.PHONY: check lint type test sim sim-profiles estimate venv faults pi-deploy pi-smoke pi-life \
+.PHONY: check lint type test sim sim-profiles estimate badge venv faults pi-deploy pi-smoke pi-life \
 	pi-boot-check pi-collect pi-faults install-test-arm64
 
 venv:
 	python3 -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
 
 lint:
-	$(PY) -m ruff check src tests tools
-	$(PY) -m ruff format --check src tests tools
+	$(PY) -m ruff check src tests tools badge
+	$(PY) -m ruff format --check src tests tools badge
 
 type:
 	$(PY) -m pyright
@@ -38,7 +38,14 @@ sim-profiles:
 		$(PY) -m epitaph sim --profile $$p --hardware $$hw --quiet || exit 1; done; done
 
 # The merge gate (BUILD_PLAN 8.3).
-check: lint type test sim sim-profiles estimate
+check: lint type test sim sim-profiles estimate badge
+
+# The small-chip editions (badge/README.md): the int8 ESP32 engine against the float model,
+# then one whole life on a simulated ESP32 (a 300 KB heap, the chip's clock).
+badge:
+	$(MAKE) -s -C badge/esp32 host/test_host
+	$(PY) badge/tools/test_esp32.py
+	./badge/esp32/host/test_host life > /dev/null
 
 # The fault matrix rows the fakes inject (BUILD_PLAN 10.4; docs/GATES.md fault table). Part of
 # `make test` too; this runs them alone.

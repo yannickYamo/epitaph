@@ -196,6 +196,7 @@ proves it), [BUILD_PLAN](docs/BUILD_PLAN.md) and the [phase reports](docs/proces
 |---|---|---|
 | 0 to 2 | Simulator, cost model, Pi spikes, real lives as services, fault matrix | Done |
 | 3 | The world taken for real, the stream, the voice, offline operation | Done (v1.0); soak waived ([ADR-029](docs/DECISIONS.md)) |
+| Small chips | The piece on a $30 badge and a $5 ESP32: a 260K model taught the voice by Qwen3 4B ([badge/](badge/README.md)) | Ran on a Tufty 2350; ESP32 compiled and simulated |
 | V1.5 | The afterlife: last words passed to the next life and posted from the outbox | Outbox built; posting not started |
 | V2 | The senses: a camera, and senses that decay with the body | |
 

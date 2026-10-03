@@ -8,3 +8,4 @@ logs/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+badge/esp32/host/test_host
