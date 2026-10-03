@@ -1,6 +1,11 @@
 # Epitaph: build plan (v6)
 
-> Working name "epitaph". Rename freely before the repo goes public.
+> **Historical.** This is the plan the fleet built from (v6, 2026-09-29). The piece changed as it
+> was built: the life is 30 minutes, not an hour; the model never changes (no reloads, erosion or
+> sampling decay); the world is taken from the outside in. Those decisions and their evidence are
+> in [DECISIONS.md](DECISIONS.md) (ADR-024 to ADR-031) and [CHANGELOG.md](CHANGELOG.md). Where
+> this plan and those records disagree, the records win.
+
 > v6, 2026-09-29. Owner and tester: Yannick. Implementers: a fleet of coding agents on Yannick's Linux laptop, run by the integrator (a non-interactive shell, part L).
 > Store this file in the repo as `docs/BUILD_PLAN.md`. It replaces v5 and is the single source of truth.
 >
