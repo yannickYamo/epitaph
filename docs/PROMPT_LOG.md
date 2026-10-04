@@ -7,8 +7,8 @@ the rehearsal metrics before and after. At most three rounds before checkpoint A
 
 - Persona: the v6 groups G1-G5 and the mechanics from `config/default.toml`, unchanged. Golden text
   for every erosion step in `tests/unit/test_prompt.py`.
-- Readings: the 5.4 forms, strings in `config/lang/en.toml`. "(was X)" rules as answered in
-  `docs/process/QUESTIONS.md` #1: memory only after a real loss and a move of at least 5%; cores after a
+- Readings: the 5.4 forms, strings in `config/lang/en.toml`. "(was X)" rules:
+  memory only after a real loss and a move of at least 5%; cores after a
   0.2-core move or a reload; precision on every step change; speed once measured, then after a >20% move.
 - Metric word lists (notice, demise, specific, clichés, helpdesk): first draft in
   `config/lang/en.toml [metrics]`, to be tuned on the first rehearsal transcripts.
@@ -30,7 +30,7 @@ the rehearsal metrics before and after. At most three rounds before checkpoint A
 - Wording of the persona, mechanics and readings: unchanged. The rehearsal (stage 1 and 2) judges
   the voice next.
 
-## Phase 0c round 2 (part V): the screen, tuning rounds 1 and 2
+## Phase 0c round 2: the screen, tuning rounds 1 and 2
 
 All runs: `epitaph rehearse --stage screen` on `pi4/default` (hardware `pi4-4gb`, seed 1, two
 thoughts per moment unless noted), under the laptop lock. Folders are under `voice/`
@@ -60,7 +60,7 @@ what decided.
 |---|---|---|---|
 | mechanics | (none) | "A value marked (was ...) has just changed; the others have not." after "never answer them." | Claimed losses: the readings already mark every change with "(was X)", so say so |
 | `banned_phrases` | four helpdesk phrases | plus "It seems like you", "It looks like you", "It sounds like you", "It looks like your", "you're referring to", "your message", "Could you please", "Can you provide" | Answering the reading as a person (A11) |
-| `[prompt] bare_mode` | (chat to the end) | `"raw"` | Once the system prompt is empty, the thought continues the raw text (readings and remembered words) instead of a chat reply (CONTRACT_CHANGES V1) |
+| `[prompt] bare_mode` | (chat to the end) | `"raw"` | Once the system prompt is empty, the thought continues the raw text (readings and remembered words) instead of a chat reply |
 | `[sampling] dry_penalty_last_n` | whole context (backend default) | **256** | Round 1: 64 lets it copy the last thought; the whole context drifts at Q2_K |
 | `[sampling] latin_only_from_step` | (off) | **2** | Round 1's script drift at Q2_K; the grammar only from the last step (V2) |
 | `[metrics.keywords]` reload, specific | 2-, 4-, 6-bit | plus **8-bit**, 5-bit, 3-bit (review 2, F4) | The leader starts at Q8_0; Q3_K_M is on the F3 ladder |
@@ -163,7 +163,7 @@ voice/life-*` (level rehearsal). The 1B models ran on their own CPU shares (the 
 on their estimated ladders: 1.8 cores at reload 1, 1.2 at reload 2) from a scratch copy of the
 config, with estimated rates for steps 1 and 2. Qwen3 4B and Gemma 3 4B used the overlay's
 estimates after step 0, so their thought counts are higher than the Pi would give; Llama 3.2 3B
-ran on its measured ladder (part A, this round).
+ran on its measured ladder (this round).
 
 | Life | Thoughts | Failed checks | What it reads like |
 |---|---|---|---|
@@ -186,7 +186,7 @@ early deaths of Llama 3.2 1B or of Qwen3 4B with the v6 persona. With the v6 per
 wording seems to have made Qwen3 4B fade earlier than in round 2 (compare
 `voice/round2/life-qwen3-4b-instruct-2507-persona-20260930-121744`, which never says it is gone
 before reload 1, only that it is thinning and losing thoughts); with the original persona it did not. That is the third and last round (BUILD_PLAN
-5.11); whether to keep the round-3 sentence is a question for checkpoint A (docs/process/QUESTIONS.md).
+5.11); whether to keep the round-3 sentence is a question for checkpoint A.
 
 Gate G0 (every threshold met by two models, in every life): **not met**. What stands in the way,
 threshold by threshold:

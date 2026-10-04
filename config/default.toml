@@ -272,8 +272,7 @@ letters_per_token = 3.5          # English: ~0.75 words per token x ~4.7 letters
 letters_per_word = 4.7
 cache_reuse_works = true         # set from spike S2
 # Review 2, F2: generation must never speed up across a reload. "fail" makes it a rule like
-# (a)-(d); "warn" only prints it. "fail" since checkpoint A, when every Pi 4 profile passed it
-# (docs/process/QUESTIONS.md, E #12).
+# (a)-(d); "warn" only prints it. "fail" since checkpoint A, when every Pi 4 profile passed it.
 speed_monotonic = "fail"
 # The stream mode (ADR-030): the estimate replays generation ahead of a constant screen, with
 # every machine cost this much slower, and fails on any starvation.

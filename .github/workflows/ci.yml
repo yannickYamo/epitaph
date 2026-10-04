@@ -1,4 +1,4 @@
-# CI on Ubuntu x86_64 (BUILD_PLAN 8.3, 8.7, 9 E2). Owned by part E.
+# CI on Ubuntu x86_64 (BUILD_PLAN 8.3, 8.7, 9 E2).
 #
 # The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
 # CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,

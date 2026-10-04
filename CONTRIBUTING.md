@@ -50,8 +50,7 @@ virtual environment is shared.
 
 ## Working in parallel: worktrees and locks
 
-The project was built by several agents at once, and the same conventions keep any group of
-contributors out of each other's way.
+These conventions keep several people working at once out of each other's way.
 
 - **One worktree per line of work.** `tools/worktrees.sh create <name>...` makes
   `../epitaph-wt/<name>` on its own branch `ws/<name>` off `main`, sharing the main checkout's
@@ -74,8 +73,8 @@ control commands, the `Backend`, `Body`, `LifeClock` and `Pacer` interfaces, the
 schema and the repository layout. Displays, the life checker and the tools depend on them, so
 they change deliberately:
 
-1. Add a row to [docs/process/CONTRACT_CHANGES.md](docs/process/CONTRACT_CHANGES.md): what
-   changes, exactly (field names, types, defaults), and why. Leave the decision column empty.
+1. Open an issue (or describe it in the pull request): what changes, exactly (field names,
+   types, defaults), and why.
 2. Code against the current contract in the meantime, or behind a default that keeps old
    readers working (a new event field is optional; a new config key has a default in code).
 3. The maintainer decides, applies the change to the contract's owner module, records it in

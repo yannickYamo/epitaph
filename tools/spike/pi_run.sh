@@ -15,7 +15,7 @@ ssh $host 'mkdir -p ~/epitaph-spike/tools/spike ~/epitaph-spike/config ~/epitaph
 rsync -a "$here/"*.py $host:epitaph-spike/tools/spike/
 rsync -a "$root/config/default.toml" $host:epitaph-spike/config/
 "$root/tools/pi_lock.sh" run A "$minutes" -- bash "$here/_pi_unit.sh" "$host" "$unit" "$script" "$@"
-# Measured costs wait in bench/measured/ until the integrator rebases the profiles on them
+# Measured costs wait in bench/measured/ until the profiles are rebased on them
 # (costmodel.load_costs reads bench/*.json directly; see docs/SPIKE.md).
 ssh $host 'mkdir -p ~/epitaph-spike/bench/measured; for f in ~/epitaph-spike/bench/pi4-*.json; do [ -e "$f" ] && mv "$f" ~/epitaph-spike/bench/measured/; done; true'
 # --update: a file edited here since (e.g. a note added to a parked result) is newer and kept.

@@ -14,8 +14,7 @@ not be performed is reported `performed=False`, and the readings leave it out. T
 never told of a loss that did not happen.
 
 `FakeWorld` simulates a plausible machine for the laptop, the simulator and the rehearsal. The
-real one, through a root-owned helper on the Pi, is `helper_world` (part C). The Protocol and
-`FakeWorld` are owned by part B.
+real one, through a root-owned helper on the Pi, is `helper_world`.
 """
 
 from __future__ import annotations
@@ -200,7 +199,7 @@ class NoWorld:
 
 
 def helper_world(settings: Mapping[str, Any]) -> World:
-    """The real world through the root-owned helper `[world] helper` (PiWorld, part C)."""
+    """The real world through the root-owned helper `[world] helper` (PiWorld)."""
     from epitaph.body.pi_world import PiWorld, names
 
     return PiWorld(names(settings.get("services")), helper=str(settings["helper"]))

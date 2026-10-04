@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run lives on the Pi and judge them on the laptop (BUILD_PLAN 8.3, 10.1, card E4; gates G1.1, G1.4).
+# Run lives on the Pi and judge them on the laptop (BUILD_PLAN 8.3, 10.1, 9 E4; gates G1.1, G1.4).
 #
 #   tools/smoke_pi.sh [options]
 #     --profile P    profile to run (default pi4/smoke-300)
@@ -7,7 +7,7 @@
 #     --level L      verify-life level (default: smoke for pi4/smoke-300, else the profile's own)
 #     --hardware H   overlay verify-life judges by (default pi4-4gb)
 #     --out DIR      where the lives are copied (default logs/pi/<stamp>-<profile>)
-#     --part A      name on the Pi lock (default $AGENT, else E)
+#     --agent NAME   name on the Pi lock (default $AGENT, else E)
 #     --dry-run      print the commands; no lock, no SSH, no verify
 #
 # It deploys nothing (`make pi-deploy` does). In one hold of the Pi lock it:

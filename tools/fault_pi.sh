@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The Pi rows of the fault matrix that part C owns (BUILD_PLAN 10.4, docs/GATES.md), against the
+# The Pi rows of the fault matrix (BUILD_PLAN 10.4, docs/GATES.md), against the
 # installed controller service. Each row prints its evidence and ends with one line:
 # `PASS <row>: ...` or `FAIL <row>: ...`; the exit status is 0 only when every row passed.
 #
-#   tools/pi_lock.sh run <agent> 60 -- tools/fault_pi.sh <row>... [--dry-run]
+#   tools/pi_lock.sh run <name> 60 -- tools/fault_pi.sh <row>... [--dry-run]
 #
 # Rows (run in the order given; `all` = netblock two-controllers crash controller-kill hang):
 #   netblock         the creature cgroup's nftables rule names its cgroup id; from inside the

@@ -46,7 +46,6 @@ More boards are planned, and the reason is a question rather than a hardware itc
 | Every stripped part comes back | Services, radio, LEDs, clock and screen restored at each death, checked on the Pi |
 | The piece survives its own failures | Model process crash, hang, controller killed, two controllers at once, network access - all tested on the Pi, all passed |
 | The voice settled over nine prompt rounds | Each round judged by the owner reading whole lives, recorded in `docs/PROMPT_LOG.md` |
-| Built in five days | A team of AI coding agents worked from one build plan, `docs/BUILD_PLAN.md`, with the owner judging the art at each checkpoint |
 
 ## What broke, and the fix
 
@@ -103,9 +102,6 @@ and the phase reports.
   Apache 2.0; models are downloaded at install. The small-chip model is a fine-tune of
   `stories260K` (llama2.c, MIT).
 - Font: IBM Plex Mono (SIL Open Font License).
-
-Built by Yannick Maurice with a team of AI coding agents: they wrote the code, and he judged the
-voice.
 
 ## License
 

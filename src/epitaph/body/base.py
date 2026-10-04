@@ -1,6 +1,6 @@
 """The body contract: cgroups, limits, vitals, death (BUILD_PLAN 6.4).
 
-Owned by the integrator; implemented by part C (cgroup.py, vitals.py, fake.py).
+Implemented in cgroup.py, vitals.py and fake.py.
 """
 
 from __future__ import annotations

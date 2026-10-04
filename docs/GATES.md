@@ -1,8 +1,8 @@
 # Gates
 
-part E signs off every gate here, with evidence (BUILD_PLAN 8.3, 8.4, 11). A gate passes
+Every gate is signed off here, with evidence (BUILD_PLAN 8.3, 8.4, 11). A gate passes
 only when every row is `pass` or an accepted `pending` (hardware not connected yet, 10.2),
-and the integrator has run `/code-review high` on the gate diff.
+and `/code-review high` has run on the gate diff.
 
 **Status values:** `open` (not checked yet), `pass`, `fail`, `pending` (waits on hardware or
 a later phase; never counts as a failure), `n/a` (does not apply to the chosen `death_mode`,
@@ -23,8 +23,8 @@ summary, a file, a commit, or a CI run.
   folder per life) and prints a Markdown table ranked by the 5.11 metrics, then a per-model
   verdict. Exit 0 when at least `--require-models` models (default 2) meet every threshold,
   1 when fewer do, 2 when a life cannot be read.
-- `voice/` (rehearsal transcripts and reports) is untracked (BUILD_PLAN 6.1): paste the
-  compare table into the phase report, `docs/process/reports/0c-*.md`, as the evidence.
+- `voice/` (rehearsal transcripts and reports) is untracked (BUILD_PLAN 6.1): keep the
+  compare table as the evidence.
 
 ---
 
@@ -45,7 +45,7 @@ summary, a file, a commit, or a CI run.
 | S0.11 | NTP synced | `ssh pi 'timedatectl show -p NTPSynchronized --value'` = `yes` | pass | probe 2026-09-29 22:34 (E, read-only, under the Pi lock) |
 | S0.12 | Key-only SSH over Wi-Fi; password allowed over the cable only | `ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password pi true` refused | open | |
 | S0.13 | Official 5.1 V / 3 A supply: no under-voltage | `ssh pi 'vcgencmd get_throttled'` = `0x0` under load (S1c logs it) | open | probe 2026-09-29 22:34 (E, read-only, under the Pi lock): `0x0`, 0 under-voltage lines in dmesg, uptime 26 min, 42.8 °C, right after A's build job released the lock; sustained load is S1c |
-| S0.14 | Repo, `.pi.env`, PI_FACTS, locks exist before agents start | `ls tools/pi_lock.sh tools/laptop_lock.sh docs/PI_FACTS.md; test -f .pi.env` | open | |
+| S0.14 | Repo, `.pi.env`, PI_FACTS, locks exist before parallel work starts | `ls tools/pi_lock.sh tools/laptop_lock.sh docs/PI_FACTS.md; test -f .pi.env` | open | |
 
 ## G0: end of phase 0c, checkpoint A (BUILD_PLAN 8.4)
 
@@ -58,21 +58,20 @@ rehearsal ranks first (checkpoint A confirms two of them).
 | G0.1 | `make check` green on `main` | `make check` (exit 0) | open | |
 | G0.2 | CI green on the merged `main` (3.11, 3.12, 3.13) | the GitHub Actions `ci` run for the merge commit | open | the first public run passed on 3.12 and 3.13 (0c r1) |
 | G0.3 | `docs/SPIKE.md` complete (S5 pending) | every row S1a-S6 has numbers and a go/fallback decision: `grep -c '^\| S' docs/SPIKE.md` and a read | open | |
-| G0.4 | Every Pi 4 profile passes the thought-count rule on **measured** costs, for every chosen model | Before the measured files move into `bench/`: `$PY .github/scripts/estimate_measured.py --bench bench/measured --models <models> --strict` (exit 0: every profile PASS and the "estimated costs used" column `none`). After the move: the same without `--bench`, and `make estimate` prints `costs from bench (...)` for every profile, never `(estimated)` | open | 0c r1 (E) on `bench/measured`: 38 of 40 profile/model pairs pass; `pi4/compressed-2700` fails rule (a) for llama-3.2-3b-instruct and qwen3-4b-instruct-2507 (2 thoughts between the health changes at 6.5 and 11.2 min). Only qwen3-1.7b has every needed cost measured; the others measure step 0 at 3 threads only, so their `1-3`, `1-2`, `2-2` rates and step 1-2 loads are still estimates |
+| G0.4 | Every Pi 4 profile passes the thought-count rule on **measured** costs, for every chosen model | Before the measured files move into `bench/`: `$PY .github/scripts/estimate_measured.py --bench bench/measured --models <models> --strict` (exit 0: every profile PASS and the "estimated costs used" column `none`). After the move: the same without `--bench`, and `make estimate` prints `costs from bench (...)` for every profile, never `(estimated)` | open | 0c r1 on `bench/measured`: 38 of 40 profile/model pairs pass; `pi4/compressed-2700` fails rule (a) for llama-3.2-3b-instruct and qwen3-4b-instruct-2507 (2 thoughts between the health changes at 6.5 and 11.2 min). Only qwen3-1.7b has every needed cost measured; the others measure step 0 at 3 threads only, so their `1-3`, `1-2`, `2-2` rates and step 1-2 loads are still estimates |
 | G0.5 | `bench/` holds Pi 4 numbers for the chosen models | `ls bench/pi4-<model>-*.json` for each of `<models>`; G0.4's `--strict` run shows no estimated cost | open | |
 | G0.6 | Rehearsal reports exist | `ls voice/rehearsal_report.md`; every full rehearsal life has a `verify.json` at level `rehearsal`: `for d in voice/<run>/*/; do $PY -m epitaph.verify "$d" --level rehearsal --hardware pi4-4gb --summary; done` (exit 0 or 1, never 2) | open | |
 | G0.7 | Stage 1 (screen) ranked | `$PY -m epitaph.verify compare voice/<screen run> --level screen --hardware pi4-4gb --require-models 0 --out voice/screen_compare.md` (exit 0); the top 2-3 go to full lives | open | |
 | G0.8 | At least two models meet every rehearsal threshold | `$PY -m epitaph.verify compare voice/<full run> --level rehearsal --hardware pi4-4gb --require-models 2 --out voice/compare.md` exit 0 and the last line reads `Gate G0, at least 2 models meet every threshold: **met**`. A model counts when every one of its full lives passes. The table goes into the 0c report | open | |
 | G0.9 | The rehearsal was charged at measured Pi costs | each summary line's `costs` (from the rehearsal header or `birth_loading`) says measured, or the report states the cost source per model | open | depends on A's header fields |
 | G0.10 | Metrics judge with the language pack's lists and the config's thresholds | `$PY -m epitaph.verify <life> --json --no-write \| python -c 'import json,sys; print(json.load(sys.stdin)["metrics"]["word_lists"])'` shows `lang:en` for every list; `grep -A20 '^\[verify\]' config/default.toml` holds every 5.11 threshold | open | 0c r1: every list is `lang:en` except `answering` (`default`: `en.toml` has no `answering` list yet, B) |
-| G0.12 | No reload speeds generation up (review 2, F2): on the cost model for every Pi 4 profile and chosen model, and in every full rehearsal life | Cost model: G0.4's `--strict` run fails a pair with `(speed_monotonic)` in its Rule column, even while `[estimate] speed_monotonic = "warn"`; `grep -A3 'speed_monotonic' config/default.toml` shows `"fail"` once the rebased profiles are merged, and `make estimate` then prints no `WARNING speed_monotonic` note. Rehearsal: the G0.8 compare table's "Speed after/before reload" column is at most 1.05 (`verify.speed_monotonic_tolerance`) and never bold for the chosen models | open | 0c r2 (E) on `bench/` (qwen3-1.7b, measured): `pi4/default` and `pi4/compressed-2700` rise from 1.65 to 2.62 tokens/s at reload 1 (+59%, context-aware); reload 2 falls. The rebased profiles come from ws/v-voice |
-| G0.11 | Checkpoint A reply recorded (models, persona, chat or diary) | `docs/process/QUESTIONS.md` / CHANGELOG entry; no reply by the end of the session means the two best-scoring models, the v6 persona, chat mode | open | |
+| G0.12 | No reload speeds generation up (review 2, F2): on the cost model for every Pi 4 profile and chosen model, and in every full rehearsal life | Cost model: G0.4's `--strict` run fails a pair with `(speed_monotonic)` in its Rule column, even while `[estimate] speed_monotonic = "warn"`; `grep -A3 'speed_monotonic' config/default.toml` shows `"fail"` once the rebased profiles are merged, and `make estimate` then prints no `WARNING speed_monotonic` note. Rehearsal: the G0.8 compare table's "Speed after/before reload" column is at most 1.05 (`verify.speed_monotonic_tolerance`) and never bold for the chosen models | open | 0c r2 on `bench/` (qwen3-1.7b, measured): `pi4/default` and `pi4/compressed-2700` rise from 1.65 to 2.62 tokens/s at reload 1 (+59%, context-aware); reload 2 falls. The rebased profiles come from ws/v-voice |
+| G0.11 | Checkpoint A reply recorded (models, persona, chat or diary) | CHANGELOG entry; no reply by the end of the session means the two best-scoring models, the v6 persona, chat mode | open | |
 
 ## G1: walking skeleton on the Pi (BUILD_PLAN 8.4)
 
 **How the Pi rows run.** Every Pi target takes the Pi lock itself (`AGENT=E` names the
-holder) and writes its evidence under `logs/pi/` (untracked), so the phase report
-`docs/process/reports/1-E.md` quotes the summary lines and names the folders.
+holder) and writes its evidence under `logs/pi/` (untracked); the summary lines there are the evidence.
 
 - `make pi-smoke` and `make pi-life` both call `tools/smoke_pi.sh`. In one lock hold, it:
   - finds the Pi (`tools/pi_host.sh`: `pi`, then `pi-eth`) and the installed `epitaph`;
@@ -94,7 +93,7 @@ holder) and writes its evidence under `logs/pi/` (untracked), so the phase repor
 - `tools/smoke_pi.sh --dry-run` and `tools/headless_boot_check.sh --dry-run` print every
   command without taking the lock or reaching the Pi. CI runs both dry runs, and
   `tests/unit/test_pi_tools.py` runs both scripts against a fake Pi.
-- The order for the gate: `make pi-deploy` (C), then G1.4, G1.1 with G1.2 alongside, and
+- The order for the gate: `make pi-deploy`, then G1.4, G1.1 with G1.2 alongside, and
   G1.3 last, because it reboots.
 - Budgets (the lock's hard limit): `pi-smoke` 33 min. `pi-life PROFILE=pi4/skeleton-1200
   LIVES=2` 77 min (2 × (20 min + 5 min load + 3 min) + the 90 s silence + 5 min, plus
@@ -103,11 +102,11 @@ holder) and writes its evidence under `logs/pi/` (untracked), so the phase repor
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
 | G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c 'def run_life' src/epitaph/sim.py` prints 0 and `grep -n controller src/epitaph/sim.py` shows it driving `controller.py`; `make sim` exit 0 | pass (2026-10-01) | `sim.py` drives `controller.py` (no reference loop); `make sim` green |
-| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `AGENT=E make pi-life PROFILE=pi4/skeleton-1200 LIVES=2` exits 0, and its last line reads `PASS: 2 life(s) of pi4/skeleton-1200`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/skeleton-1200 --hardware pi4-4gb --level skeleton` (the profile's own level) exits 0 for `<n>` and `<n+1>`, and on `<n>`, `python -c 'import json,sys; print([c["status"] for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="next_birth"])' logs/pi/<run>/lives/<n>/verify.json` prints `['pass']` | pass (2026-10-01) | lives 000002 and 000003: skeleton PASS, 569 and 584 words, deadline at 1200 s, next birth 154 s; [report](process/reports/1-L.md) |
-| G1.2 | The remote view shows them live | During the G1.1 run, under the same lock hold (the tunnel only reads the bus): `script -q -c "$PY -m epitaph display --connect pi --driver terminal" logs/pi/remote-view-<stamp>.txt`. It shows birth, words typed letter by letter, the death and the next birth | pass (2026-10-01) | `epitaph display --connect pi --driver terminal` during life 000002: status strip, letters typed live, 1.2-1.4 tok/s; [report](process/reports/1-L.md) |
-| G1.3 | Headless boot: no display crash loop | No screen connected. `AGENT=E make pi-boot-check` exits 0 (it reboots: `tools/headless_boot_check.sh --reboot`, waits for a new `boot_id` over SSH and for `systemctl is-system-running --wait`). It passes when `epitaph-display` is `loaded`, `enabled`, not `failed` or `activating`, has `NRestarts=0` and was skipped by its `ExecCondition` (`Result=exec-condition`; `ConditionResult=no` also counts, for a `Condition*=` line), and `epitaph-controller` is `enabled` and `active`. `REBOOT=0 make pi-boot-check` runs the same checks on the current boot | pass (2026-10-01) | reboot to SSH 31 s; display skipped by its ExecCondition, 0 restarts; controller active, 0 restarts; throttled 0x0; [report](process/reports/1-L.md) |
-| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `AGENT=E make pi-smoke` exits 0, and its last line reads `PASS: 1 life(s) of pi4/smoke-300` | pass (2026-10-01) | life 000001: smoke PASS, 4 thoughts, 132 words, deadline at 300 s; [report](process/reports/1-L.md) |
-| G1.5 | `/code-review high` done on the gate diff | integrator's review note | pass (2026-10-01) | review of the phase 1 diff: 11 findings, 1-8, 10 and 11 fixed with tests; 9 accepted as ADR-027; [report](process/reports/1-L.md) |
+| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `AGENT=E make pi-life PROFILE=pi4/skeleton-1200 LIVES=2` exits 0, and its last line reads `PASS: 2 life(s) of pi4/skeleton-1200`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/skeleton-1200 --hardware pi4-4gb --level skeleton` (the profile's own level) exits 0 for `<n>` and `<n+1>`, and on `<n>`, `python -c 'import json,sys; print([c["status"] for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="next_birth"])' logs/pi/<run>/lives/<n>/verify.json` prints `['pass']` | pass (2026-10-01) | lives 000002 and 000003: skeleton PASS, 569 and 584 words, deadline at 1200 s, next birth 154 s |
+| G1.2 | The remote view shows them live | During the G1.1 run, under the same lock hold (the tunnel only reads the bus): `script -q -c "$PY -m epitaph display --connect pi --driver terminal" logs/pi/remote-view-<stamp>.txt`. It shows birth, words typed letter by letter, the death and the next birth | pass (2026-10-01) | `epitaph display --connect pi --driver terminal` during life 000002: status strip, letters typed live, 1.2-1.4 tok/s |
+| G1.3 | Headless boot: no display crash loop | No screen connected. `AGENT=E make pi-boot-check` exits 0 (it reboots: `tools/headless_boot_check.sh --reboot`, waits for a new `boot_id` over SSH and for `systemctl is-system-running --wait`). It passes when `epitaph-display` is `loaded`, `enabled`, not `failed` or `activating`, has `NRestarts=0` and was skipped by its `ExecCondition` (`Result=exec-condition`; `ConditionResult=no` also counts, for a `Condition*=` line), and `epitaph-controller` is `enabled` and `active`. `REBOOT=0 make pi-boot-check` runs the same checks on the current boot | pass (2026-10-01) | reboot to SSH 31 s; display skipped by its ExecCondition, 0 restarts; controller active, 0 restarts; throttled 0x0 |
+| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `AGENT=E make pi-smoke` exits 0, and its last line reads `PASS: 1 life(s) of pi4/smoke-300` | pass (2026-10-01) | life 000001: smoke PASS, 4 thoughts, 132 words, deadline at 300 s |
+| G1.5 | `/code-review high` done on the gate diff | review note | pass (2026-10-01) | review of the phase 1 diff: 11 findings, 1-8, 10 and 11 fixed with tests; 9 accepted as ADR-027 |
 
 ## G2: full decline, checkpoint B (BUILD_PLAN 8.4)
 
@@ -117,8 +116,7 @@ counterpart `compressed-600`): G2.3 runs the installation's own profile.
 
 **How the G2 rows run.** Two ways to get lives, both judged by `verify-life` at the profile's
 level (`full` for `pi4/default`), both writing `verify.json` next to each life's `events.jsonl`
-under `logs/pi/` (untracked); the phase 2 report in `docs/process/reports/` quotes the
-summary lines and names the folders.
+under `logs/pi/` (untracked); the summary lines there are the evidence.
 
 - `make pi-life` (`tools/smoke_pi.sh`, as in G1): stops the service inside its lock hold, runs
   `LIVES` consecutive lives as a detached unit, starts the service again, copies and judges
@@ -137,11 +135,11 @@ summary lines and names the folders.
 
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
-| G2.1 | Selftest passes under the installed service | `tools/pi_lock.sh run E 10 -- ssh pi /opt/epitaph/venv/bin/epitaph selftest --user pi` exit 0 (it relaunches itself as a transient `Delegate=yes` unit for the service user; its clock round trip moves the CPU clock, so stop `epitaph-controller` around it and start it again after, or take the fault row `AGENT=E make pi-faults ROWS=delegated-cgroups`) | pass (2026-10-01) | `epitaph selftest` 12/12 through `deploy/install.sh` on the deployed phase 2 code (transient Delegate=yes unit as the service user), network check included; [report](process/reports/2-L.md) |
-| G2.2 | The fault matrix passes on the Pi (rows that apply) | `AGENT=E make pi-faults` exit 0 and its last line reads `PASS: every row that ran passed`; the table `logs/pi/faults-<stamp>.md` has every `pi` and `native` row **PASS** and the `owner` rows listed (the fault table below, Pi column) | pass (2026-10-01) | `make pi-faults`: creature-network, two-controllers, crash, controller-killed, hang, two-agents all PASS; RAM death and delegated cgroups proven by real lives, calibration and selftest; owner rows wait; [report](process/reports/2-L.md) |
-| G2.3 | Three consecutive `pi4/default` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/default LIVES=3` exits 0 and its last line reads `PASS: 3 life(s) of pi4/default`. Or, from the running service: `make pi-collect PROFILE=pi4/default LIVES=3` exits 0 and `logs/pi/service-<stamp>/summary.md` reads `Consecutive lives: yes`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/default --hardware pi4-4gb` (level `full`, the profile's own) exits 0 for each `<n>` | pass (2026-10-01) | lives 000028-000030, consecutive on the service: full level PASS each; OOM at 1770.8-1770.9 s; last words shown 1.9-25.8 s after the death; speed decline 0.29-0.31; voice proxies advisory only; [report](process/reports/2-L.md) |
-| G2.4 | `/code-review high` done | integrator's review note | pass (2026-10-01) | review of the phase 2 diff: 10 findings, all fixed with tests; [report](process/reports/2-L.md) |
-| G2.5 | Checkpoint B reply ("good" or the list) | QUESTIONS / CHANGELOG | pass (2026-10-01) | the owner's reply after watching lives on the remote view: "good to close on my side the voice looks good" |
+| G2.1 | Selftest passes under the installed service | `tools/pi_lock.sh run E 10 -- ssh pi /opt/epitaph/venv/bin/epitaph selftest --user pi` exit 0 (it relaunches itself as a transient `Delegate=yes` unit for the service user; its clock round trip moves the CPU clock, so stop `epitaph-controller` around it and start it again after, or take the fault row `AGENT=E make pi-faults ROWS=delegated-cgroups`) | pass (2026-10-01) | `epitaph selftest` 12/12 through `deploy/install.sh` on the deployed phase 2 code (transient Delegate=yes unit as the service user), network check included |
+| G2.2 | The fault matrix passes on the Pi (rows that apply) | `AGENT=E make pi-faults` exit 0 and its last line reads `PASS: every row that ran passed`; the table `logs/pi/faults-<stamp>.md` has every `pi` and `native` row **PASS** and the `owner` rows listed (the fault table below, Pi column) | pass (2026-10-01) | `make pi-faults`: creature-network, two-controllers, crash, controller-killed, hang, two-agents all PASS; RAM death and delegated cgroups proven by real lives, calibration and selftest; owner rows wait |
+| G2.3 | Three consecutive `pi4/default` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/default LIVES=3` exits 0 and its last line reads `PASS: 3 life(s) of pi4/default`. Or, from the running service: `make pi-collect PROFILE=pi4/default LIVES=3` exits 0 and `logs/pi/service-<stamp>/summary.md` reads `Consecutive lives: yes`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/default --hardware pi4-4gb` (level `full`, the profile's own) exits 0 for each `<n>` | pass (2026-10-01) | lives 000028-000030, consecutive on the service: full level PASS each; OOM at 1770.8-1770.9 s; last words shown 1.9-25.8 s after the death; speed decline 0.29-0.31; voice proxies advisory only |
+| G2.4 | `/code-review high` done | review note | pass (2026-10-01) | review of the phase 2 diff: 10 findings, all fixed with tests |
+| G2.5 | Checkpoint B reply ("good" or the list) | CHANGELOG | pass (2026-10-01) | the owner's reply after watching lives on the remote view: "good to close on my side the voice looks good" |
 | G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `python -c 'import json,sys; print([c for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="speed_monotonic"])' logs/pi/<run>/lives/<n>/verify.json` shows a value ≤ 1.05, from `gen_end` rates | pass (2026-10-01) | `speed_monotonic` in lives 000028-000030: 0.924, 1.016, 0.986 (limit 1.05) |
 
 ## G3: hardening, checkpoint C = acceptance (BUILD_PLAN 8.4, 11)
@@ -181,15 +179,15 @@ lock meanwhile. Three read-only steps, none of which stops the service:
 | A4c | Controller memory growth < 20 MB; disk < 100 MB/day | `soak_report.py` rows: median RSS of the last 3 samples minus the first 3 within one controller pid; growth of the root filesystem's used space per day (the state directory beside it) | waived (owner, 2026-10-01) | No 25-hour soak: every 30-minute life on the Pi already runs the whole decline, and the installation runs and logs continuously; ADR-029. `tools/soak_sample.sh` and `tools/soak_report.py` stay for a long run later |
 | A4d | No under-voltage bits; throttling or thermal pauses < 10% of the time | `soak_report.py` rows: no sample with `get_throttled` bit 0 or 16 and no kernel under-voltage line; samples with bit 1, 2 or 3 set plus the controller's `thermal` pauses, over the soak | waived (owner, 2026-10-01) | No 25-hour soak: every 30-minute life on the Pi already runs the whole decline, and the installation runs and logs continuously; ADR-029. `tools/soak_sample.sh` and `tools/soak_report.py` stay for a long run later |
 | A5 | Power on to first shown word ≤ `first_word_after_boot_s` (240 s) | reboot test: boot time from `journalctl --list-boots`, first `word` event `ts` | open | |
-| A6 | `install.sh` idempotent on the Pi and in a clean arm64 Debian container | `deploy/install.sh` twice on the Pi (second run changes nothing); `podman run --arch arm64 debian:trixie ... install.sh` | partial (2026-10-01) | Pi: second run `changed: 0` ([report](process/reports/1-L.md)); the arm64 container run is open |
+| A6 | `install.sh` idempotent on the Pi and in a clean arm64 Debian container | `deploy/install.sh` twice on the Pi (second run changes nothing); `podman run --arch arm64 debian:trixie ... install.sh` | partial (2026-10-01) | Pi: second run `changed: 0`; the arm64 container run is open |
 | A7 | `epitaph sim` and `epitaph run --backend fake --display terminal` work with no model | `$PY -m epitaph sim --profile pi4/default`; `$PY -m epitaph run --backend fake --display terminal --clock fake --profile pi4/default --lives 1` (and in real time with `--profile pi4/smoke-300`) | pass (2026-10-01, laptop) | both exit 0 on the laptop with no flags (`config/profiles/dev/default.toml` extends `pi4/default`): `sim` 31 thoughts, `cause=oom` at 1770 s; `run` one life typed in the terminal |
-| A8 | `pi4/unbounded` and the Pi 5 profiles pass simulation; `pi4/unbounded` passes one real life | `make sim-profiles` and `make estimate` (both in `make check`: every Pi 5 profile on both overlays); one Pi life + `verify-life --level full` | open | simulation and estimate pass (phase 3, B9): `pi4/unbounded` dies `full` at 61 min in the sim (context full at 59 min in the estimate, ctx 3072); `pi5/default` `oom`, `pi5/skeleton-600` `deadline`, `pi5/unbounded` `full` (about 62 min, ctx 6144) on `pi5-8gb` and `pi5-16gb`. The real life waits for the soak; verify-life's `bright_words_last_2min` fails a simulated unbounded life (it never forgets, so nothing fades) and needs the unbounded skip that `speed_decline` has (E) |
+| A8 | `pi4/unbounded` and the Pi 5 profiles pass simulation; `pi4/unbounded` passes one real life | `make sim-profiles` and `make estimate` (both in `make check`: every Pi 5 profile on both overlays); one Pi life + `verify-life --level full` | open | simulation and estimate pass (phase 3, B9): `pi4/unbounded` dies `full` at 61 min in the sim (context full at 59 min in the estimate, ctx 3072); `pi5/default` `oom`, `pi5/skeleton-600` `deadline`, `pi5/unbounded` `full` (about 62 min, ctx 6144) on `pi5-8gb` and `pi5-16gb`. The real life waits for the soak; verify-life's `bright_words_last_2min` fails a simulated unbounded life (it never forgets, so nothing fades) and needs the unbounded skip that `speed_decline` has |
 | A9 | D13 passes at every tested resolution | `$PY -m pytest -m display tests/display` (CI step "Headless display tests") | pass (2026-10-03) | `pytest -m display tests/display`: 269 passed, OCR at four resolutions |
 | A10 | `sd_restore.sh` has restored an image at least once | C's log in PI_CHANGES / report | open | |
 | A11 | Checkpoint B read on the remote view | Yannick | pass (2026-10-01) | the owner watched whole lives on the laptop remote view and approved the voice ("good to close") |
 | A12 | Checkpoint C: soak report acceptable | Yannick reads `logs/pi/soak-<stamp>/report.md` | waived (owner, 2026-10-01) | No 25-hour soak: every 30-minute life on the Pi already runs the whole decline, and the installation runs and logs continuously; ADR-029. `tools/soak_sample.sh` and `tools/soak_report.py` stay for a long run later |
-| A13 | `/code-review high` done | integrator | open | |
-| A14 | Docs: README (laptop quickstart, then the Pi), CONFIG, INSTALLATION, CONTRIBUTING, model licenses (card E8) | `tests/unit/test_config_doc.py` (every key in `config/` documented, defaults equal); the README quickstart commands run on the laptop | pass (2026-10-01, laptop) | README quickstart commands each exit 0 on the laptop; `test_config_doc.py` passes; INSTALLATION's "Install on a Pi" section belongs to the installer card (C) |
+| A13 | `/code-review high` done | review note | open | |
+| A14 | Docs: README (laptop quickstart, then the Pi), CONFIG, INSTALLATION, CONTRIBUTING, model licenses (E8) | `tests/unit/test_config_doc.py` (every key in `config/` documented, defaults equal); the README quickstart commands run on the laptop | pass (2026-10-01, laptop) | README quickstart commands each exit 0 on the laptop; `test_config_doc.py` passes; INSTALLATION's "Install on a Pi" section belongs to the installer work package |
 | later | S5 and checkpoint B's physical part when a screen is connected | D8 | pending | no screen (10.2) |
 
 ---
@@ -200,10 +198,10 @@ Laptop rows run on the fakes in `tests/faults/test_fake_faults.py` (`make faults
 injects the fault into the real controller on the installation's profile, `pi4/default`, and
 lets verify-life judge the recorded life; `ROWS` in that file maps each 10.4 row to its test.
 Pi rows run through `tools/fault_matrix_pi.sh` (`make pi-faults`; `pi:<row>` below is its row
-name): `pi` rows call C's `tools/fault_pi.sh <row>` (one row per call, a line that starts with
+name): `pi` rows call `tools/fault_pi.sh <row>` (one row per call, a line that starts with
 `PASS` or `FAIL`, exit 0 or 1; exit 2 for a row it does not know; it must not take the Pi lock
 when `EPITAPH_PI_LOCKED=1`, because the driver holds it), `native` rows are the driver's own,
-and `owner` rows need a person or a fresh SD image and are never run by an agent (no power cut
+and `owner` rows need a person or a fresh SD image and are never run by the tools (no power cut
 and no reboot until then). `tests/unit/test_fault_matrix_pi.py` checks that this table, the
 laptop tests and the driver's rows agree.
 

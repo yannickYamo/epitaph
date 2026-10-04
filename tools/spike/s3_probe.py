@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spikes S3, S3b and S3c on the Pi (BUILD_PLAN 8.5). part C.
+"""Spikes S3, S3b and S3c on the Pi (BUILD_PLAN 8.5).
 
 Runs on the Pi inside a throwaway `Delegate=yes` unit as the service user, and drives the
 creature cgroup through the real body code (epitaph.body.cgroup), so the spike proves the

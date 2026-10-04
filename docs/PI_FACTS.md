@@ -80,7 +80,7 @@ The installed piece runs with no network at all ([INSTALLATION.md](INSTALLATION.
 
 ## Fault rows on the Pi (`tools/fault_pi.sh`, BUILD_PLAN 10.4)
 
-Run under the lock against the installed service: `tools/pi_lock.sh run <agent> 60 --
+Run under the lock against the installed service: `tools/pi_lock.sh run <name> 60 --
 tools/fault_pi.sh all` (or one row). Each row prints its evidence and `PASS`/`FAIL`; it never
 stops the controller, and leaves it running whatever happens. First run, 2026-10-01, on the
 phase 2 branch (pi4/default lives, Qwen3 4B):

@@ -1,4 +1,4 @@
-"""The fault matrix rows the fakes can inject (BUILD_PLAN 10.4; card E6), end to end.
+"""The fault matrix rows the fakes can inject (BUILD_PLAN 10.4, 9 E6), end to end.
 
 Each test injects one fault into the real controller on the fakes (virtual time), on the
 installation's own profile, `pi4/default` (ADR-024), then lets verify-life judge the

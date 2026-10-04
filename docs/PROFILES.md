@@ -5,7 +5,7 @@ value is what it is. Every retiming is recorded here with the `epitaph estimate`
 and after it. The art (what is lost, in which order, and when the creature dies) is in BUILD_PLAN
 5.3; this file is about making that shape fit the machine.
 
-## Phase 0c, round 1: rebased on measured Qwen3 1.7B costs (part B, 2026-09-30)
+## Phase 0c, round 1: rebased on measured Qwen3 1.7B costs (2026-09-30)
 
 ### What changed in the inputs
 
@@ -106,13 +106,13 @@ thoughts and die of `oom`; verify-life passes `speed_decline` (0.33), `reload_si
 
 Also: `pi5/default` gets the same end slope (CPU share 0.8 -> 0.3 over the erosion) and passes
 its estimate on both Pi 5 overlays (speed 0.29). `pi5/skeleton-600` and `pi5/compressed-600`
-failed before this round and still do (docs/process/QUESTIONS.md, E #5: informational in CI).
+failed before this round and still do (informational in CI).
 
 ### Risks and checks for the Pi
 
 - **CPU share below 0.7 is not measured.** S3c went down to 0.7 cores (worst token gap 2.8 s);
   the profiles now end at 0.6 and 0.4. Proportional slowdown and bounded stalls are likely but
-  need a short S3c extension at 0.5 and 0.4 (part C).
+  need a short S3c extension at 0.5 and 0.4.
 - **The reload silences are estimates.** 128 s at reload 1 matches S4's 135 s (Q4_K_M, recall
   300, 3 prompt threads, measured). Reload 2 (Q2_K, recall 200, 3 prompt threads on a 2.0 share)
   is estimated at 153 s; S4 measured 123 s at 3 prompt threads without a share limit and 170 s at
@@ -139,7 +139,7 @@ It also showed a second trap, fixed in `mind/memory.py`: a live trim that cuts w
 kept thought puts new tokens in front of everything after it, like the old marker, so live
 trims now cut on turn boundaries (words only inside the last remaining turn).
 
-## Phase 0c, round 2: speed never rises across a reload (part V, 2026-09-30)
+## Phase 0c, round 2: speed never rises across a reload (2026-09-30)
 
 Review 2, F2 (binding): the generation speed after a reload may be at most the speed before
 it. Lower precision is faster on the Pi 4 (generation is memory-bound), so without a change
@@ -153,14 +153,14 @@ from the measured Qwen3 1.7B rates so the new step is no faster than the old one
 | 2 (end-17:00; end-20:30) | Q4_K_M at 2.0 cores: 1.61 | Q2_K, 2 threads: 2.04 at 2.0 cores, **1.53 at 1.5** | 2.0 -> **1.5** | 2 x 1.608 / 2.036 = 1.58 |
 
 The comparison uses the bench's depth rates (`tg_tok_s`), which is what the rehearsal charges
-and what verify-life's `speed_monotonic` compares (part E: the mean of two thoughts on each
+and what verify-life's `speed_monotonic` compares (the mean of two thoughts on each
 side, 5% tolerance). At a short context (the bench birth thought) the ratios are 1.03 and 1.00.
 On the Pi itself a thought just after a reload runs at a shorter context than the one before
 it, so the real ratio can come out a little above 1; round 1's S1c drift (F8) is the other
 unknown. The Pi lives of phase 2 will show it.
 
-A lower share also slows the post-reload re-read (prompt threads are capped by the share, QUESTIONS
-A #9), so the post-reload recalls come down to keep the silence under 180 s. The tuning round
+A lower share also slows the post-reload re-read (prompt threads are capped by the
+share), so the post-reload recalls come down to keep the silence under 180 s. The tuning round
 that followed (docs/PROMPT_LOG.md) made the mechanics longer (about 95 to 131 tokens), which every fresh
 server re-reads, so the recalls came down once more and reload 2 of `pi4/default` moved 30 s
 earlier (a thought in progress at 43:00 pushed the reload to 44:06, leaving one thought before
@@ -188,12 +188,12 @@ profile pi4/compressed-2700: 29 thoughts in 45 min -> PASS
 
 (before: 40 and 32 thoughts, silences 128 s / 153 s and 128 s / 154 s). The other Pi 4
 profiles have no reload. The margins under 180 s are thin (5-14 s): a slower re-read on the Pi
-means a smaller post-reload recall, not a higher share. part A's slot handover (review 2, F5,
-on its branch this round) would remove most of the re-read and give this margin back.
+means a smaller post-reload recall, not a higher share. The slot handover (review 2, F5,
+in progress this round) would remove most of the re-read and give this margin back.
 
 **Only Qwen3 1.7B has a measured ladder.** For every other model steps 1 and 2 are the overlay's
 estimates, which are not comparable with a measured step 0, so the F2 check means nothing for
-them until the 3-4B ladders are measured (part A, this round). The profiles are per hardware
+them until the 3-4B ladders are measured (this round). The profiles are per hardware
 class, not per model; after checkpoint A they are rebased on the chosen models (F1, F9).
 
 ## The 30-minute life (2026-09-30)

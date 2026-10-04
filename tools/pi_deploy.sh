@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Deploy this working tree to the Pi and install it (BUILD_PLAN 8.3, 9 C5).
 #
-#   tools/pi_lock.sh run <agent> 15 -- tools/pi_deploy.sh [install.sh options]
-#   make pi-deploy                     (the same, as part L)
+#   tools/pi_lock.sh run <name> 15 -- tools/pi_deploy.sh [install.sh options]
+#   make pi-deploy                     (the same)
 #
 # 1. rsync the working tree to <host>:/opt/epitaph/src (no .git, venvs, voice/, caches, nor
 #    anything .gitignore excludes; files deleted here are deleted there)

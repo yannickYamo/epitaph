@@ -10,8 +10,8 @@
 #             run changed nothing)
 #
 # It never handles secrets. The Wi-Fi connection and the Pi password need a person at a
-# real terminal; when they are missing it prints the command for Yannick and carries on.
-# Run it under the Pi lock: tools/pi_lock.sh run C 15 -- tools/pi_bootstrap.sh --apply
+# real terminal; when they are missing it prints the command to run and carries on.
+# Run it under the Pi lock: tools/pi_lock.sh run <name> 15 -- tools/pi_bootstrap.sh --apply
 # Every change it makes is also a row in docs/PI_CHANGES.md. Without a host it uses `pi`
 # (Wi-Fi) and falls back to `pi-eth` (the cable) when `pi` does not answer (tools/pi_host.sh).
 set -euo pipefail
@@ -44,8 +44,8 @@ if [ "$LOCAL" = 0 ]; then
   echo "== host: $HOST"
   if ! ssh_ sudo -n true 2>/dev/null; then
     cat >&2 <<'MSG'
-sudo needs a password on the Pi, so this script cannot continue. Yannick, in your own
-terminal (not through a non-interactive shell), run this once and type the Pi password when asked:
+sudo needs a password on the Pi, so this script cannot continue. In an interactive
+terminal of your own, run this once and type the Pi password when asked:
 
   ssh -t pi-eth 'echo "pi ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/010_pi-nopasswd >/dev/null && sudo chmod 0440 /etc/sudoers.d/010_pi-nopasswd && sudo visudo -cf /etc/sudoers.d/010_pi-nopasswd'
 
@@ -353,16 +353,16 @@ fix_pkgs() {
 # --- things only a person can do ---------------------------------------------------------
 check_manual() {
   if [ -z "$(wifi_conns)" ]; then
-    manual wifi "Wi-Fi is not set up. Yannick, in your own terminal (not a non-interactive shell):  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\"   then run this script again."
+    manual wifi "Wi-Fi is not set up. In an interactive terminal of your own:  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\"   then run this script again."
   elif [ "$(nmcli -g GENERAL.STATE device show wlan0 2>/dev/null | cut -d' ' -f1)" != 100 ]; then
     # 100 = connected. Typically the saved network is out of range where the Pi stands now.
-    manual wifi "Wi-Fi is set up but wlan0 is not connected (saved network out of range?), so epitaph.local does not resolve and the tools use the cable. To add this place's network, Yannick, in your own terminal:  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\""
+    manual wifi "Wi-Fi is set up but wlan0 is not connected (saved network out of range?), so epitaph.local does not resolve and the tools use the cable. To add this place's network, in your own terminal:  ssh -t pi-eth sudo nmcli --ask device wifi connect \"<SSID>\""
   else
     say wifi "ok (connected)"
   fi
   case "$(passwd -S "$USER_NAME" | awk '{print $2}')" in
     P) say password ok ;;
-    *) manual password "The $USER_NAME password is locked or unset (keys work; a password is only for the cable). Yannick, in your own terminal:  ssh -t pi-eth sudo passwd $USER_NAME" ;;
+    *) manual password "The $USER_NAME password is locked or unset (keys work; a password is only for the cable). In your own terminal:  ssh -t pi-eth sudo passwd $USER_NAME" ;;
   esac
 }
 

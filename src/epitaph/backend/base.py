@@ -1,6 +1,6 @@
 """The backend contract: the creature process and how the controller talks to it (BUILD_PLAN 6.4).
 
-Owned by the integrator; implemented by part A (llama_server.py, fake.py).
+Implemented in llama_server.py and fake.py.
 """
 
 from __future__ import annotations

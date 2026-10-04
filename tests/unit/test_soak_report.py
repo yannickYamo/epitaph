@@ -1,4 +1,4 @@
-"""tools/soak_report.py and tools/soak_sample.sh on synthetic soaks (card E7; BUILD_PLAN 11.4).
+"""tools/soak_report.py and tools/soak_sample.sh on synthetic soaks (BUILD_PLAN 9 E7, 11.4).
 
 Each soak is built as collect_lives.sh writes it: `lives/NNNNNN/` with events.jsonl,
 meta.json, death.json and verify.json, plus a controller journal and soak_sample.sh lines.

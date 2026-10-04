@@ -305,7 +305,7 @@ sudo /opt/epitaph/src/deploy/install.sh --enable && sudo systemctl restart epita
 
 From a development laptop, `tools/pi_deploy.sh` does the same with the working tree: it rsyncs it
 to `/opt/epitaph/src` and runs `install.sh` there, passing its options through. It runs under the
-Pi lock, which serialises every agent's use of the Pi:
+Pi lock, which serialises every use of the Pi:
 
 ```sh
 PI_HOST=<ssh alias> tools/pi_lock.sh run <name> 15 -- tools/pi_deploy.sh --enable

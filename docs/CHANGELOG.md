@@ -1,6 +1,6 @@
 # Changelog
 
-## Phase 0a (integrator)
+## Phase 0a
 - Contracts in code: `types.py`, `config.py` (profiles with `extends`, fractional and end-anchored keyframes, overlays, fail-fast validation), `clock.py` (Real, Fake, Rehearsal clocks; Schedule with recall and CPU share held until reloads), `costmodel.py` (`epitaph estimate`: the thought-count rule), `state.py`, `events.py` (bus with per-subscriber bounded queues, control channel), `backend/base.py`, `body/base.py`, fakes, `sim.py` (reference loop), `cli.py`.
 - Profiles retimed by the cost model: `compressed-2700` failed rules (a) and (b) with estimated costs; decline moved to 20:00, reload 2 to end-20:30, erosion from end-13:00. `skeleton-1200` last change moved to 16:00.
 - Protocol version 1.
@@ -33,7 +33,7 @@
   narrow helper for the CPU clock and `epitaph selftest`.
 - The local display starts only when a screen is connected; the remote view works over SSH.
 - Gate G1 passed on the Pi: a smoke life, two 20-minute lives, the remote view live, a headless
-  reboot (docs/process/reports/1-L.md).
+  reboot.
 
 ## Phase 2 closed, phase 3 and offline (2026-10-01)
 - Gate G2 on the Pi: three consecutive 30-minute lives pass at the full level; the fault

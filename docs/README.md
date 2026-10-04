@@ -22,8 +22,8 @@
 
 | Document | Contents |
 |---|---|
-| [BUILD_PLAN.md](BUILD_PLAN.md) | The original specification the fleet built from (historical: the decisions records supersede it) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Module map and ownership |
+| [BUILD_PLAN.md](BUILD_PLAN.md) | The original specification the piece was built from (historical: the decisions records supersede it) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Module map |
 | [SPIKE.md](SPIKE.md) | Every risky assumption, measured on the Pi 4 with a go criterion set in advance |
 | [PROFILES.md](PROFILES.md) | How each life schedule was fitted to measured costs |
 | [PROMPT_LOG.md](PROMPT_LOG.md) | Every change to the prompt and sampling, with the metrics it produced |
@@ -38,10 +38,6 @@
 | [PI_CHANGES.md](PI_CHANGES.md) | Every system change made to the Pi |
 | [PI_LOCK.md](PI_LOCK.md) | How work on the single Pi is serialised |
 
-## Process record
+## History
 
-The project was built by a team of AI coding agents working in parallel from the build plan.
-Their phase reports, open questions and contract proposals are kept in [process/](process/):
-[reports](process/reports/), [QUESTIONS.md](process/QUESTIONS.md),
-[CONTRACT_CHANGES.md](process/CONTRACT_CHANGES.md). [CHANGELOG.md](CHANGELOG.md) summarises each
-phase. [CONTRIBUTING.md](../CONTRIBUTING.md) describes how to work on the code.
+[CHANGELOG.md](CHANGELOG.md) summarises each phase. [CONTRIBUTING.md](../CONTRIBUTING.md) describes how to work on the code.
