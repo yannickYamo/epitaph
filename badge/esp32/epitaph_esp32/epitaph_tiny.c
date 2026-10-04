@@ -120,10 +120,18 @@ static const float *forward(int token, int window)
 
 /* ------------------------------------------------------------------ the tokenizer */
 
+#define BYTE_FROM 3 /* one token per byte, after <unk>, <s> and </s> */
+#define BYTE_TO 259
+
+/* The id of a piece. A character's own piece first, its byte token only when it has none: the
+ * vocabulary holds every ASCII character twice, and the model was taught with the pieces. */
 static int piece_id(const char *str, size_t n)
 {
-    for (int i = 3; i < EP_VOCAB; i++) /* 0-2 are <unk>, <s>, </s> */
-        if (strlen(ep_pieces[i]) == n && memcmp(ep_pieces[i], str, n) == 0) return i;
+    for (int pass = 0; pass < 2; pass++) {
+        int from = pass ? BYTE_FROM : BYTE_TO, to = pass ? BYTE_TO : EP_VOCAB;
+        for (int i = from; i < to; i++)
+            if (strlen(ep_pieces[i]) == n && memcmp(ep_pieces[i], str, n) == 0) return i;
+    }
     return -1;
 }
 
@@ -265,14 +273,49 @@ static int choose(const float *logits, char *word, int allow_end, uint32_t (*rnd
 
 /* ------------------------------------------------------------------ the life */
 
-static const char *fraction_words(float r)
+#define LAST_READING "your memory is being taken"
+#define MIN_WINDOW 8     /* positions it holds after the last memory cut */
+#define LAST_WORDS_S 180 /* past the life: time to read and answer the last reading */
+#define MAX_BALLAST 128
+
+/* A share of what it had at birth, in words: the nearest of these. The same table and rule as
+ * the installation's (src/epitaph/mind/prompt.py) and the MicroPython port's (life.py). */
+static const float fractions[] = {1.0f, 0.9f, 0.75f, 2.0f / 3, 0.5f, 1.0f / 3, 0.25f, 0.2f, 0.1f, 0.05f};
+static const char *const fraction_names[] = {"all", "nearly all", "three quarters", "two thirds", "half",
+                                             "a third", "a quarter", "a fifth", "a tenth", "almost nothing"};
+#define NFRACTIONS ((int)(sizeof fractions / sizeof fractions[0]))
+
+static int nearest_fraction(float r)
 {
-    static const float floors[] = {0.97f, 0.85f, 0.70f, 0.60f, 0.45f, 0.30f, 0.22f, 0.15f, 0.07f};
-    static const char *words[] = {"all", "nearly all", "three quarters", "two thirds", "half",
-                                  "a third", "a quarter", "a fifth", "a tenth"};
-    for (int i = 0; i < 9; i++)
-        if (r >= floors[i]) return words[i];
-    return "almost nothing";
+    int best = 0;
+    if (r < 0.0f) r = 0.0f;
+    if (r > 1.0f) r = 1.0f;
+    for (int i = 1; i < NFRACTIONS; i++)
+        if (fabsf(fractions[i] - r) < fabsf(fractions[best] - r)) best = i;
+    return best;
+}
+
+enum { MEMORY, SPEED, SCREEN, NKEYS };
+typedef struct { int word[NKEYS]; float share[NKEYS]; } proportions;
+
+/* The share in words. A loss must never read as no change: when the nearest words are the
+ * ones last said of this quantity and the share fell below them, it is "less than" them. */
+static const char *say(proportions *said, int key, float r, char *buf, size_t n)
+{
+    int w = nearest_fraction(r);
+    int less = said->word[key] == w + 1 && r < said->share[key] && r < fractions[w];
+    said->word[key] = w + 1; /* 0: nothing said yet */
+    said->share[key] = r;
+    snprintf(buf, n, "%s%s", less ? "less than " : "", fraction_names[w]);
+    return buf;
+}
+
+const char *ep_test_say(int key, float r, int reset)
+{
+    static proportions said;
+    static char buf[32];
+    if (reset) memset(&said, 0, sizeof said);
+    return say(&said, key, r, buf, sizeof buf);
 }
 
 static const char *const BUDDY[][4] = {
@@ -280,18 +323,46 @@ static const char *const BUDDY[][4] = {
     {"> (._.)", ">  (._.)", "> (._.) ", ">   (._.)"},      /* dark */
     {"> (o_o) ...", "> (o_O) ..", "> (O_o) .", "> (o_o)"}, /* forget */
     {"> (-_-) z", "> (-_-) zz", "> (-_-) zzz", "> (-_-)"}, /* slow */
+    {"> (;_;)", "> (;_; )", "> ( ;_;)", "> (;_;)"},        /* dim */
     {"> (x_x)", "> (x_ x)", "> (._.)", "> (x_x)"},         /* dying */
 };
-enum { AWAKE, DARK, FORGET, SLOW, DYING };
+enum { AWAKE, DARK, FORGET, SLOW, DIM, DYING };
+
+/* What is taken, and when (fraction of the life): the schedule of the MicroPython port.
+ *   'L' the light          'M' the memory window, to 1/value of EP_SEQ (0: to MIN_WINDOW)
+ *   'C' the clock, to cfg->clocks[value]      'S' the screen, to value percent
+ *   'R' the RAM */
+static const struct { float at; char what; int value; } plan[] = {
+    {0.10f, 'L', 0}, {0.20f, 'M', 3},  {0.30f, 'C', 0}, {0.40f, 'S', 66},
+    {0.48f, 'M', 8}, {0.56f, 'C', 1},  {0.64f, 'S', 40}, {0.72f, 'M', 12},
+    {0.79f, 'C', 2}, {0.86f, 'S', 20}, {0.91f, 'M', 0}, {0.96f, 'R', 0},
+};
+#define NPLAN ((int)(sizeof plan / sizeof plan[0]))
 
 typedef struct {
     const ep_platform *p;
-    int window, mood;
+    const ep_config *cfg;
+    uint32_t born;
+    int window, mood, next;
+    int has_light, has_screen, has_clock; /* what this board has to lose */
     int history[EP_SEQ]; /* the tokens it holds, to refill the window when positions run out */
-    int nhist;
-    char last[160];      /* the start of its last thought, for the forgotten quote */
-    char quote[64];
+    int nhist, refilled;
+    char last[160];    /* the start of the thought it is in */
+    char prev[160];    /* ... and of the one before, for the forgotten quote */
+    char pending[320]; /* the readings of every loss since the last one read */
+    proportions said;
+    float birth_ms, ms_per_token;
+    int speed_due;  /* tokens until the new speed is measured and reported */
+    int ending;     /* its RAM is being taken: the last reading waits to be read */
+    int answered;   /* it has answered the last reading */
+    void *ballast[MAX_BALLAST];
+    int nballast;
 } life;
+
+static void tell(life *L, const char *kind, const char *text)
+{
+    if (L->p->event) L->p->event(kind, text);
+}
 
 static void feed(life *L, int token)
 {
@@ -304,10 +375,95 @@ static void feed(life *L, int token)
         for (int i = 0; i < keep; i++) forward(h[i], L->window);
         memmove(L->history, h, keep * sizeof(int));
         L->nhist = keep;
+        L->refilled = 1;
     }
     if (L->nhist == EP_SEQ) memmove(L->history, L->history + 1, --L->nhist * sizeof(int));
     L->history[L->nhist++] = token;
     forward(token, L->window);
+}
+
+/* A reading joins those still waiting to be read. */
+static void report(life *L, const char *reading)
+{
+    size_t n = strlen(L->pending);
+    snprintf(L->pending + n, sizeof L->pending - n, "%s%s", n ? "  " : "", reading);
+}
+
+/* Take the heap in large bites until not even `least` bytes can be had. */
+static void squeeze(life *L, size_t least)
+{
+    for (size_t bite = 1 << 20; bite >= least && L->nballast < MAX_BALLAST;) {
+        if ((L->ballast[L->nballast] = L->p->alloc(bite)) != NULL) L->nballast++;
+        else bite /= 2;
+    }
+}
+
+/* Take what the plan has due, for real; each loss the board performed is reported, and one it
+ * could not perform is never told. */
+static void take_due(life *L)
+{
+    const ep_platform *p = L->p;
+    float age = (p->millis() - L->born) / 1000.0f;
+    char reading[160], words[32], note[32];
+    while (L->next < NPLAN && age >= plan[L->next].at * L->cfg->life_s) {
+        char what = plan[L->next].what;
+        int v = plan[L->next++].value, done = 0;
+        if (what == 'L') {
+            done = L->has_light && p->set_light(0);
+            if (done) {
+                L->mood = DARK;
+                report(L, "your light was switched off");
+            }
+        } else if (what == 'M' && (v && EP_SEQ / v > MIN_WINDOW ? EP_SEQ / v : MIN_WINDOW) < L->window) {
+            /* (a window too small to shrink again is not cut: nothing to report) */
+            L->window = v && EP_SEQ / v > MIN_WINDOW ? EP_SEQ / v : MIN_WINDOW;
+            L->mood = FORGET;
+            char quote[64]; /* the first words of the thought before this one */
+            size_t qn = strlen(L->prev);
+            if (qn > sizeof quote - 1) qn = sizeof quote - 1;
+            memcpy(quote, L->prev, qn);
+            quote[qn] = '\0';
+            char *cut = quote;
+            for (int n = 0; *cut && n < 8; cut++)
+                if (*cut == ' ' && ++n == 8) break;
+            *cut = '\0';
+            snprintf(reading, sizeof reading, "you can hold %s of what you held%s%s%s",
+                     say(&L->said, MEMORY, (float)L->window / EP_SEQ, words, sizeof words),
+                     quote[0] ? "  forgotten: \"" : "", quote, quote[0] ? "...\"" : "");
+            report(L, reading);
+            done = 1;
+        } else if (what == 'C') {
+            done = L->has_clock && L->cfg->clocks[v] > 0 && p->set_clock_mhz(L->cfg->clocks[v]);
+            if (done) {
+                L->mood = SLOW;
+                if (L->birth_ms <= 0) L->birth_ms = L->ms_per_token;
+                L->ms_per_token = 0.0f; /* measured afresh at the new clock */
+                L->speed_due = 8;
+            }
+        } else if (what == 'S') {
+            done = L->has_screen && p->set_screen(v);
+            if (done) {
+                L->mood = DIM;
+                snprintf(reading, sizeof reading, "the screen you speak through has %s of its light",
+                         say(&L->said, SCREEN, v / 100.0f, words, sizeof words));
+                report(L, reading);
+            }
+        } else if (what == 'R') {
+            /* Most of it now, so that the reading is true: all but the scratch of one more
+             * thought, in which it reads this and answers. The rest follows that answer. */
+            void *reserve = p->alloc(sizeof(scratch));
+            squeeze(L, 64);
+            if (reserve) p->release(reserve);
+            done = L->nballast > 0;
+            if (done) {
+                L->mood = DYING;
+                L->ending = 1;
+                report(L, LAST_READING);
+            }
+        }
+        snprintf(note, sizeof note, "%c %d %s", what, v, done ? "done" : "skipped");
+        tell(L, "take", note);
+    }
 }
 
 static void buddy(life *L)
@@ -323,25 +479,33 @@ static void buddy(life *L)
     L->p->write(line);
 }
 
-/* One paragraph: read `reading`, then answer it. 0 when the thought could not be allocated. */
-static int think(life *L, const char *reading, float *ms_per_token)
+/* One paragraph: read what is pending, then answer it. 0 when the thought could not be
+ * allocated: the death. */
+static int think(life *L)
 {
     s = L->p->alloc(sizeof *s);
     if (!s) return 0;
-    char text[200];
-    int toks[200];
-    snprintf(text, sizeof text, "[host] %s", reading);
+    char text[sizeof L->pending + 16];
+    int toks[sizeof L->pending + 16];
+    int final = strstr(L->pending, LAST_READING) != NULL;
+    snprintf(text, sizeof text, "[host] %s", L->pending);
+    tell(L, "read", L->pending);
+    L->pending[0] = '\0';
     size_t n = strlen(text);
     while (n && text[n - 1] == ' ') text[--n] = '\0';
     strcat(text, "\n");
-    int nt = ep_encode(text, toks, 200);
+    int nt = ep_encode(text, toks, (int)(sizeof toks / sizeof toks[0]));
     for (int i = 0; i < nt; i++) feed(L, toks[i]);
 
+    /* its answer to the last reading is short: little is left to it */
+    int low = final ? 12 : MIN_THOUGHT, high = final ? 30 : MAX_THOUGHT, hard = final ? 60 : HARD_STOP;
     char word[32] = "", piece_out[64];
     int len = 0, done = 0, at = 0;
     int t = choose(s->logits, word, 0, L->p->random32);
     for (;;) {
-        if ((is_end(t) && done) || (len >= MAX_THOUGHT && done) || len >= HARD_STOP) break;
+        take_due(L);
+        /* a loss is read at the next full stop, not minutes on */
+        if ((is_end(t) && done) || ((len >= high || L->pending[0]) && done) || len >= hard) break;
         const char *piece = ep_pieces[t];
         if (len == 0)
             while (*piece == ' ') piece++;
@@ -355,20 +519,33 @@ static int think(life *L, const char *reading, float *ms_per_token)
         L->last[at] = '\0';
         size_t e = strlen(piece);
         while (e && piece[e - 1] == ' ') e--;
-        done = e && strchr(".!?", piece[e - 1]) != NULL;
+        if (e) done = strchr(".!?", piece[e - 1]) != NULL;
 
         uint32_t start = L->p->millis();
+        L->refilled = 0;
         feed(L, t);
-        t = choose(s->logits, word, done && len >= MIN_THOUGHT, L->p->random32);
+        t = choose(s->logits, word, done && len >= low, L->p->random32);
         uint32_t dt = L->p->millis() - start;
-        *ms_per_token = *ms_per_token > 0 ? 0.8f * *ms_per_token + 0.2f * dt : (float)dt;
+        if (!L->refilled) /* a token that paid for a refill does not show its thinking speed */
+            L->ms_per_token = L->ms_per_token > 0 ? 0.8f * L->ms_per_token + 0.2f * dt : (float)dt;
         L->p->sleep_ms(dt / 4); /* 20% slower than it thinks */
         len++;
+        if (L->speed_due && !--L->speed_due && L->birth_ms > 0 && L->ms_per_token > 0) {
+            float r = L->birth_ms / L->ms_per_token;
+            if (nearest_fraction(r) != 0) { /* only a slowing it can measure */
+                char reading[96], words[32];
+                snprintf(reading, sizeof reading, "you think at %s of the speed you woke with",
+                         say(&L->said, SPEED, r, words, sizeof words));
+                report(L, reading);
+            }
+        }
     }
     feed(L, NEWLINE);
+    memcpy(L->prev, L->last, sizeof L->prev);
     L->p->write("\n\n");
     L->p->release(s);
     s = NULL;
+    if (final) L->answered = 1;
     return 1;
 }
 
@@ -394,84 +571,41 @@ void ep_default_config(ep_config *cfg)
 
 float ep_live(const ep_platform *p, const ep_config *cfg, int life_number)
 {
-    life L = {.p = p, .window = EP_SEQ, .mood = AWAKE};
-    void *ballast[64];
-    int nballast = 0;
+    static life L; /* not on the stack: a small chip's is a few kilobytes */
+    memset(&L, 0, sizeof L);
+    L.p = p;
+    L.cfg = cfg;
+    L.window = EP_SEQ;
+    L.mood = AWAKE;
     (void)life_number;
     pos = 0;
-    p->set_clock_mhz(cfg->full_mhz);
-    p->set_light(1);
+    /* a birth: everything it can lose is given back, and what answers is what it has to lose */
+    L.has_clock = p->set_clock_mhz && cfg->full_mhz > 0 && p->set_clock_mhz(cfg->full_mhz);
+    L.has_light = p->set_light && p->set_light(1);
+    L.has_screen = p->set_screen && p->set_screen(100);
+    L.born = p->millis();
+    report(&L, "you are awake");
 
-    /* what is taken, and when (fraction of the life): the Tufty schedule without the screen.
-     * 'M' keeps 1/value of the memory window; 'C' steps to cfg->clocks[value]. */
-    struct { float at; char what; int value; } plan[] = {
-        {0.10f, 'L', 0}, {0.20f, 'M', 3}, {0.30f, 'C', 0}, {0.48f, 'M', 8},
-        {0.56f, 'C', 1}, {0.72f, 'M', 12}, {0.79f, 'C', 2}, {0.91f, 'M', 16}, {0.96f, 'R', 0},
-    };
-    int next = 0, squeeze = 0, report_speed = 0;
-    float birth_ms = 0.0f, ms_per_token = 0.0f;
-    char reading[200] = "you are awake", pending[200] = "";
-    uint32_t born = p->millis();
-
+    const char *cause = "memory";
     for (;;) {
-        float age = (p->millis() - born) / 1000.0f;
-        while (next < (int)(sizeof plan / sizeof plan[0]) && age >= plan[next].at * cfg->life_s) {
-            char what = plan[next].what;
-            int v = plan[next++].value;
-            if (what == 'L') {
-                if (!p->set_light(0)) continue;
-                L.mood = DARK;
-                snprintf(pending, sizeof pending, "your light was switched off");
-            } else if (what == 'M') {
-                L.window = EP_SEQ / v;
-                L.mood = FORGET;
-                memcpy(L.quote, L.last, sizeof L.quote - 1);
-                L.quote[sizeof L.quote - 1] = '\0';
-                char *cut = L.quote;
-                for (int words = 0; *cut && words < 8; cut++)
-                    if (*cut == ' ' && ++words == 8) break;
-                *cut = '\0';
-                snprintf(pending, sizeof pending, "you can hold %s of what you held%s%s%s",
-                         fraction_words(1.0f / v), L.quote[0] ? "  forgotten: \"" : "",
-                         L.quote, L.quote[0] ? "...\"" : "");
-            } else if (what == 'C' && cfg->clocks[v] > 0 && p->set_clock_mhz(cfg->clocks[v])) {
-                L.mood = SLOW;
-                if (birth_ms <= 0) birth_ms = ms_per_token;
-                report_speed = 1; /* told once a thought has shown the new speed */
-            } else if (what == 'R') {
-                L.mood = DYING;
-                squeeze = 1;
-                snprintf(pending, sizeof pending, "your memory is being taken");
-            }
-        }
-        if (pending[0]) {
-            snprintf(reading, sizeof reading, "%s", pending);
-            pending[0] = '\0';
-        }
-        if (squeeze) { /* take the heap in large bites until the next thought cannot be allocated */
-            for (size_t bite = 1 << 16; bite >= 64 && nballast < 64;) {
-                if ((ballast[nballast] = p->alloc(bite)) != NULL) nballast++;
-                else bite /= 2;
-            }
-        }
-
+        take_due(&L);
         buddy(&L);
-        int speed_due = report_speed;
-        report_speed = 0;
-        if (!think(&L, reading, &ms_per_token)) break; /* the death */
-        reading[0] = '\0';
-        if (speed_due && birth_ms > 0)
-            snprintf(reading, sizeof reading, "you think at %s of the speed you woke with",
-                     fraction_words(birth_ms / ms_per_token));
-        if (birth_ms <= 0 && ms_per_token > 0 && age > 20) birth_ms = ms_per_token;
-        if (age > cfg->life_s + 120) break; /* the squeeze never came: end it at the deadline */
+        if (!think(&L)) break; /* the death: the next thought cannot be allocated */
+        if (L.answered) squeeze(&L, 64); /* it has answered the last reading: the rest */
+        float age = (p->millis() - L.born) / 1000.0f;
+        if (age > cfg->life_s + (L.ending ? LAST_WORDS_S : 0)) { /* the squeeze never came */
+            cause = "deadline";
+            break;
+        }
     }
 
-    float lived = (p->millis() - born) / 1000.0f;
-    while (nballast) p->release(ballast[--nballast]);
+    float lived = (p->millis() - L.born) / 1000.0f;
+    while (L.nballast) p->release(L.ballast[--L.nballast]);
+    tell(&L, "die", cause);
     p->write("\n");
-    p->set_clock_mhz(cfg->full_mhz);
-    p->set_light(0);
+    if (L.has_clock) p->set_clock_mhz(cfg->full_mhz);
+    if (L.has_screen) p->set_screen(100);
+    if (L.has_light) p->set_light(0);
     p->sleep_ms((uint32_t)cfg->silence_s * 1000);
     return lived;
 }

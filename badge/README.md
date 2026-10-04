@@ -10,7 +10,7 @@ moves into the weights.**
 | Chip | 4-core Cortex-A72, 4 GB | RP2350, 8 MB PSRAM | Xtensa LX6, 520 KB SRAM |
 | Model | Qwen3 4B, 4-bit, 2.5 GB | 260K, float32, 1 MB | 260K, int8, 260 KB in flash |
 | How it gets its voice | the prompt | taught by Qwen3 4B under that prompt | the same weights |
-| What it loses | services, radio, light, screen, CPU, clock, memory, RAM | light, memory window, clock (250 to 48 MHz), screen, RAM | light, memory window, clock (240 to 80 MHz), heap |
+| What it loses | services, radio, light, screen, CPU, clock, memory, RAM | light, memory window, clock (250 to 48 MHz), screen, RAM | light, memory window, clock (240 to 80 MHz), heap; a screen if the board has one |
 | Speed | about 1 token a second | about 8 tokens a second at 250 MHz | not yet measured on hardware |
 | Status | v1.0, running | ran on the badge | runs in a simulated ESP32 on a laptop (below) |
 
@@ -34,7 +34,8 @@ The smallest models that follow a persona prompt have about 100 million paramete
    ([`tools/build_lexicon.py`](tools/build_lexicon.py)). The model still chooses every word;
    it can no longer misspell one.
 
-The machine's readings are fed to the model, as on the Pi, but not shown. A terminal face
+The machine's readings are fed to the model, as on the Pi, but not shown. A loss is read at
+the model's next full stop, and losses that fall together are read as one reading. A terminal face
 before each paragraph shows the machine's state instead: `(o_o)` awake, `(._.)` in the dark,
 `(o_O) ...` forgetting, `(-_-) zzz` slowing, `(;_;)` dimming, `(x_x)` dying.
 
@@ -52,15 +53,25 @@ subject, the losses and the death. The prompt became the training set.
   sixteenth.
 - **Clock:** the CPU frequency is lowered for real; the reading reports the speed it measures.
   An ESP32 stops at 80 MHz, where it still keeps its serial port.
-- **RAM:** at 96% of the life the chip takes its heap in large bites until the next thought's
-  scratch (5 KB) cannot be allocated. That failed allocation is the death.
+- **RAM:** at 96% of the life the chip takes its heap in large bites, all but the room for one
+  more thought. The model reads `your memory is being taken` and answers in a few words. Then
+  the rest is taken, the next thought cannot be allocated, and that failed allocation is the
+  death.
+- **What a board cannot do is never said.** A board with no LED, no clock control or no
+  backlight skips those steps, and no reading is written for them.
+
+A life's losses are spread over ten minutes. The death follows its last answer: a few seconds
+later on an ESP32, up to two minutes later on the badge, whose clock is by then at a fifth of
+its speed.
 
 ## Run the ESP32 version
 
 ```sh
 make -C badge/esp32 life       # a whole life on a simulated ESP32: a 300 KB heap, a clock at
                                # the chip's speed; prints the words, the losses and the death
+badge/esp32/host/test_host bare    # the same life on a board with only a serial port
 python badge/tools/test_esp32.py   # the int8 C engine against the float model
+python badge/tools/test_ports.py   # both ports read the readings as the model was taught them
 ```
 
 On a board: open [`esp32/epitaph_esp32/epitaph_esp32.ino`](esp32/epitaph_esp32/epitaph_esp32.ino)
@@ -70,15 +81,30 @@ baud. Any ESP32 with 4 MB of flash works; no PSRAM is needed.
 | What we checked | Result |
 |---|---|
 | int8 C engine against the float32 model | same next token 39 of 40 steps; logits within 2.5% of their range |
-| A whole simulated life (300 KB heap) | the memory window takes 164 KB; the light, two clock steps and four memory cuts land on time; the heap squeeze kills it at 96% of the life; everything is returned at the death |
-| Compiled for a real ESP32 (arduino-cli, esp32 core 3.3.12, ESP32 Dev Module) | 577 KB of 1.3 MB flash; 22 KB of static RAM, leaving 305 KB of heap |
-| Run on a real ESP32 | not yet: no board was at hand |
+| A whole simulated life (300 KB heap) | the memory window takes 164 KB; every loss the board can perform lands on time and is read once; the last reading is read and answered; the heap squeeze kills it; everything is returned at the death |
+| The same life on a board with only a serial port | the light, clock and screen steps are skipped and never reported; it still forgets and dies of memory |
+| Readings as the model reads them | 38 readings encode to the token ids of the training, on both ports |
+| Compiled for a real ESP32 (arduino-cli, esp32 core 3.3.12, ESP32 Dev Module) | 578 KB of 1.3 MB flash; 24 KB of static RAM, leaving 304 KB of heap |
+| Compiled for a Raspberry Pi Pico (arduino-cli, mbed_rp2040 core) | 403 KB of flash; 45 KB of static RAM, leaving 226 KB |
+| Run on a real ESP32 or Pico | not yet: no board was at hand |
 
 ## Run the Tufty version
 
 Double-tap RESET (the badge mounts as `TUFTY`), copy [`tufty/epitaph`](tufty/epitaph) to
 `apps/`, add `epitaph` to `apps/menu/order.txt`, eject, press RESET and choose **Epitaph**.
-`python badge/tools/sim_badge.py` runs the app on a laptop on a virtual clock.
+`python badge/tools/sim_badge.py` runs the app on a laptop on a virtual clock, with a heap the
+badge can run out of; `--check` fails unless the life ends as it must.
+
+The badge last ran an earlier build. This one reads each loss sooner and answers the last
+reading before it dies; it passes the simulated life and has not yet run on the badge.
+
+## Port it to another board
+
+The life knows no board. On a microcontroller a port fills in three required hooks in C, or
+one small class in MicroPython, and says what its hardware can take; what it cannot is skipped.
+[`terminal.py`](tufty/epitaph/terminal.py) is the smallest port: it runs on any MicroPython
+board with `ulab`, and on a laptop with `python badge/tufty/epitaph/terminal.py 60 1`.
+[docs/PORTING.md](../docs/PORTING.md) has the hooks, the RAM each board needs and the checks.
 
 ## Rebuild the model
 
