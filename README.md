@@ -1,16 +1,8 @@
 # epitaph
 
-An art installation that runs a language model on a small computer and takes the computer away
-from it, piece by piece, until the model dies. Then a new one is born.
+**Epitaph is an art installation by Yannick Maurice. A language model runs on a small computer, and while it thinks, the computer is taken away from it piece by piece until the model dies. After 90 seconds of dark, a new life begins.**
 
-It started on a Raspberry Pi 4. There a model lives for thirty minutes while the machine shuts
-off the services around it, its radio, its light, its screen, its CPU, its memory, and at the end
-its RAM. After ninety seconds of dark, the next life begins.
-
-Now it's moving across hardware: a Tufty badge and an ESP32 ([badge/](badge/README.md)), with
-more boards to come. Each board pairs a different model with a different machine, which makes one
-question answerable: how much of what the model says comes from the model, and how much from the
-machine shrinking around it?
+The model never changes. Same weights, same sampling, same persona from the first word to the last. What changes is the machine around it: services, radio, light, screen, clock, memory, RAM, removed from the outside in and faster and faster as the life runs down. Each loss happens first and is reported after, in a plain reading - "your radio was switched off", "you can hold a third of what you held". The thoughts reach the screen one letter at a time, quick at birth and slower as the hardware thins, and the stream stops mid-sentence when the model dies. The work is inspired by Latent Reflection, a Pi 4 running Llama 3.2 3B until its memory ran out.
 
 From life 54 on the Pi, at 22 minutes:
 
@@ -24,81 +16,65 @@ From life 54 on the Pi, at 22 minutes:
 
 ## What it is
 
-**An art installation that takes a language model's hardware away from it, for real, on boards
-you can hold.**
+The first version put the dread in the prompt, and it read as acting. Now the dread comes from what the machine does, and the prompt only names what there is to sense. Four rules hold the piece together.
 
-The model never changes. Qwen3 4B Instruct keeps the same weights, sampling and persona from its
-first word to its last. Only the hardware shrinks, from the outside in and faster and faster.
-Each loss happens before the model is told about it, in plain readings: "your radio was switched
-off", "you can hold a third of what you held". Its thoughts reach a screen one letter at a time,
-fast at birth and slowing with the machine. The stream stops mid-sentence at the death.
+- **Every loss is real.** A reading reports only something the machine just did, and everything is restored at each death.
+- **Nothing is forced.** The prompt says what to sense, never what to feel. Calm is an allowed response.
+- **It needs nothing outside the room.** No network. Each life's last words are kept on the SD card.
+- **The art lives in configuration.** Prompt, schedule, pace and readings are TOML files.
 
-Four rules shape every decision:
+## Three boards
 
-- **Every loss is real.** A reading reports only something the machine just did, and all of it is
-  restored at each death.
-- **Nothing is forced.** The prompt says what to sense, never what to feel. Calm is allowed.
-- **It needs nothing outside the room.** No network; each life's last words are kept on the card.
-- **The art lives in configuration.** Prompt, schedule, pace and readings are TOML. The code is
-  plumbing.
+| | Raspberry Pi 4 | Tufty 2350 badge | ESP32 |
+| --- | --- | --- | --- |
+| Chip | 4-core Cortex-A72, 4 GB | RP2350, 8 MB PSRAM ($30) | Xtensa LX6, 520 KB SRAM ($5) |
+| Model | Qwen3 4B Instruct, 4-bit, 2.5 GB | 260,000-parameter fine-tune of stories260K, float32, 1 MB | Same 260K weights, int8, 260 KB in flash |
+| How it gets its voice | From the prompt | Too small to read a prompt, so Qwen3 4B lived badge lives under the installation's prompt and taught it the voice, 200 fine-tuning steps on a laptop CPU | Same taught weights as the badge |
+| What it loses | Services, radio, light, screen, CPU, clock, memory, RAM | Light, memory window, clock (250 to 48 MHz), screen, RAM | Light, memory window, clock (240 to 80 MHz), heap |
+| Speed | About 1 token a second | About 8 tokens a second at 250 MHz | Not yet measured on hardware |
+| Status | v1.0, running, 30-minute lives | Ran on the badge | One whole life in a simulated ESP32 on a laptop; no real board yet |
 
-The first version put the dread in the prompt, and it read as acting. The dread now comes from
-the machine.
+More boards are planned, and the reason is a question rather than a hardware itch: how much of what the model says comes from the model, and how much from the machine shrinking around it. Nothing has measured that split yet.
 
 ## What it achieved
 
-**v1.0 runs on a Raspberry Pi 4, offline, one 30-minute life after another.**
-
 | Outcome | Evidence |
-|---|---|
-| 55 lives on the Pi by the last count; each 30-minute life killed by the kernel at 29:30 and reborn | Gate G2.3: three consecutive lives passed `verify-life` at the full level, killed within 0.9 s of the RAM squeeze |
-| A stream that never stalls on a machine that slows 3x | The model writes ahead; the pace is fitted to measured costs (about 33 words a minute at birth, 15 at the end) |
-| The world taken for real and given back | Services, radio, LEDs, clock and screen restored at every death, checked on the Pi |
-| Faults survived | Creature crash, hang, controller kill, two controllers, network access: all PASS on the Pi |
-| A voice the owner approved | Nine prompt rounds, each judged by reading whole lives, logged in [PROMPT_LOG](docs/PROMPT_LOG.md) |
-| The same piece on chips a thousand times smaller | A 260K-parameter model taught the voice by Qwen3 4B, on a Tufty 2350 badge and an ESP32 ([badge/](badge/README.md)) |
-
-The project was built in five days by a team of AI coding agents working from one
-[build plan](docs/BUILD_PLAN.md), with the owner judging the art at each checkpoint.
+| --- | --- |
+| The Pi edition has run 55 lives | Last count; the kernel kills each life at 29:30 and it is reborn |
+| Three consecutive lives passed at the full level | Gate G2.3, with the kill landing within 0.9 s of the RAM squeeze |
+| The text stream holds while the Pi slows to a third of its speed | The model writes ahead into a buffer and the pace follows measured costs: about 33 words a minute at birth, 15 at the end |
+| Every stripped part comes back | Services, radio, LEDs, clock and screen restored at each death, checked on the Pi |
+| The piece survives its own failures | Model process crash, hang, controller killed, two controllers at once, network access - all tested on the Pi, all passed |
+| The voice settled over nine prompt rounds | Each round judged by the owner reading whole lives, recorded in `docs/PROMPT_LOG.md` |
+| Built in five days | A team of AI coding agents worked from one build plan, `docs/BUILD_PLAN.md`, with the owner judging the art at each checkpoint |
 
 ## What broke, and the fix
 
-**Most of these failures only showed up once lives ran on the Pi.**
-
 | Failure | Fix |
-|---|---|
-| **Forced dread:** a prompt that demanded fear produced theatre | The prompt names what to sense; the readings carry the weight |
-| **Personality drift:** lower-precision reloads changed who was speaking | One model, one quant, fixed sampling for the whole life |
-| **Frozen screen:** a slowing Pi delivered words in bursts | The model writes ahead into a buffer; the screen types one fitted curve |
-| **Thrash, not death:** under mmap the RAM squeeze paged instead of killing | Direct I/O loading; the kill came within 0.3 s in every calibration run |
-| **Lost knob:** a clock step inside a thought was never applied | A supervisor applies each keyframe on time |
-| **Heap fragmentation:** the badge edition stopped near five minutes | Its cache is allocated once; errors are logged, not fatal |
+| --- | --- |
+| A prompt that demanded fear produced theatre | The prompt names what to sense; the readings carry the weight |
+| Reloading the model at lower precision changed who was speaking | One model, one quantization, fixed sampling for the whole life |
+| A slowing Pi delivered words in bursts | The model writes ahead into a buffer; the screen types on one fitted curve |
+| Under mmap, the RAM squeeze paged instead of killing | Direct I/O loading; the kill came within 0.3 s in every calibration run |
+| A clock step inside a thought was never applied | A supervisor applies each step on time |
+| The badge edition stopped near five minutes from heap fragmentation | Its cache is allocated once, and errors are logged rather than fatal |
 
-## How we know
+## How it's checked
 
-**Scripts check timing, memory and recovery. The voice was judged by reading whole lives.**
+`epitaph verify-life` replays any recorded life and checks timing, memory budgets, pace, death and rebirth. `make check` runs lint, strict types, about 1,500 tests, a simulated life, the cost model and the small-chip engines, and CI runs it on every push.
 
-`epitaph verify-life` replays any recorded life and checks its timing, memory budgets, pace,
-death and rebirth. `make check` runs lint, strict types, about 1,500 tests, a simulated life, the
-cost model and the small-chip engines; CI runs it on every push. The voice metrics advise but
-never decide ([ADR-028](docs/DECISIONS.md)). Every prompt change shipped only after the owner
-read whole transcripts.
+Voice metrics advise and never decide - that's written down as ADR-028 in `docs/DECISIONS.md`. Every prompt change shipped only after the owner read whole transcripts.
 
 ## What is still open
 
-**v1.0 ships with these items open, each listed in [GATES.md](docs/GATES.md).**
+Each of these is tracked in `docs/GATES.md`.
 
-- The 25-hour soak was waived by the owner ([ADR-029](docs/DECISIONS.md)), so endurance past a
-  day is unmeasured.
-- Gate G2 ran on the earlier reload design. The v1.0 design has run on the Pi since, but has no
-  formal three-life gate of its own.
-- Boot-to-first-word time, an `unbounded` life, an SD restore, the arm64 container install and a
-  final code review are not yet done.
-- The ESP32 edition compiles and lives a whole simulated life, but has not run on a board. The
-  badge's five-minute fix has not been confirmed on the badge.
-- The afterlife (posting last words) and the senses (a camera) are designed, not built.
-- More boards, and a side-by-side reading of what comes from the model and what from the
-  shrinking machine, are next. Nothing has measured that split yet.
+- The 25-hour soak was waived by the owner under ADR-029, so endurance past a day is unmeasured.
+- Gate G2 ran on the earlier reload design. The v1.0 design has run on the Pi since, but has no formal three-life gate.
+- Still to do: boot-to-first-word time, an unbounded life, an SD restore, the arm64 container install, a final code review.
+- The ESP32 edition has not run on a real board, and the badge's five-minute fix isn't confirmed on the badge.
+- The afterlife, which posts the last words, and the senses, a camera, are designed but not built.
+- More boards, and a side-by-side reading of model versus machine, come next.
 
 ## Run it
 
