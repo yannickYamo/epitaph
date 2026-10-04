@@ -167,6 +167,9 @@ clean arm64 Debian container (`make install-test-arm64`, below).
 Plan on about 2 hours, most of it the llama.cpp build and the model download. Commands run on
 the Pi as its first user (`pi` below; `install.sh --user NAME` installs for another one).
 
+On another Linux board, run `epitaph probe` first: it reads what that machine has for a life to
+lose and prints the lines of its hardware overlay ([PORTING.md](PORTING.md)).
+
 **Power first.** Use the official supply. On a weaker one the Pi browns out and reboots under a
 four-core load such as the llama.cpp build (`vcgencmd get_throttled` shows `0x50000`).
 

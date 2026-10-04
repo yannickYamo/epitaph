@@ -74,3 +74,23 @@ starts the next life within a minute of the last.
 - Tufty: lives stopped at about five minutes. The likely cause, not yet confirmed on the badge:
   the cache was reallocated at each context reset and fragmented the heap. It is now allocated
   once, a passing memory error no longer ends a life, and errors go to `/epitaph_errors.log`.
+
+## Readings that tell the truth, and ports (2026-10-04)
+- A loss never reads as no change. When two steps round to the same proportion, the second says
+  "less than" it (`you think at less than half of the speed you woke with`). One table and one
+  rule on the Pi, in MicroPython and in C.
+- The Pi counts the processes of birth that still run. A process started later (a timer, someone
+  logging in) no longer makes the world grow, and the count is said only when it falls.
+- A word the death cuts in half is not in the life's last line, and a blank screen before the
+  death is recorded as a stall.
+- Small chips: readings are encoded as the model was taught them (every ASCII character has two
+  ids in the vocabulary, and the chips used the untaught one). A loss is read at the next full
+  stop. The last reading, `your memory is being taken`, is read and answered before the death,
+  which earlier came first. A loss the board did not perform is never reported.
+- Ports: the life no longer knows a board. In C, three required hooks and four optional ones; in
+  MicroPython, `life.py` and one `Board` class, with `terminal.py` as the smallest port. On a
+  Linux board, `epitaph probe` reads what the machine has to lose and prints its overlay.
+  [PORTING.md](PORTING.md) is the guide.
+- `make badge` now runs whole lives on a simulated ESP32, a board with only a serial port and
+  the Tufty badge, and fails unless each ends as it must. The sketch compiles for an ESP32 and
+  a Raspberry Pi Pico. None of this has run on a real small board yet.
