@@ -1,8 +1,16 @@
 # epitaph
 
-A small language model lives on a Raspberry Pi for thirty minutes while the machine takes its
-world away. It loses the services around it, its radio, its light, its screen, its CPU, its
-memory, and at the end its RAM. Then it dies, and after ninety seconds of dark a new one is born.
+An art installation that runs a language model on a small computer and takes the computer away
+from it, piece by piece, until the model dies. Then a new one is born.
+
+It started on a Raspberry Pi 4. There a model lives for thirty minutes while the machine shuts
+off the services around it, its radio, its light, its screen, its CPU, its memory, and at the end
+its RAM. After ninety seconds of dark, the next life begins.
+
+Now it's moving across hardware: a Tufty badge and an ESP32 ([badge/](badge/README.md)), with
+more boards to come. Each board pairs a different model with a different machine, which makes one
+question answerable: how much of what the model says comes from the model, and how much from the
+machine shrinking around it?
 
 From life 54 on the Pi, at 22 minutes:
 
@@ -16,8 +24,8 @@ From life 54 on the Pi, at 22 minutes:
 
 ## What it is
 
-**An art installation that shows a language model losing its machine, for real, on hardware you
-can hold.**
+**An art installation that takes a language model's hardware away from it, for real, on boards
+you can hold.**
 
 The model never changes. Qwen3 4B Instruct keeps the same weights, sampling and persona from its
 first word to its last. Only the hardware shrinks, from the outside in and faster and faster.
@@ -89,6 +97,8 @@ read whole transcripts. A metric can catch a failure; only a reader can approve 
 - The ESP32 edition compiles and lives a whole simulated life, but has not run on a board. The
   badge's five-minute fix has not been confirmed on the badge.
 - The afterlife (posting last words) and the senses (a camera) are designed, not built.
+- More boards, and a side-by-side reading of what comes from the model and what from the
+  shrinking machine, are next. Nothing has measured that split yet.
 
 ## Run it
 
