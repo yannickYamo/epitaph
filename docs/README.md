@@ -17,6 +17,7 @@
 | [WRITING_A_DISPLAY.md](WRITING_A_DISPLAY.md) | How to build a new display on the event stream |
 | [AFTERLIFE.md](AFTERLIFE.md) | Each life's last words, kept on the card for posting later, with no network needed |
 | [badge/README.md](../badge/README.md) | The piece on small chips: a Tufty 2350 badge and an ESP32 |
+| [PORTING.md](PORTING.md) | Taking the piece to another board: a Linux machine, a microcontroller in C, a MicroPython board |
 
 ## Specification and evidence
 

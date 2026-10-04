@@ -292,6 +292,14 @@ def cmd_selftest(args: argparse.Namespace) -> int:
     return selftest.report(selftest.run_checks(_load(args)))
 
 
+def cmd_probe(args: argparse.Namespace) -> int:
+    """`epitaph probe`: what this machine has for a life to lose (read-only); exit 0 when a
+    life can die of RAM here, else 1."""
+    from epitaph.body import probe
+
+    return probe.report(probe.probe(), args.name)
+
+
 def cmd_calibrate(args: argparse.Namespace) -> int:
     """`epitaph calibrate`: working sets and the death level per ladder step, in a delegated
     unit (the controller must be stopped); exit 0 when every step is reliable, else 1."""
@@ -398,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
     selftest.add_arguments(p)
     p.set_defaults(fn=cmd_selftest)
+
+    p = sub.add_parser(
+        "probe", help="what this machine has for a life to lose (read-only), for a new board"
+    )
+    p.add_argument("--name", default="myboard", help="the name of the overlay to draft")
+    p.set_defaults(fn=cmd_probe)
 
     from epitaph.body import calibrate
 
