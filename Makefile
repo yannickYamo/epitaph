@@ -58,25 +58,25 @@ badge:
 faults:
 	$(PY) -m pytest -q tests/faults
 
-# Pi targets (BUILD_PLAN 8.3; docs/GATES.md G1). All run under the Pi lock, as AGENT (default L).
+# Pi targets (BUILD_PLAN 8.3; docs/GATES.md G1). All run under the Pi lock, as HOLDER (default L).
 # The lives and the reports go to logs/pi/ (untracked).
 pi-deploy:
-	tools/pi_lock.sh run $${AGENT:-L} 15 -- tools/pi_deploy.sh
+	tools/pi_lock.sh run $${HOLDER:-make} 15 -- tools/pi_deploy.sh
 
 # One smoke-300 life, judged at level smoke (G1.4).
 pi-smoke:
-	tools/smoke_pi.sh --agent $${AGENT:-L}
+	tools/smoke_pi.sh --holder $${HOLDER:-make}
 
 # LIVES consecutive lives of PROFILE (default pi4/default, 1 life), each judged at the
 # profile's level; with LIVES=2 the first one's next_birth is judged too (G1.1:
 # PROFILE=pi4/skeleton-1200 LIVES=2; G2.3: PROFILE=pi4/default LIVES=3).
 pi-life:
-	tools/smoke_pi.sh --agent $${AGENT:-L} --profile $(PROFILE) --lives $${LIVES:-1}
+	tools/smoke_pi.sh --holder $${HOLDER:-make} --profile $(PROFILE) --lives $${LIVES:-1}
 
 # Reboot the Pi and check the headless boot (G1.3); REBOOT=0 checks the current boot only.
 pi-boot-check:
 	mkdir -p logs/pi
-	tools/headless_boot_check.sh --agent $${AGENT:-L} $$([ "$${REBOOT:-1}" = 0 ] || echo --reboot) \
+	tools/headless_boot_check.sh --holder $${HOLDER:-make} $$([ "$${REBOOT:-1}" = 0 ] || echo --reboot) \
 		--out logs/pi/boot-check-$$(date +%Y%m%d-%H%M%S).txt
 
 # The newest LIVES (default 3) finished lives of PROFILE from the running service, copied to
@@ -88,7 +88,7 @@ pi-collect:
 # The fault matrix on the Pi (G2.2) through tools/fault_pi.sh, in one hold of the Pi lock; the
 # table goes to logs/pi/faults-<stamp>.md. ROWS=a,b runs only those (tools/fault_matrix_pi.sh --list).
 pi-faults:
-	tools/fault_matrix_pi.sh --agent $${AGENT:-L} $${ROWS:+--rows $$ROWS}
+	tools/fault_matrix_pi.sh --holder $${HOLDER:-make} $${ROWS:+--rows $$ROWS}
 
 # deploy/install.sh in a clean arm64 Debian trixie container under qemu (podman), run twice:
 # the second run must change nothing (BUILD_PLAN 9 C10, 11 item 6). Laptop only, not CI: the

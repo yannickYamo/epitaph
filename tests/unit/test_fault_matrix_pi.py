@@ -53,7 +53,7 @@ def pi(tmp_path: Path, recorded_life) -> dict[str, str]:  # type: ignore[no-unty
         "EPITAPH_PI_STATE": str(state),
         "EPITAPH_LOCK_DIR": str(tmp_path / "locks"),
         "EPITAPH_PYTHON": sys.executable,
-        "AGENT": "test",
+        "HOLDER": "test",
     }
 
 
@@ -278,10 +278,10 @@ def test_matrix_two_agents_row_proves_the_lock_queues(
     matrix: dict[str, str], tmp_path: Path
 ) -> None:
     out = tmp_path / "faults.md"
-    res = run(MATRIX, matrix, "--rows", "two-agents", "--out", str(out))
+    res = run(MATRIX, matrix, "--rows", "two-holders", "--out", str(out))
     assert res.returncode == 0, res.stderr
-    assert table(out)["two-agents"][3] == "**PASS**"
-    assert "held by: test" in (tmp_path / "faults" / "two-agents.log").read_text()
+    assert table(out)["two-holders"][3] == "**PASS**"
+    assert "held by: test" in (tmp_path / "faults" / "two-holders.log").read_text()
 
 
 def test_matrix_owner_rows_alone_take_no_lock(tmp_path: Path) -> None:

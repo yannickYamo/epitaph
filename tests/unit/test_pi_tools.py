@@ -106,7 +106,7 @@ def fake_pi(tmp_path: Path, recorded_life) -> dict[str, str]:
         "EPITAPH_LOCK_DIR": str(tmp_path / "locks"),
         "EPITAPH_POLL_S": "0",
         "EPITAPH_PYTHON": sys.executable,
-        "AGENT": "test",
+        "HOLDER": "test",
     }
 
 

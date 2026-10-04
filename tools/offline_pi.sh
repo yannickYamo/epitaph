@@ -11,7 +11,7 @@
 #     --status       report the rescue and the networking state; change nothing
 #     --disarm       networking on, then remove the rescue (a rescue armed by a run that
 #                    stopped early, or a leftover)
-#     --agent NAME   name on the Pi lock (default $AGENT, else L)
+#     --holder NAME   name on the Pi lock (default $HOLDER, else L)
 #     --dry-run      print the commands; no lock, no SSH
 #
 # Within one hold of the Pi lock it:
@@ -41,7 +41,7 @@ MINUTES=15
 REBOOT=0
 WAIT=1
 ACTION=offline
-AGENT="${AGENT:-L}"
+HOLDER="${HOLDER:-make}"
 DRY=0
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
@@ -51,7 +51,7 @@ while [ $# -gt 0 ]; do
     --no-wait) WAIT=0; shift ;;
     --status) ACTION=status; shift ;;
     --disarm) ACTION=disarm; shift ;;
-    --agent) AGENT="${2:?--agent needs a value}"; shift 2 ;;
+    --holder) HOLDER="${2:?--holder needs a value}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "offline_pi: unknown option $1" >&2; usage >&2; exit 2 ;;
@@ -73,8 +73,8 @@ if [ "$DRY" = 0 ] && [ "${EPITAPH_PI_LOCKED:-}" != 1 ]; then
   if [ "$ACTION" = offline ] && [ "$WAIT" = 1 ]; then
     minutes=$(( MINUTES + 25 + REBOOT * 10 ))
   fi
-  log "taking the Pi lock for ${minutes} min as $AGENT"
-  exec "$ROOT/tools/pi_lock.sh" run "$AGENT" "$minutes" -- env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}"
+  log "taking the Pi lock for ${minutes} min as $HOLDER"
+  exec "$ROOT/tools/pi_lock.sh" run "$HOLDER" "$minutes" -- env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}"
 fi
 
 # shellcheck source=tools/pi_host.sh

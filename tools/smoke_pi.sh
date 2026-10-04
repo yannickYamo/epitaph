@@ -7,7 +7,7 @@
 #     --level L      verify-life level (default: smoke for pi4/smoke-300, else the profile's own)
 #     --hardware H   overlay verify-life judges by (default pi4-4gb)
 #     --out DIR      where the lives are copied (default logs/pi/<stamp>-<profile>)
-#     --agent NAME   name on the Pi lock (default $AGENT, else E)
+#     --holder NAME   name on the Pi lock (default $HOLDER, else E)
 #     --dry-run      print the commands; no lock, no SSH, no verify
 #
 # It deploys nothing (`make pi-deploy` does). In one hold of the Pi lock it:
@@ -37,7 +37,7 @@ LIVES=1
 LEVEL=""
 HARDWARE=pi4-4gb
 OUT=""
-AGENT="${AGENT:-E}"
+HOLDER="${HOLDER:-make}"
 DRY=0
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
     --level) LEVEL="${2:?--level needs a value}"; shift 2 ;;
     --hardware) HARDWARE="${2:?--hardware needs a value}"; shift 2 ;;
     --out) OUT="${2:?--out needs a value}"; shift 2 ;;
-    --agent) AGENT="${2:?--agent needs a value}"; shift 2 ;;
+    --holder) HOLDER="${2:?--holder needs a value}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "smoke_pi: unknown option $1" >&2; usage >&2; exit 2 ;;
@@ -84,8 +84,8 @@ UNIT="epitaph-pilife-$STAMP"
 [ -n "$OUT" ] || OUT="$ROOT/logs/pi/$STAMP-${PROFILE//\//-}"
 
 if [ "$DRY" = 0 ] && [ "${EPITAPH_PI_LOCKED:-}" != 1 ]; then
-  log "taking the Pi lock for ${LOCK_MIN} min as $AGENT"
-  exec "$ROOT/tools/pi_lock.sh" run "$AGENT" "$LOCK_MIN" -- \
+  log "taking the Pi lock for ${LOCK_MIN} min as $HOLDER"
+  exec "$ROOT/tools/pi_lock.sh" run "$HOLDER" "$LOCK_MIN" -- \
     env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}" --out "$OUT"
 fi
 

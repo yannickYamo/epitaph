@@ -116,7 +116,7 @@ def pi(tmp_path: Path) -> dict[str, str]:
         "EPITAPH_PI_UNIT_DIR": str(tmp_path / "unit-dir"),
         "EPITAPH_LOCK_DIR": str(tmp_path / "locks"),
         "EPITAPH_POLL_S": "0",
-        "AGENT": "test",
+        "HOLDER": "test",
     }
 
 

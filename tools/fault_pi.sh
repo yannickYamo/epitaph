@@ -73,7 +73,7 @@ if [ "$DRY" = 1 ]; then
   HOST="${PI_HOST:-pi}"
 else
   if ! lock_held_by_ancestor; then
-    echo "fault_pi.sh must run under the Pi lock: tools/pi_lock.sh run <agent> 60 -- $0 $*" >&2
+    echo "fault_pi.sh must run under the Pi lock: tools/pi_lock.sh run <holder> 60 -- $0 $*" >&2
     exit 2
   fi
   # shellcheck source=tools/pi_host.sh

@@ -885,7 +885,7 @@ Removed: process notes.
 - `make pi-smoke` (`smoke-300`)
 - `make pi-life PROFILE=pi4/compressed-2700` (starts a life, waits, runs `verify-life`)
 
-**Gates.** Before each gate, `/code-review high` runs on the gate diff and each finding is verified in the code. The gate checklist then runs and its evidence is recorded in `docs/GATES.md`.
+**Gates.** Before each gate, a code review runs on the gate diff and each finding is verified in the code. The gate checklist then runs and its evidence is recorded in `docs/GATES.md`.
 
 **Long runs.** Pi lives, benches and the soak run on the Pi as services or detached jobs; their results are collected afterwards.
 
@@ -897,9 +897,9 @@ Removed: process notes.
 | **0a. Contracts** | L1-L4: skeleton, contracts, fakes, `epitaph sim`, the cost model with estimated Pi 4 costs | Contracts in `main`; `make check` green |
 | **0b. Foundations** | Backend: builds (Pi build first, under the lock), downloads, S6 and S2 functional on the laptop, then S1a, S1b, S4 and the S2 timings on the Pi. Mind: clock, schedule, memory, prompt, words, lookahead, cadence against the fakes. Body: `pi_bootstrap.sh`, S3, S3b, S3c. Display: layout, terminal, remote view, replay, headless pygame at four resolutions. QA: harness, CI, verify-life and the metrics | Spike results in `docs/SPIKE.md` and `bench/` |
 | **0c. Rehearsal** | The cost model re-run on measured costs; profiles adjusted until they pass; rehearsal stages 1 and 2; up to three tuning rounds | **G0:** `make check` green; `docs/SPIKE.md` complete (S5 pending); every Pi 4 profile passes the thought-count rule on measured costs; rehearsal reports with at least two models meeting every threshold. **Checkpoint A** |
-| **1. Walking skeleton on the Pi** | Real `llama-server` with `skeleton-1200`: recall shrink, readings, marker, words, lookahead, cadence, deadline death, silence, rebirth, counter, transcripts, `ctl status`, systemd units (display unit headless-safe), watchdogs, remote view | **G1:** two consecutive `skeleton-1200` lives pass `verify-life --level skeleton`; the remote view shows them live; the headless boot test passes; `/code-review high` done |
-| **2. Full decline** | Reloads as memory losses, ladder steps, CPU share, death squeeze and calibration, `death_mode`, group erosion, reading forms, hang detection, network block, fade, reload and death visuals, cards, 16-segment theme, `compressed-2700`, the fault matrix | **G2:** selftest passes under the installed service; the fault matrix passes on the Pi; three `compressed-2700` lives pass `verify-life --level full`; `/code-review high` done. **Checkpoint B** |
-| **3. Hardening** | 60-minute lives, `unbounded`, exhibition hours, Pi 5 profiles in simulation, optional body screen and serial bridge, `install.sh` idempotent on the Pi and in a qemu arm64 container, docs, CI, the 25-hour soak on Wi-Fi with the laptop disconnected | **G3:** section 11; `/code-review high` done. **Checkpoint C** |
+| **1. Walking skeleton on the Pi** | Real `llama-server` with `skeleton-1200`: recall shrink, readings, marker, words, lookahead, cadence, deadline death, silence, rebirth, counter, transcripts, `ctl status`, systemd units (display unit headless-safe), watchdogs, remote view | **G1:** two consecutive `skeleton-1200` lives pass `verify-life --level skeleton`; the remote view shows them live; the headless boot test passes; Code review done |
+| **2. Full decline** | Reloads as memory losses, ladder steps, CPU share, death squeeze and calibration, `death_mode`, group erosion, reading forms, hang detection, network block, fade, reload and death visuals, cards, 16-segment theme, `compressed-2700`, the fault matrix | **G2:** selftest passes under the installed service; the fault matrix passes on the Pi; three `compressed-2700` lives pass `verify-life --level full`; Code review done. **Checkpoint B** |
+| **3. Hardening** | 60-minute lives, `unbounded`, exhibition hours, Pi 5 profiles in simulation, optional body screen and serial bridge, `install.sh` idempotent on the Pi and in a qemu arm64 container, docs, CI, the 25-hour soak on Wi-Fi with the laptop disconnected | **G3:** section 11; Code review done. **Checkpoint C** |
 | **4. V1.5**, **5. V2** | Sections 13 and 14 | Their "done when" |
 
 Rough targets: step 0 and 0a on day 0; 0b and 0c on days 0-1; phase 1 on day 2; phase 2 on day 3; phase 3 on day 4 plus the soak. The Pi is the bottleneck. If a spike forces a fallback, checkpoint A says so with the new target.
@@ -950,7 +950,7 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
    - Yannick sets a new Pi password **in their own terminal** (`ssh -t pi-eth passwd`), because the old one is in this chat transcript.
    - The new one is never written down or shared.
 5. **Wi-Fi.**
-   - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in their own terminal**, not through a non-interactive shell, which is not an interactive tty and would put the output in the transcript. This creates a system connection with the secret in a root-only keyfile.
+   - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in an interactive terminal**: the command asks for the Wi-Fi password. This creates a system connection with the secret in a root-only keyfile.
    - Then: `wifi.powersave 2`.
    - On the Pi's wired connection: `ipv4.never-default yes`, `ipv6.never-default yes`, so the cable is maintenance-only and Wi-Fi carries the internet and NTP. Changed in 0c round 2 (F12): `ipv4.never-default no` with `ipv4.route-metric 800`, so Wi-Fi (600) still wins whenever it is up and the cable is the route of last resort when the Pi is off Wi-Fi (it had lost NTP and run 88 min slow); IPv6 stays `never-default`.
    - Verify: `ip route` default via Wi-Fi first (the cable, if listed, at metric 800); `ping` works with the cable unplugged.
@@ -1180,7 +1180,7 @@ It replays `events.jsonl` through the layout model and writes `verify.json`. Thr
 | Display or remote view killed | `systemctl kill epitaph-display`, or kill the SSH tunnel | Life continues; redraw from a snapshot within 5 s of reconnect |
 | Slow subscriber | Client reading 1 event per second | Controller timing unchanged; the client gets a snapshot after overflow |
 | Two controllers | `epitaph run` while the service runs | Refuses; points to `epitaph ctl new-life` |
-| Two agents on the Pi | Second `pi_lock.sh run` | Queues, then runs after the first releases; stale lock expires |
+| Two runs on the Pi | Second `pi_lock.sh run` | Queues, then runs after the first releases; stale lock expires |
 | Wi-Fi only | Unplug the cable, reboot | `ssh pi` works; NTP syncs; a life starts |
 | Laptop off | Laptop disconnected during a life | Pi keeps internet and time over Wi-Fi; the life continues |
 | Password login over Wi-Fi | Password login on the Wi-Fi address | Refused; accepted over the cable |
@@ -1224,7 +1224,7 @@ It replays `events.jsonl` through the layout model and writes `verify.json`. Thr
 
 | When | What you do | Time |
 |---|---|---|
-| **Step 0** | Approve the laptop packages (tesseract, qemu-user-static, podman) and the SD backup. In **your own terminal** (not through a non-interactive shell), run two commands: the Wi-Fi connect (you type the Wi-Fi password there) and `passwd` (a new Pi password that only you know). Keep the cable plugged in for maintenance. | 10 min |
+| **Step 0** | Approve the laptop packages (tesseract, qemu-user-static, podman) and the SD backup. In an interactive terminal, run two commands: the Wi-Fi connect (you type the Wi-Fi password there) and `passwd` (a new Pi password that only you know). Keep the cable plugged in for maintenance. | 10 min |
 | **Checkpoint A** (G0) | Read the best two or three rehearsal transcripts (`voice/rehearsal_report.md`). Reply with two models, the persona (v6 or your original) and chat or diary mode. The spike summary comes with it: speeds, fits, cache reuse, reload silence, heat, the RAM death mode, any fallback. No reply by the end of the session means the two best-scoring models, the v6 persona, chat mode. | 15 min |
 | **Checkpoint B** (G2) | Watch a `compressed-2700` life in a laptop window (`epitaph display --connect pi --driver screen`): the first 10 minutes live, then `epitaph replay <life> --from 20:00 --speed 2` for the reloads, erosion and death. Reply "good", or list what reads badly. | 25 min |
 | **Checkpoint C** (G3) | Read the soak report. Optional: a full hour, an `unbounded` life, or a real power pull (after a fresh image). | 10 min, plus the optional parts |
@@ -1314,7 +1314,7 @@ Defaults in brackets. Work proceeds on the defaults.
 24. Soak acceptance [no missed life, no crash; the count is reported].
 25. Headless operation [controller only on the Pi; the local display starts when a screen is detected].
 26. Password SSH only over the cable [yes].
-27. Gate reviews [`/code-review high`; `a second review` only if you add it to the laptop].
+27. Gate reviews.
 28. Persona G3 wording ["Your processors will be taken from you." instead of "Your cores will be switched off."].
 29. RAM on the Pi 4 [taken only at death; no gradual squeeze on this SD card].
 30. Reveal speed [decided: three times slower than the first cadence: 165 ms per letter at birth, 720 ms at the end, pauses tripled].
@@ -1346,9 +1346,9 @@ Removed: process notes.
 
 ## Appendix C: review record
 
-**v1 to v4** (on Yannick's Mac): three external review rounds, the Latent Reflection recheck and the prompt and reveal redesign. The record is in v4's Appendix C (kept in the author's review archive).
+**v1 to v4:** three review rounds, the Latent Reflection recheck and the prompt and reveal redesign. The record is in v4's Appendix C (kept in the author's review archive).
 
-**v4 to v5:** the hardware facts checked on the laptop and a 15-point delta, gap-analysed on the Mac with a external second opinion (`2026-09-29_204923_r1.md`). All v5 fixes are kept unless a row below changes them.
+**v4 to v5:** the hardware facts checked on the laptop and a 15-point delta, gap-analysed. All v5 fixes are kept unless a row below changes them.
 
 **v5 to v6** (checked against the real Pi and laptop, read-only):
 
@@ -1363,7 +1363,7 @@ Removed: process notes.
 | V7 | A whole-card `dd` image would be about 50 GB and take 30 min: the unused space holds old data from the card's previous use | medium | The card had been used before | 8.6 step 2 (fstrim, then partition table plus p1 plus `e2image` of used blocks); `sd_restore.sh` tested |
 | V8 | `cgroup_disable=memory` is not in `cmdline.txt`; v5's "remove it from the file" step is moot | low | Pi: `/proc/cmdline` has it, `cmdline.txt` does not | 8.6 step 7 (append the override; verify) |
 | V9 | The credential rule was already broken: the Pi password is in the chat transcript and a scratch file | medium | This session | 8.6 step 4 (delete it; Yannick sets a new one) |
-| V10 | a non-interactive shell is not an interactive tty and records output: the Wi-Fi command must run in Yannick's own terminal | low | Harness behaviour | 8.6 step 5, section 12 |
+| V10 | The Wi-Fi command asks for a password: it must run in an interactive terminal | low | Observed | 8.6 step 5, section 12 |
 | V12 | Laptop tools missing for OCR and the arm64 install test | low | Laptop: no tesseract, qemu-user-static, podman or docker | 8.6 step 1; E2 |
 | V13 | Gemma 3's sliding-window attention may block cache reuse | low | llama.cpp SWA handling | `swa_full` in config; S2f; Appendix A |
 | V14 | `unbounded` at step 0 plus a 5-6k KV cache does not fit in 4 GB | low | 3B Q6_K 2.6 GB plus KV about 115 KB per token, about 0.7 GB | 5.3 (`unbounded` at step 1, `ctx` from S1a) |

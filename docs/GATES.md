@@ -2,7 +2,7 @@
 
 Every gate is signed off here, with evidence (BUILD_PLAN 8.3, 8.4, 11). A gate passes
 only when every row is `pass` or an accepted `pending` (hardware not connected yet, 10.2),
-and `/code-review high` has run on the gate diff.
+and a code review has run on the gate diff.
 
 **Status values:** `open` (not checked yet), `pass`, `fail`, `pending` (waits on hardware or
 a later phase; never counts as a failure), `n/a` (does not apply to the chosen `death_mode`,
@@ -12,7 +12,7 @@ summary, a file, a commit, or a CI run.
 **Conventions in the commands:**
 
 - `$PY` = `PYTHONPATH=src .venv/bin/python` in the worktree being checked (as the Makefile).
-- Pi commands run through the lock: `tools/pi_lock.sh run E <min> -- <cmd>`. Read-only probes
+- Pi commands run through the lock: `tools/pi_lock.sh run gate <min> -- <cmd>`. Read-only probes
   still take the lock. `ssh pi` is Wi-Fi, `ssh pi-eth` the cable.
 - `verify-life` is `$PY -m epitaph verify-life` or, equally, `$PY -m epitaph.verify`.
   Exit 0 = pass, 1 = a check failed, 2 = usage or config error. It writes `verify.json` next
@@ -70,7 +70,7 @@ rehearsal ranks first (checkpoint A confirms two of them).
 
 ## G1: walking skeleton on the Pi (BUILD_PLAN 8.4)
 
-**How the Pi rows run.** Every Pi target takes the Pi lock itself (`AGENT=E` names the
+**How the Pi rows run.** Every Pi target takes the Pi lock itself (`HOLDER=<name>` names the
 holder) and writes its evidence under `logs/pi/` (untracked); the summary lines there are the evidence.
 
 - `make pi-smoke` and `make pi-life` both call `tools/smoke_pi.sh`. In one lock hold, it:
@@ -102,11 +102,11 @@ holder) and writes its evidence under `logs/pi/` (untracked); the summary lines 
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
 | G1.0 | The simulator runs the real controller on the fakes; the phase 0a reference loop in `sim.py` is deleted (review 2, F7). Until then simulator results are provisional | `grep -c 'def run_life' src/epitaph/sim.py` prints 0 and `grep -n controller src/epitaph/sim.py` shows it driving `controller.py`; `make sim` exit 0 | pass (2026-10-01) | `sim.py` drives `controller.py` (no reference loop); `make sim` green |
-| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `AGENT=E make pi-life PROFILE=pi4/skeleton-1200 LIVES=2` exits 0, and its last line reads `PASS: 2 life(s) of pi4/skeleton-1200`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/skeleton-1200 --hardware pi4-4gb --level skeleton` (the profile's own level) exits 0 for `<n>` and `<n+1>`, and on `<n>`, `python -c 'import json,sys; print([c["status"] for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="next_birth"])' logs/pi/<run>/lives/<n>/verify.json` prints `['pass']` | pass (2026-10-01) | lives 000002 and 000003: skeleton PASS, 569 and 584 words, deadline at 1200 s, next birth 154 s |
+| G1.1 | Two consecutive `skeleton-1200` lives pass `verify-life --level skeleton` | `make pi-life PROFILE=pi4/skeleton-1200 LIVES=2` exits 0, and its last line reads `PASS: 2 life(s) of pi4/skeleton-1200`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/skeleton-1200 --hardware pi4-4gb --level skeleton` (the profile's own level) exits 0 for `<n>` and `<n+1>`, and on `<n>`, `python -c 'import json,sys; print([c["status"] for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="next_birth"])' logs/pi/<run>/lives/<n>/verify.json` prints `['pass']` | pass (2026-10-01) | lives 000002 and 000003: skeleton PASS, 569 and 584 words, deadline at 1200 s, next birth 154 s |
 | G1.2 | The remote view shows them live | During the G1.1 run, under the same lock hold (the tunnel only reads the bus): `script -q -c "$PY -m epitaph display --connect pi --driver terminal" logs/pi/remote-view-<stamp>.txt`. It shows birth, words typed letter by letter, the death and the next birth | pass (2026-10-01) | `epitaph display --connect pi --driver terminal` during life 000002: status strip, letters typed live, 1.2-1.4 tok/s |
-| G1.3 | Headless boot: no display crash loop | No screen connected. `AGENT=E make pi-boot-check` exits 0 (it reboots: `tools/headless_boot_check.sh --reboot`, waits for a new `boot_id` over SSH and for `systemctl is-system-running --wait`). It passes when `epitaph-display` is `loaded`, `enabled`, not `failed` or `activating`, has `NRestarts=0` and was skipped by its `ExecCondition` (`Result=exec-condition`; `ConditionResult=no` also counts, for a `Condition*=` line), and `epitaph-controller` is `enabled` and `active`. `REBOOT=0 make pi-boot-check` runs the same checks on the current boot | pass (2026-10-01) | reboot to SSH 31 s; display skipped by its ExecCondition, 0 restarts; controller active, 0 restarts; throttled 0x0 |
-| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `AGENT=E make pi-smoke` exits 0, and its last line reads `PASS: 1 life(s) of pi4/smoke-300` | pass (2026-10-01) | life 000001: smoke PASS, 4 thoughts, 132 words, deadline at 300 s |
-| G1.5 | `/code-review high` done on the gate diff | review note | pass (2026-10-01) | review of the phase 1 diff: 11 findings, 1-8, 10 and 11 fixed with tests; 9 accepted as ADR-027 |
+| G1.3 | Headless boot: no display crash loop | No screen connected. `make pi-boot-check` exits 0 (it reboots: `tools/headless_boot_check.sh --reboot`, waits for a new `boot_id` over SSH and for `systemctl is-system-running --wait`). It passes when `epitaph-display` is `loaded`, `enabled`, not `failed` or `activating`, has `NRestarts=0` and was skipped by its `ExecCondition` (`Result=exec-condition`; `ConditionResult=no` also counts, for a `Condition*=` line), and `epitaph-controller` is `enabled` and `active`. `REBOOT=0 make pi-boot-check` runs the same checks on the current boot | pass (2026-10-01) | reboot to SSH 31 s; display skipped by its ExecCondition, 0 restarts; controller active, 0 restarts; throttled 0x0 |
+| G1.4 | `tools/smoke_pi.sh` passes (`smoke-300`, level smoke) | `make pi-smoke` exits 0, and its last line reads `PASS: 1 life(s) of pi4/smoke-300` | pass (2026-10-01) | life 000001: smoke PASS, 4 thoughts, 132 words, deadline at 300 s |
+| G1.5 | Code review done on the gate diff | review note | pass (2026-10-01) | review of the phase 1 diff: 11 findings, 1-8, 10 and 11 fixed with tests; 9 accepted as ADR-027 |
 
 ## G2: full decline, checkpoint B (BUILD_PLAN 8.4)
 
@@ -129,16 +129,16 @@ under `logs/pi/` (untracked); the summary lines there are the evidence.
   or a restart cut them short) unless `--include-interrupted`. `summary.md` holds one line per
   life, the controller's `NRestarts`, and whether the lives are consecutive.
 - The fault matrix: `make faults` runs the laptop rows (tests/faults, also part of `make test`);
-  `AGENT=E make pi-faults` runs the Pi rows (`tools/fault_matrix_pi.sh`, one lock hold, each
+  `make pi-faults` runs the Pi rows (`tools/fault_matrix_pi.sh`, one lock hold, each
   row through C's `tools/fault_pi.sh <row>`) and writes `logs/pi/faults-<stamp>.md` with each
   row's log in `logs/pi/faults-<stamp>/`. `ROWS=a,b` runs a subset; `--list` names them.
 
 | # | Item | Command that proves it | Status | Evidence |
 |---|---|---|---|---|
-| G2.1 | Selftest passes under the installed service | `tools/pi_lock.sh run E 10 -- ssh pi /opt/epitaph/venv/bin/epitaph selftest --user pi` exit 0 (it relaunches itself as a transient `Delegate=yes` unit for the service user; its clock round trip moves the CPU clock, so stop `epitaph-controller` around it and start it again after, or take the fault row `AGENT=E make pi-faults ROWS=delegated-cgroups`) | pass (2026-10-01) | `epitaph selftest` 12/12 through `deploy/install.sh` on the deployed phase 2 code (transient Delegate=yes unit as the service user), network check included |
-| G2.2 | The fault matrix passes on the Pi (rows that apply) | `AGENT=E make pi-faults` exit 0 and its last line reads `PASS: every row that ran passed`; the table `logs/pi/faults-<stamp>.md` has every `pi` and `native` row **PASS** and the `owner` rows listed (the fault table below, Pi column) | pass (2026-10-01) | `make pi-faults`: creature-network, two-controllers, crash, controller-killed, hang, two-agents all PASS; RAM death and delegated cgroups proven by real lives, calibration and selftest; owner rows wait |
-| G2.3 | Three consecutive `pi4/default` lives pass `verify-life --level full` | `AGENT=E make pi-life PROFILE=pi4/default LIVES=3` exits 0 and its last line reads `PASS: 3 life(s) of pi4/default`. Or, from the running service: `make pi-collect PROFILE=pi4/default LIVES=3` exits 0 and `logs/pi/service-<stamp>/summary.md` reads `Consecutive lives: yes`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/default --hardware pi4-4gb` (level `full`, the profile's own) exits 0 for each `<n>` | pass (2026-10-01) | lives 000028-000030, consecutive on the service: full level PASS each; OOM at 1770.8-1770.9 s; last words shown 1.9-25.8 s after the death; speed decline 0.29-0.31; voice proxies advisory only |
-| G2.4 | `/code-review high` done | review note | pass (2026-10-01) | review of the phase 2 diff: 10 findings, all fixed with tests |
+| G2.1 | Selftest passes under the installed service | `tools/pi_lock.sh run gate 10 -- ssh pi /opt/epitaph/venv/bin/epitaph selftest --user pi` exit 0 (it relaunches itself as a transient `Delegate=yes` unit for the service user; its clock round trip moves the CPU clock, so stop `epitaph-controller` around it and start it again after, or take the fault row `make pi-faults ROWS=delegated-cgroups`) | pass (2026-10-01) | `epitaph selftest` 12/12 through `deploy/install.sh` on the deployed phase 2 code (transient Delegate=yes unit as the service user), network check included |
+| G2.2 | The fault matrix passes on the Pi (rows that apply) | `make pi-faults` exit 0 and its last line reads `PASS: every row that ran passed`; the table `logs/pi/faults-<stamp>.md` has every `pi` and `native` row **PASS** and the `owner` rows listed (the fault table below, Pi column) | pass (2026-10-01) | `make pi-faults`: creature-network, two-controllers, crash, controller-killed, hang, two-holders all PASS; RAM death and delegated cgroups proven by real lives, calibration and selftest; owner rows wait |
+| G2.3 | Three consecutive `pi4/default` lives pass `verify-life --level full` | `make pi-life PROFILE=pi4/default LIVES=3` exits 0 and its last line reads `PASS: 3 life(s) of pi4/default`. Or, from the running service: `make pi-collect PROFILE=pi4/default LIVES=3` exits 0 and `logs/pi/service-<stamp>/summary.md` reads `Consecutive lives: yes`. Re-check on the laptop: `$PY -m epitaph verify-life logs/pi/<run>/lives/<n> --profile pi4/default --hardware pi4-4gb` (level `full`, the profile's own) exits 0 for each `<n>` | pass (2026-10-01) | lives 000028-000030, consecutive on the service: full level PASS each; OOM at 1770.8-1770.9 s; last words shown 1.9-25.8 s after the death; speed decline 0.29-0.31; voice proxies advisory only |
+| G2.4 | Code review done | review note | pass (2026-10-01) | review of the phase 2 diff: 10 findings, all fixed with tests |
 | G2.5 | Checkpoint B reply ("good" or the list) | CHANGELOG | pass (2026-10-01) | the owner's reply after watching lives on the remote view: "good to close on my side the voice looks good" |
 | G2.6 | Speed never rises across a reload on the Pi (review 2, F2) | In each G2.3 life's `verify.json`, `speed_monotonic` is `pass`: `python -c 'import json,sys; print([c for c in json.load(open(sys.argv[1]))["checks"] if c["name"]=="speed_monotonic"])' logs/pi/<run>/lives/<n>/verify.json` shows a value ≤ 1.05, from `gen_end` rates | pass (2026-10-01) | `speed_monotonic` in lives 000028-000030: 0.924, 1.016, 0.986 (limit 1.05) |
 
@@ -186,7 +186,7 @@ lock meanwhile. Three read-only steps, none of which stops the service:
 | A10 | `sd_restore.sh` has restored an image at least once | C's log in PI_CHANGES / report | open | |
 | A11 | Checkpoint B read on the remote view | Yannick | pass (2026-10-01) | the owner watched whole lives on the laptop remote view and approved the voice ("good to close") |
 | A12 | Checkpoint C: soak report acceptable | Yannick reads `logs/pi/soak-<stamp>/report.md` | waived (owner, 2026-10-01) | No 25-hour soak: every 30-minute life on the Pi already runs the whole decline, and the installation runs and logs continuously; ADR-029. `tools/soak_sample.sh` and `tools/soak_report.py` stay for a long run later |
-| A13 | `/code-review high` done | review note | open | |
+| A13 | Code review done | review note | open | |
 | A14 | Docs: README (laptop quickstart, then the Pi), CONFIG, INSTALLATION, CONTRIBUTING, model licenses (E8) | `tests/unit/test_config_doc.py` (every key in `config/` documented, defaults equal); the README quickstart commands run on the laptop | pass (2026-10-01, laptop) | README quickstart commands each exit 0 on the laptop; `test_config_doc.py` passes; INSTALLATION's "Install on a Pi" section belongs to the installer work package |
 | later | S5 and checkpoint B's physical part when a screen is connected | D8 | pending | no screen (10.2) |
 
@@ -226,7 +226,7 @@ laptop tests and the driver's rows agree.
 | Display or remote view killed | life continues; redraw from snapshot within 5 s | D3 tests | `pi:display-killed` (`systemctl kill epitaph-display`; kill the tunnel) | open |
 | Slow subscriber | controller timing unchanged; snapshot after overflow | `tests/unit/test_events.py::test_slow_subscriber_never_blocks_and_gets_snapshot` | `pi:slow-subscriber` (client reading 1 event/s) | laptop pass |
 | Two controllers | refuses; points to `epitaph ctl new-life` | `tests/unit/test_state.py::test_single_instance_lock` | `pi:two-controllers` (`epitaph run` while the service runs) | laptop pass |
-| Two agents on the Pi | queues; stale lock expires | `tests/unit/test_pi_tools.py` (the lock in a temporary dir) | `pi:two-agents` (a second `pi_lock.sh run` while the driver holds it) | Pi pass (2026-10-01) |
+| Two runs on the Pi | queues; stale lock expires | `tests/unit/test_pi_tools.py` (the lock in a temporary dir) | `pi:two-holders` (a second `pi_lock.sh run` while the driver holds it) | Pi pass (2026-10-01) |
 | Wi-Fi only | `ssh pi` works; NTP; a life starts | | `pi:wifi-only` (unplug cable, reboot) | owner |
 | Laptop off | Pi keeps internet and time; life continues | | `pi:laptop-off` (disconnect the laptop) | owner |
 | Password login over Wi-Fi | refused; accepted over the cable | | `pi:password-over-wifi` (S0.12) | owner |

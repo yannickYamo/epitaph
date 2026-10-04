@@ -296,7 +296,7 @@ minutes.
 | Silent word penalties | `logit_bias` against clichés (tapestry, realm, digital, whisper, echoes) and the "I am still here" opening | Kept; never named in the prompt |
 | No temperature | The birth reading no longer gives the CPU temperature | Kept: from one number at birth Qwen invented a rising fever (61, 68, 74 °C) before any loss; the Pi stays at 40-57 °C |
 
-A blind panel of three models scored five one-hour lives on six criteria
+A blind panel of three judge models scored five one-hour lives on six criteria
 (felt degradation, specificity, unforced arc, poetry, freshness, would you stand in front of it;
 60 points): Qwen K 38.0, Qwen with concepts 31.7, Llama 24.0, 14.3 and 14.0 across its three
 seeds. Qwen K stayed.

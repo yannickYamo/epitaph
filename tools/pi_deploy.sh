@@ -32,7 +32,7 @@ lock_held_by_ancestor() {
   return 1
 }
 if ! lock_held_by_ancestor; then
-  echo "pi_deploy.sh must run under the Pi lock: tools/pi_lock.sh run <agent> 15 -- $0" >&2
+  echo "pi_deploy.sh must run under the Pi lock: tools/pi_lock.sh run <holder> 15 -- $0" >&2
   exit 2
 fi
 
@@ -50,7 +50,7 @@ echo "== deploying $ROOT to $HOST:$DEST"
 # /opt/epitaph belongs to the service user (install.sh keeps it so); create it on first deploy.
 ssh_ "test -w $DEST || sudo -n install -d -o \"\$(id -un)\" -g \"\$(id -gn)\" -m 0755 /opt/epitaph $DEST"
 rsync -rlptz --delete --itemize-changes \
-  --exclude=/.git --exclude=/.venv --exclude=/venv/ --exclude=/voice/ \
+  --exclude='/.*/' --exclude=/venv/ --exclude=/voice/ \
   --exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.ruff_cache/ --exclude=.mypy_cache/ \
   --exclude='*.egg-info/' --exclude=/.pi.env --exclude=.coverage --exclude=/htmlcov/ \
   --filter=':- .gitignore' \

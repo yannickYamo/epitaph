@@ -6,7 +6,7 @@
 #     --list         print every row and how it runs; touches nothing
 #     --out FILE     the table (default logs/pi/faults-<stamp>.md); each row's full output goes
 #                    to the folder of the same name without .md
-#     --agent NAME   name on the Pi lock (default $AGENT, else E)
+#     --holder NAME   name on the Pi lock (default $HOLDER, else E)
 #     --row-min M    time limit per row in minutes (default 40)
 #     --dry-run      print the plan; no lock, no SSH, no fault
 #
@@ -17,7 +17,7 @@
 #           again; one that tries gives up at once (exit 75) and the row is an error. Exit 2
 #           means fault_pi.sh does not know the row: `not run`.
 #   native  run by this driver: `headless-boot` is tools/headless_boot_check.sh on the current
-#           boot (no reboot), `two-agents` proves a second lock request queues behind this one.
+#           boot (no reboot), `two-holders` proves a second lock request queues behind this one.
 #   owner   needs a person or a fresh SD image (power cut, cable, laptop, reboots): listed as
 #           `owner` and never run here.
 # Before the first row it notes whether epitaph-controller is active; at the end, even after
@@ -34,7 +34,7 @@ ARGS=("$@")
 ONLY=""
 LIST=0
 OUT=""
-AGENT="${AGENT:-E}"
+HOLDER="${HOLDER:-make}"
 ROW_MIN=40
 DRY=0
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
     --rows) ONLY="${2:?--rows needs a value}"; shift 2 ;;
     --list) LIST=1; shift ;;
     --out) OUT="${2:?--out needs a value}"; shift 2 ;;
-    --agent) AGENT="${2:?--agent needs a value}"; shift 2 ;;
+    --holder) HOLDER="${2:?--holder needs a value}"; shift 2 ;;
     --row-min) ROW_MIN="${2:?--row-min needs a value}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -70,7 +70,7 @@ ROWS=(
   "slow-subscriber|pi|Slow subscriber|controller timing unchanged; snapshot after overflow"
   "two-controllers|pi|Two controllers|refuses; points to \`epitaph ctl new-life\`"
   "headless-boot|native|Headless boot|display unit skipped by \`ExecCondition\`; controller up (current boot)"
-  "two-agents|native|Two agents on the Pi|a second \`pi_lock.sh run\` queues behind the holder"
+  "two-holders|native|Two runs on the Pi|a second \`pi_lock.sh run\` queues behind the holder"
   "power-cut|owner|Power cut|as a controller kill; state intact (after a fresh SD image)"
   "clean-reboot|owner|Clean reboot|services active, words within \`first_word_after_boot_s\`"
   "wifi-only|owner|Wi-Fi only|cable unplugged and a reboot: \`ssh pi\` works; NTP; a life starts"
@@ -110,8 +110,8 @@ log() { printf '[fault_matrix %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
 if [ "$DRY" = 0 ] && [ "${EPITAPH_PI_LOCKED:-}" != 1 ] && [ "$RUNNABLE" -gt 0 ]; then
   minutes=$(( RUNNABLE * ROW_MIN + 10 ))
-  log "taking the Pi lock for up to ${minutes} min as $AGENT ($RUNNABLE row(s))"
-  exec "$ROOT/tools/pi_lock.sh" run "$AGENT" "$minutes" -- \
+  log "taking the Pi lock for up to ${minutes} min as $HOLDER ($RUNNABLE row(s))"
+  exec "$ROOT/tools/pi_lock.sh" run "$HOLDER" "$minutes" -- \
     env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}" --out "$OUT"
 fi
 
@@ -154,15 +154,15 @@ FAIL=0
 native_row() {
   case "$1" in
     headless-boot)
-      if PI_HOST="$HOST" EPITAPH_PI_LOCKED=1 "$ROOT/tools/headless_boot_check.sh" --agent "$AGENT"; then
+      if PI_HOST="$HOST" EPITAPH_PI_LOCKED=1 "$ROOT/tools/headless_boot_check.sh" --holder "$HOLDER"; then
         echo "PASS: headless boot checks pass on the current boot (no reboot)"
       else
         echo "FAIL: headless boot check failed"; return 1
       fi ;;
-    two-agents)
+    two-holders)
       # This driver holds the Pi lock: a second request must see the holder and wait.
       set +e
-      msg="$(EPITAPH_LOCK_WAIT_S=2 "$ROOT/tools/pi_lock.sh" run "$AGENT-probe" 1 -- true 2>&1)"
+      msg="$(EPITAPH_LOCK_WAIT_S=2 "$ROOT/tools/pi_lock.sh" run "$HOLDER-probe" 1 -- true 2>&1)"
       rc=$?
       set -e
       echo "$msg"
@@ -192,7 +192,7 @@ for r in "${SELECTED[@]}"; do
     echo "no executable $FAULT_PI" > "$rlog"
     rc=2
   else
-    EPITAPH_PI_LOCKED=1 EPITAPH_LOCK_WAIT_S=1 PI_HOST="$HOST" AGENT="$AGENT" \
+    EPITAPH_PI_LOCKED=1 EPITAPH_LOCK_WAIT_S=1 PI_HOST="$HOST" HOLDER="$HOLDER" \
       timeout --kill-after=30 "$((ROW_MIN * 60))" "$FAULT_PI" "$name" > "$rlog" 2>&1
     rc=$?
   fi
@@ -227,7 +227,7 @@ FPI_SUM="$( [ -f "$FAULT_PI" ] && sha256sum "$FAULT_PI" | cut -c1-12 || echo mis
 {
   echo "# Fault matrix on the Pi ($STAMP)"
   echo
-  echo "Host \`$HOST\`, commit \`$COMMIT\`, \`fault_pi.sh\` sha256 \`$FPI_SUM\`, agent $AGENT, $ROW_MIN min per row."
+  echo "Host \`$HOST\`, commit \`$COMMIT\`, \`fault_pi.sh\` sha256 \`$FPI_SUM\`, holder $HOLDER, $ROW_MIN min per row."
   echo "Rows from BUILD_PLAN 10.4; logs in \`$(basename "$LOGS")/\`."
   echo
   echo "| Row | Fault | Expected | Result | Seconds | Evidence |"

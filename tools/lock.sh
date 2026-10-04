@@ -17,7 +17,7 @@ WAIT_S="${EPITAPH_LOCK_WAIT_S:-14400}"
 
 case "${1:-}" in
   run)
-    agent="${2:?agent}"; minutes="${3:?minutes}"; shift 3
+    holder="${2:?holder}"; minutes="${3:?minutes}"; shift 3
     [[ "$minutes" =~ ^[1-9][0-9]*$ ]] || { echo "minutes must be a positive integer" >&2; exit 2; }
     [ "${1:-}" = "--" ] && shift
     [ "$#" -gt 0 ] || { echo "no command given" >&2; exit 2; }
@@ -26,7 +26,7 @@ case "${1:-}" in
       echo "[$NAME lock] held by: $(cat "$OWNER" 2>/dev/null || echo unknown); waiting up to ${WAIT_S}s" >&2
       flock -w "$WAIT_S" 9 || { echo "[$NAME lock] gave up waiting" >&2; exit 75; }
     fi
-    printf '%s pid=%s since=%s max=%smin cmd=%s\n' "$agent" "$$" "$(date -Is)" "$minutes" "$*" > "$OWNER"
+    printf '%s pid=%s since=%s max=%smin cmd=%s\n' "$holder" "$$" "$(date -Is)" "$minutes" "$*" > "$OWNER"
     trap 'rm -f "$OWNER"' EXIT
     set +e
     timeout --kill-after=30 "$((minutes * 60))" "$@"
@@ -38,5 +38,5 @@ case "${1:-}" in
     if flock -n "$LOCK" true 2>/dev/null; then echo "$NAME: free"; else echo "$NAME: held by $(cat "$OWNER" 2>/dev/null || echo unknown)"; fi
     ;;
   *)
-    echo "usage: lock.sh <name> run <agent> <minutes> -- <cmd...> | lock.sh <name> status" >&2; exit 2 ;;
+    echo "usage: lock.sh <name> run <holder> <minutes> -- <cmd...> | lock.sh <name> status" >&2; exit 2 ;;
 esac

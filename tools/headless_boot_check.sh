@@ -6,7 +6,7 @@
 #     --timeout S    seconds to wait for SSH after the reboot (default 420)
 #     --screen       a screen is connected: the display unit must run instead of being skipped
 #     --out FILE     also write the summary to FILE
-#     --agent NAME   name on the Pi lock (default $AGENT, else E)
+#     --holder NAME   name on the Pi lock (default $HOLDER, else E)
 #     --dry-run      print the commands; no lock, no SSH, no reboot
 #
 # Checks, on the boot that is current when it runs (after --reboot, the new one):
@@ -27,7 +27,7 @@ REBOOT=0
 TIMEOUT_S=420
 SCREEN=0
 OUT=""
-AGENT="${AGENT:-E}"
+HOLDER="${HOLDER:-make}"
 DRY=0
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
     --timeout) TIMEOUT_S="${2:?--timeout needs a value}"; shift 2 ;;
     --screen) SCREEN=1; shift ;;
     --out) OUT="${2:?--out needs a value}"; shift 2 ;;
-    --agent) AGENT="${2:?--agent needs a value}"; shift 2 ;;
+    --holder) HOLDER="${2:?--holder needs a value}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "headless_boot_check: unknown option $1" >&2; usage >&2; exit 2 ;;
@@ -49,8 +49,8 @@ exec 3>&2  # dry-run lines go here, past any 2>/dev/null on the command
 
 if [ "$DRY" = 0 ] && [ "${EPITAPH_PI_LOCKED:-}" != 1 ]; then
   minutes=$(( TIMEOUT_S / 60 + 10 ))
-  log "taking the Pi lock for ${minutes} min as $AGENT"
-  exec "$ROOT/tools/pi_lock.sh" run "$AGENT" "$minutes" -- env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}"
+  log "taking the Pi lock for ${minutes} min as $HOLDER"
+  exec "$ROOT/tools/pi_lock.sh" run "$HOLDER" "$minutes" -- env EPITAPH_PI_LOCKED=1 "$0" "${ARGS[@]}"
 fi
 
 # shellcheck source=tools/pi_host.sh
