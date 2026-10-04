@@ -40,12 +40,18 @@ sim-profiles:
 # The merge gate (BUILD_PLAN 8.3).
 check: lint type test sim sim-profiles estimate badge
 
-# The small-chip editions (badge/README.md): the int8 ESP32 engine against the float model,
-# then one whole life on a simulated ESP32 (a 300 KB heap, the chip's clock).
+# The small-chip editions (badge/README.md): the int8 C engine against the float model, the
+# readings' tokens and words on both ports, then whole lives on simulated boards (an ESP32 with
+# a 300 KB heap, a board with nothing but a serial port, the Tufty badge), each checked: every
+# loss read once, the last reading answered, a death by memory. Last, the terminal port for real.
 badge:
 	$(MAKE) -s -C badge/esp32 host/test_host
 	$(PY) badge/tools/test_esp32.py
+	$(PY) badge/tools/test_ports.py
 	./badge/esp32/host/test_host life > /dev/null
+	./badge/esp32/host/test_host bare > /dev/null
+	$(PY) badge/tools/sim_badge.py --check > /dev/null
+	$(PY) badge/tufty/epitaph/terminal.py 8 1 > /dev/null
 
 # The fault matrix rows the fakes inject (BUILD_PLAN 10.4; docs/GATES.md fault table). Part of
 # `make test` too; this runs them alone.
