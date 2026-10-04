@@ -1,8 +1,8 @@
-"""tools/collect_lives.sh and tools/fault_matrix_pi.sh against a fake Pi (card E6).
+"""tools/collect_lives.sh and tools/fault_matrix_pi.sh against a fake Pi (BUILD_PLAN 9 E6).
 
 The fake Pi is tests/unit/test_pi_tools.py's: stand-in `ssh`, `sudo` and `systemctl` on PATH,
 a temporary lock dir, a fake state dir holding simulated lives. A fake `tools/fault_pi.sh`
-(agent C's interface, BUILD_PLAN 10.4: one row per call, a PASS or FAIL line, exit 0 or 1)
+(its interface, BUILD_PLAN 10.4: one row per call, a PASS or FAIL line, exit 0 or 1)
 answers each row from a file. Also: the fault table in docs/GATES.md, the laptop rows in
 tests/faults and the driver's rows agree. No network, no Pi.
 """
@@ -172,7 +172,7 @@ def test_collect_usage_errors(args: list[str], message: str) -> None:
 # -- fault_matrix_pi.sh -------------------------------------------------------------------
 
 FAULT_PI = """#!/usr/bin/env bash
-# A stand-in for agent C's tools/fault_pi.sh: answers from $FAKE_DIR/faults/<row>.
+# A stand-in for tools/fault_pi.sh: answers from $FAKE_DIR/faults/<row>.
 echo "$1 EPITAPH_PI_LOCKED=${EPITAPH_PI_LOCKED:-}" >> "$FAKE_DIR/fault_pi.log"
 f="$FAKE_DIR/faults/$1"
 [ -f "$f" ] || { echo "fault_pi: unknown row $1" >&2; exit 2; }

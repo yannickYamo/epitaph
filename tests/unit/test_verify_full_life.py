@@ -1,4 +1,4 @@
-"""verify-life at level full on the 30-minute installation life (ADR-024; card E6).
+"""verify-life at level full on the 30-minute installation life (ADR-024; BUILD_PLAN 9 E6).
 
 The checks phase 2 adds to the full level: the death comes when the plan kills it
 (`death_time`), every reload loads its keyframe's rung and the decline reaches the last one

@@ -1,9 +1,8 @@
 # Spike results
 
-Each owner writes its own sections (BUILD_PLAN 8.2, 8.5). Numbers, then a go or fallback
-decision. Raw results are committed next to the scripts.
+Each spike gives its numbers, then a go or fallback decision (BUILD_PLAN 8.5). Raw results are committed next to the scripts.
 
-## C: S3, S3b, S3c (agent C, phase 0b round 1, 2026-09-29)
+## Body: S3, S3b, S3c (phase 0b round 1, 2026-09-29)
 
 Setup: Raspberry Pi 4B 4 GB, kernel 6.18.50+rpt-rpi-v8, systemd 257, llama.cpp b11277
 (A's native build), **Llama 3.2 3B Instruct Q4_K_M** (bartowski, sha256 `6c1a2b41…c728ff`),
@@ -112,9 +111,9 @@ the evicted pages are re-read every token. No gradual RAM squeeze on this card.
 
 **Findings that change other cards:**
 
-1. **llama.cpp flag (A, backend argv):** b11277 has no `--no-mmap` ("error: invalid argument:
+1. **llama.cpp flag (backend argv):** b11277 has no `--no-mmap` ("error: invalid argument:
    --no-mmap"). It is `--load-mode none|mmap|dio|mlock|mmap+mlock` now. Contract proposal 3.
-2. **Page-cache charging (A, C):** page-cache pages are charged to the cgroup that first read
+2. **Page-cache charging:** page-cache pages are charged to the cgroup that first read
    them. After an rsync, checksum or bench, an mmap creature's weights sit in *another*
    cgroup and no creature limit can reach them (the invalid first run). `dio` avoids the page
    cache entirely; for mmap, `drop_page_cache(model)` before the spawn.
@@ -125,19 +124,19 @@ the evicted pages are re-read every token. No gradual RAM squeeze on this card.
    `memory.current` is not enough for mmap. `CgroupBody.death_limit_bytes()` now uses
    `death_fraction` × anon (0.5).
 5. **Warm reloads:** `dio` never benefits from a warm cache (always about 51 s for 2 GB);
-   mmap loads in 4 s when warm. S4 (A) should time reloads with `dio`; the cost model's
+   mmap loads in 4 s when warm. S4 should time reloads with `dio`; the cost model's
    estimated 45-60 s load stands.
 
 **Recommended:** `death_mode = "oom"`, `load_mode = "dio"` (mmap = false), `death_fraction =
 0.5` of anon, applied at `end-0:30` (set in `config/hardware/pi4-4gb.toml`). The fallback
-`death_mode = "deadline"` is not needed. S1a (A) must confirm that step 0 (Q6_K, about
+`death_mode = "deadline"` is not needed. S1a must confirm that step 0 (Q6_K, about
 2.6 GB anon) plus KV still leaves 300 MB free with `dio`.
 Each spike records its numbers and a go or fallback decision (BUILD_PLAN 8.5). Raw results:
 `bench/spike/*.json` (per run), `bench/measured/pi4-*.json` (Pi costs in the `costmodel.load_costs`
 format, parked; see "Using the numbers"), `bench/dev-*.json` (laptop costs). Tables are printed by
 `python3 tools/spike/summarize.py`.
 
-## Agent A (backend): S6, S2f, S1a, S1b, S2t, S4, S1c
+## Backend: S6, S2f, S1a, S1b, S2t, S4, S1c
 
 Setup for every run: llama.cpp **b11277** (commit eae11d2), built natively on each machine
 (`tools/build_llamacpp.sh`, `-mcpu=cortex-a72+crc+nodotprod+noi8mm` on the Pi);
@@ -218,7 +217,7 @@ Findings:
    Pi prompt speeds (S1b: 2-3 tokens/s for 3-4B) that is a 6-8 minute silence. A marker that
    later moves to the new oldest turn is fine (3-4%), and so is removed text.
    **Fix, measured:** append the marker to the reading after the first loss instead
-   (`--marker reading`: 4%). Proposed to B (CONTRACT_CHANGES #3).
+   (`--marker reading`: 4%). Proposed as a contract change.
 4. The same rule applies to every other edit: the system prompt must be **rebuilt from the kept
    groups** (`"\n\n".join(kept)`), never cut with a string replace. A replace left a new run of
    newlines and re-read 92% in the real-server test (`tests/templates`); the rebuilt prompt stays under the 25% bound there and at 2-4% in S2f.
@@ -241,13 +240,13 @@ The cause is the same as the marker's: after a word-level cut, the prompt contin
 `<end of the marker's message><assistant>` + the thought's remaining words, a junction that is
 nowhere in the cache, and llama-server's reuse scan never moves past a new prompt position that
 has no 32-token match. At the Pi's post-reload prompt rate (about 3.9 tokens/s at 2 cores) a
-380-token re-read is about 100 s of silence, every few thoughts from reload 1 on. Proposal to B
-in CONTRACT_CHANGES (A14): trim whole turns only, and cut inside a turn only when a single turn
+380-token re-read is about 100 s of silence, every few thoughts from reload 1 on. Proposed
+contract change: trim whole turns only, and cut inside a turn only when a single turn
 is larger than the budget.
 
 **Addendum: DRY's window.** At b11277 `dry_penalty_last_n` defaults to 64 tokens (seen in
 `/completion`'s `generation_settings`), so DRY never sees the previous thought, and negative
-values are rejected. The backend now sends the context size (QUESTIONS A #12).
+values are rejected. The backend now sends the context size.
 
 ### S1a and S1b on the Pi
 
@@ -343,7 +342,7 @@ for Qwen3 1.7B, under 90 s for the 1B models.
 without tricks and is clean in S6; its reload re-read fits S4's budget). Llama 3.2 3B, Qwen3 4B
 and the other 3-4B stay candidates for the rehearsal, but on the Pi 4 they need the S4 fallback
 (post-reload recall about 200 at reload 1 and 100 at reload 2, or no reload with precision
-falling another way). Integrator's call at checkpoint A.
+falling another way). Decided at checkpoint A.
 
 ### S4: reload to the first token
 
@@ -368,7 +367,7 @@ re-read (system + recall + reading) up to the first token. "tb" = prompt threads
   Load is 24-33 s cold, 8-9 s warm: the re-read dominates, so warm vs cold matters little.
 - **Llama 3.2 3B: NO-GO at recall 512** (330 s even with 3 prompt threads; the re-read alone is
   279 s). A 3-4B on the Pi 4 needs a post-reload recall of about 100-150, or no reload.
-- **Fallback applied in the recommendation:** `threads_batch = 3` (CONTRACT_CHANGES #6) and
+- **Fallback applied in the recommendation:** `threads_batch = 3` (a contract change) and
   post-reload recall 300 at reload 1 for Qwen3 1.7B. The next reading can also be shortened; the
   system prompt (about 280 tokens) is the largest fixed part of every re-read.
 
@@ -394,7 +393,7 @@ Qwen3 re-reads 96 tokens per turn where the others re-read 40-52: its template d
 think block from earlier assistant turns, so the cached thought no longer matches and the
 ~60-token piece is below the 256-token reuse chunk. With `--cache-reuse 32` (laptop,
 `s2-dev-qwen3-1.7b-reuse32`): 54 tokens per turn and the late cut re-reads 12% instead of 51%;
-Llama 3B and Gemma 4B are unchanged at 4-5%. **Proposed: `cache_reuse = 32`** (CONTRACT_CHANGES #6).
+Llama 3B and Gemma 4B are unchanged at 4-5%. **Proposed: `cache_reuse = 32`** (a contract change).
 
 ### S1c: 30 minutes of sustained generation
 
@@ -430,12 +429,12 @@ soak with the server restarted every 10 minutes, or `/slots` n_past against spee
 outside `bench/` because `load_costs` applies every `bench/pi4-<model>-*.json` automatically,
 and with measured Pi 4 speeds `pi4/compressed-2700` (and later the others) fails the
 thought-count rule, which would break `make check` before the profiles are rebased (8.5: the
-integrator updates the profiles, then re-runs `epitaph estimate`). To adopt them:
+profiles are updated first, then `epitaph estimate` re-runs). To adopt them:
 `git mv bench/measured/pi4-*.json bench/` together with the profile changes.
 
-## Round 2: 3-4B ladders and prefill (agent A, phase 0c round 2, 2026-09-30)
+## Round 2: 3-4B ladders and prefill (phase 0c round 2, 2026-09-30)
 
-Cards A2/A9 and the owner's review items F5 (spike S4b) and F8 (the S1c slowdown). Setup as
+Work packages A2/A9 and the owner's review items F5 (spike S4b) and F8 (the S1c slowdown). Setup as
 above: llama.cpp b11277 on the Pi 4, `taskset -c 1-3`, `-np 1 --cache-ram 0 --jinja`,
 `--cache-reuse 32`, `-tb 3`, and now the Pi 4 overlay's `--load-mode dio` for every load.
 Every request sends `enable_thinking: false`: round 1's spike requests did not, so Qwen3 1.7B
@@ -533,8 +532,8 @@ repeats that request on a fresh server: prefill + the full re-read (S4's method)
   thought showed; it fits the piece (F5).
 - The slot file lives in RAM for about a minute, while the old server is already gone; it is
   charged to the creature's cgroup and deleted right after the restore.
-- Implemented: `[backend] reload_handover = "slot" | "reread"` (default `"reread"` until the
-  integrator decides, CONTRACT_CHANGES A15), `slot_save_path` (default `/dev/shm/epitaph-slots`).
+- Implemented: `[backend] reload_handover = "slot" | "reread"` (default `"reread"` until it is
+  decided), `slot_save_path` (default `/dev/shm/epitaph-slots`).
   `start()` on a running creature of the same model saves, stops, loads, restores; the next
   `prefill` is skipped (it would cut the restored cache back to the system prompt); any failure
   falls back to the re-read and is reported in `last_handover`. Tested with mocks, on the fake,
@@ -576,15 +575,15 @@ a thought, padded to 256) with `late_after_s = 1200` (`tools/spike/late_speed.py
 is 77-89% of the deep rate. Only step 0 gets it because only step 0 runs at that context (after
 reload 1 the recall is 300 at most), while the cost model applies the lowest late ratio to every
 step. A time-based ease still overcharges the minutes after a reload, when the context is short
-again; CONTRACT_CHANGES A18 proposes charging by context instead. The adopted
-`bench/pi4-qwen3-1.7b-*.json` keep round 1's late value (1.424, over 30 min) until the integrator
-adopts the round-2 files from `bench/measured/` (F9); on those, `pi4/default` has 39 thoughts
+again; a contract change proposes charging by context instead. The adopted
+`bench/pi4-qwen3-1.7b-*.json` keep round 1's late value (1.424, over 30 min) until the
+round-2 files are adopted from `bench/measured/` (F9); on those, `pi4/default` has 39 thoughts
 instead of 40 and still passes.
 
 ### What the numbers do to the profiles
 
 `epitaph estimate --profile <p> --hardware pi4-4gb --model <m> --bench bench/measured`; the
-`slot` rows apply CONTRACT_CHANGES A16 in memory (the reload costs load + 1 s + the reading).
+`slot` rows apply the proposed slot costs in memory (the reload costs load + 1 s + the reading).
 
 | Model | profile | reload | thoughts | result | silences | speed ratio | fails |
 |---|---|---|---|---|---|---|---|
@@ -626,7 +625,7 @@ four times the real rate): their PASS rows are not evidence, and their silences 
   erosion window (55:00-57:00) without a finished thought; a late Q2_K thought at 0.6-0.9
   cores takes about 2 minutes (shorter `max_tokens` there did not fix it in a trial copy).
   The fix is in the profile's shape (2:30 erosion windows as in `compressed-2700`, or a CPU
-  share that falls later), B's call after checkpoint A. In `compressed-2700` it misses rule (a)
+  share that falls later), to decide after checkpoint A. In `compressed-2700` it misses rule (a)
   twice (2 thoughts where 3 are needed).
 - **Qwen3 4B Instruct 2507 fails either way**: 20-23 thoughts in 60 minutes; its thoughts take
   2-3 minutes from reload 1 on (Q3_K_M reads prompts at 2.0 tokens/s and generates 0.8-1.1).
@@ -682,7 +681,7 @@ pinned to cores 1-3 with 2 threads (`-p 64 -n 32 -r 2`), then the temperature an
   (`/sys/devices/system/cpu/cpu*/online` is absent), so "processors taken" stays the CPU share
   plus the clock.
 
-## S8: a core taken from a running creature (agent C, 2026-10-01)
+## S8: a core taken from a running creature (2026-10-01)
 
 The dread plan takes the body after the surroundings: could "a core gone" be real, without a
 restart? `tools/spike/s8_affinity.py`, run as a transient unit under the Pi lock with the

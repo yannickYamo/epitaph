@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# The fault matrix on the Pi (BUILD_PLAN 10.4; card E6; gates G2.2, A3).
+# The fault matrix on the Pi (BUILD_PLAN 10.4, 9 E6; gates G2.2, A3).
 #
 #   tools/fault_matrix_pi.sh [options]
 #     --rows a,b     only these rows (names from --list)
 #     --list         print every row and how it runs; touches nothing
 #     --out FILE     the table (default logs/pi/faults-<stamp>.md); each row's full output goes
 #                    to the folder of the same name without .md
-#     --agent A      name on the Pi lock (default $AGENT, else E)
+#     --agent NAME   name on the Pi lock (default $AGENT, else E)
 #     --row-min M    time limit per row in minutes (default 40)
 #     --dry-run      print the plan; no lock, no SSH, no fault
 #
 # Rows run one at a time, in one hold of the Pi lock:
-#   pi      through agent C's tools/fault_pi.sh <row> (one row per call; it prints a line that
+#   pi      through tools/fault_pi.sh <row> (one row per call; it prints a line that
 #           starts with PASS or FAIL and exits 0 or 1). The driver holds the lock and sets
 #           EPITAPH_PI_LOCKED=1 (the smoke_pi.sh convention), so fault_pi.sh must not take it
 #           again; one that tries gives up at once (exit 75) and the row is an error. Exit 2

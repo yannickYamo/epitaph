@@ -5,7 +5,7 @@
  "kill_within_s": 10.0,
  "load_mode": "dio",
  "model": "qwen3-4b-instruct-2507",
- "source": "epitaph calibrate --user pi on the Pi 4 (2026-10-01, agent C, phase 2); controller stopped",
+ "source": "epitaph calibrate --user pi on the Pi 4 (2026-10-01, phase 2); controller stopped",
  "steps": [
   {
    "anon_mb": 2739,

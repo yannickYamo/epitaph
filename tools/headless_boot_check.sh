@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# The headless boot test (BUILD_PLAN 4, 10.4 "Headless boot", card E4; gate G1.3).
+# The headless boot test (BUILD_PLAN 4, 10.4 "Headless boot", 9 E4; gate G1.3).
 #
 #   tools/headless_boot_check.sh [options]
 #     --reboot       reboot the Pi first and wait for it (without it: check the current boot)
 #     --timeout S    seconds to wait for SSH after the reboot (default 420)
 #     --screen       a screen is connected: the display unit must run instead of being skipped
 #     --out FILE     also write the summary to FILE
-#     --agent A      name on the Pi lock (default $AGENT, else E)
+#     --agent NAME   name on the Pi lock (default $AGENT, else E)
 #     --dry-run      print the commands; no lock, no SSH, no reboot
 #
 # Checks, on the boot that is current when it runs (after --reboot, the new one):

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Named exclusive locks shared by every agent on this laptop (BUILD_PLAN 8.3).
-# All agents run on the laptop, so a local flock serialises them. The kernel releases
-# the lock when the holder exits, so a crashed agent can never leave a stale lock, and
+# Named exclusive locks shared by every job on this laptop (BUILD_PLAN 8.3).
+# All jobs start on the laptop, so a local flock serialises them. The kernel releases
+# the lock when the holder exits, so a crashed job can never leave a stale lock, and
 # the time limit kills a command that overruns its reservation.
 #
-#   lock.sh <name> run <agent> <minutes> -- <command...>   wait for the lock, run, release
+#   lock.sh <name> run <holder> <minutes> -- <command...>   wait for the lock, run, release
 #   lock.sh <name> status                                   who holds it, since when
 set -euo pipefail
 

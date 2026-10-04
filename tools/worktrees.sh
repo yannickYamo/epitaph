@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Create (or refresh) one git worktree per agent, each on its own branch off main (BUILD_PLAN 8.3).
-#   tools/worktrees.sh create a-backend b-mind c-body d-display e-qa
+# Create (or refresh) one git worktree per line of work, each on its own branch off main (BUILD_PLAN 8.3).
+#   tools/worktrees.sh create backend display
 #   tools/worktrees.sh list | remove <name>
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"

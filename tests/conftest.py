@@ -1,4 +1,4 @@
-"""Shared fixtures (BUILD_PLAN 9 E1, 10). Agent E owns this file.
+"""Shared fixtures (BUILD_PLAN 9 E1, 10).
 
 - configs: `pi4_default`, `load_cfg` (any profile and overlay), `v6_default` and `v6_cfg`
   (the v6 reference configuration: see V6_REFERENCE)

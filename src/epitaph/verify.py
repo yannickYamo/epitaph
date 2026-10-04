@@ -19,7 +19,7 @@ Levels:
   screen     the 5.11 text metrics only, for rehearsal stage 1 samples (a few thoughts at a
              few moments, not a whole life)
 
-Rehearsal output (agent A, 5.11) is read as it comes: a life folder with `events.jsonl`, or a
+Rehearsal output (5.11) is read as it comes: a life folder with `events.jsonl`, or a
 file holding several lives. A header event (`type` = `rehearsal`, `meta` or `header`, with or
 without a `life` number) and a sidecar `meta.json` or `rehearsal.json` in the life folder are
 metadata, not part of the life: model, persona, seed, stage, profile, hardware, lifespan_s.
@@ -35,7 +35,7 @@ cliche, helpdesk and answering lists come from the language pack `config/lang/<l
 The built-in lists below are only a fallback for a pack that lacks one.
 
 Checks that need the display layout (split words, bright words) call a LayoutProbe. Until
-agent D's `epitaph.display.layout.verify_probe(cfg)` exists they are reported as pending,
+`epitaph.display.layout.verify_probe(cfg)` exists they are reported as pending,
 which never fails a life.
 """
 
@@ -123,7 +123,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
 
 # Fallback keyword lists per change type (5.11), used only where the language pack has none
 # (see `word_lists`). A keyword ending in "*" matches as a word prefix; otherwise whole words
-# or phrases. Agent B owns the real lists, in config/lang/<language>.toml [metrics].
+# or phrases. The real lists are in config/lang/<language>.toml [metrics].
 
 
 def _words(spec: str) -> list[str]:
@@ -748,7 +748,7 @@ def markup_hits(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------------------
-# layout hook (agent D)
+# layout hook
 
 
 class LayoutProbe(Protocol):
@@ -1430,7 +1430,7 @@ class Verifier:
     def check_split_words(self) -> list[Check]:
         """No word is broken across lines by the layout; pending without a layout probe."""
         if self.layout is None:
-            return [Check("no_split_words", "pending", detail="needs display.layout (agent D)")]
+            return [Check("no_split_words", "pending", detail="needs display.layout")]
         n = self.layout.split_words(self.life.events)
         return [Check("no_split_words", _pf(n == 0), n, 0)]
 
@@ -1625,7 +1625,7 @@ class Verifier:
                     "bright_words_last_2min",
                     "pending",
                     limit=limit,
-                    detail="needs display.layout (agent D)",
+                    detail="needs display.layout",
                 )
             ]
         n = self.layout.bright_words_last(self.life.events, 120.0)

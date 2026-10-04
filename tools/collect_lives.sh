@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gather evidence from the running installation without stopping it (card E6; gate G2.3).
+# Gather evidence from the running installation without stopping it (BUILD_PLAN 9 E6; gate G2.3).
 #
 #   tools/collect_lives.sh [options]
 #     --lives N              the newest N finished lives (default 3)

@@ -1,12 +1,12 @@
 # Epitaph: build plan (v6)
 
-> **Historical.** This is the plan the fleet built from (v6, 2026-09-29). The piece changed as it
+> **Historical.** This is the plan the piece was built from (v6, 2026-09-29). The piece changed as it
 > was built: the life is 30 minutes, not an hour; the model never changes (no reloads, erosion or
 > sampling decay); the world is taken from the outside in. Those decisions and their evidence are
 > in [DECISIONS.md](DECISIONS.md) (ADR-024 to ADR-031) and [CHANGELOG.md](CHANGELOG.md). Where
 > this plan and those records disagree, the records win.
 
-> v6, 2026-09-29. Owner and tester: Yannick. Implementers: a fleet of coding agents on Yannick's Linux laptop, run by the integrator (Claude Code, agent L).
+> v6, 2026-09-29.
 > Store this file in the repo as `docs/BUILD_PLAN.md`. It replaces v5 and is the single source of truth.
 >
 > **What changed from v5** (the review is in Appendix C, v5 to v6)
@@ -20,9 +20,8 @@
 >    - a whole-card `dd` image would be about 50 GB, because the unused space still holds old data from the card's previous use
 >    - `cgroup_disable=memory` is injected by the firmware, not written in `cmdline.txt`
 >    - the Pi password is already in a chat transcript and a scratch file
-> 5. **The fleet is run as one workflow per phase.** Workflow agents don't persist for days or message each other mid-run. Coordination goes through the repo (contracts, `CONTRACT_CHANGES.md`, reports) and the integrator between runs. The Pi and laptop locks exist before any agent starts (8.3).
-> 6. **Laptop prerequisites** that v5 assumed but that are missing: tesseract (OCR test), qemu-user-static and podman (arm64 install test).
-> 7. Smaller fixes:
+> 5. **Laptop prerequisites** that v5 assumed but that are missing: tesseract (OCR test), qemu-user-static and podman (arm64 install test).
+> 6. Smaller fixes:
 >    - Gemma 3's sliding-window attention may block cache reuse (`--swa-full`)
 >    - `unbounded` runs at ladder step 1, because step 0 plus a large KV cache does not fit in 4 GB
 >    - one persona sentence now matches what the machine really does
@@ -39,8 +38,8 @@
 5. The life cycle
 6. Contracts
 7. Technical notes and risks
-8. Team, workflow, phases, spike, step 0, standards
-9. Task cards
+8. Phases, spike, step 0, standards
+9. Work packages
 10. Test strategy
 11. Acceptance criteria for V1
 12. Yannick's part
@@ -49,28 +48,28 @@
 15. Backlog
 16. Decisions Yannick owns
 - Appendix A: models for the Pi 4
-- Appendix B: agent kickoff prompts
+- Appendix B: removed
 - Appendix C: review record
 
 ---
 
 ## 0. How to use this document
 
-**For agents**
+**Working rules**
 
-1. **Read sections 0 to 8 in full**, then your task card (section 9) and the test strategy (section 10).
-2. **Work in your own git worktree and branch** (`ws/<letter>-<name>`), created for you by the phase workflow. Only edit the paths you own (8.2).
-3. **Contracts (section 6) belong to the integrator.** You cannot message the integrator mid-run. To change a contract, write the proposal in `docs/process/CONTRACT_CHANGES.md`, keep working behind a local adapter, and list it in your report. The integrator decides between workflow runs.
+1. **Read sections 0 to 8 in full**, then the relevant work package (section 9) and the test strategy (section 10).
+2. **Each line of work has its own git worktree and branch** (`ws/<letter>-<name>`) and edits only the paths it covers.
+3. **Contracts (section 6) change only by a recorded decision.** To change a contract, write the proposal down and keep working behind a local adapter until it is decided.
 4. **Build against fakes first.** Everything must run on the laptop with `epitaph sim` and `--backend fake --display terminal` before it touches the Pi.
-5. **The Pi is slow and there is only one.** Run every Pi command through `tools/pi_lock.sh run <agent> <minutes> -- <command>`: it waits its turn, holds the lock, and releases it even on failure. Do on the laptop anything that does not need Pi timing.
+5. **The Pi is slow and there is only one.** Run every Pi command through `tools/pi_lock.sh run <name> <minutes> -- <command>`: it waits its turn, holds the lock, and releases it even on failure. Do on the laptop anything that does not need Pi timing.
 6. **One llama-server at a time on the laptop:** use `tools/laptop_lock.sh run ...` the same way.
-7. **Verify your own work** with section 10. Do not ask Yannick to check what a test can check.
-8. **Decide and keep going.** When something is unclear, pick the sensible default, log it in `docs/process/QUESTIONS.md` with the default used, and continue. Stop only for an action that could destroy data.
+7. **Verify the work** with section 10. Do not ask Yannick to check what a test can check.
+8. **Decide and keep going.** When something is unclear, pick the sensible default, record it with the default used, and continue. Stop only for an action that could destroy data.
 9. **Pi rules** (a dedicated test Pi):
    - You may install packages, edit boot config (keep a backup), create users and services, and reboot.
    - Never reflash, repartition or wipe it, and never touch other machines.
-   - System changes go through agent C's scripts and are logged in `docs/PI_CHANGES.md`.
-10. **Credentials:** never write the Wi-Fi or Pi password into the repo, logs, command arguments, shell history, reports or memory notes.
+   - System changes go through the Pi scripts (`tools/pi_bootstrap.sh`, `deploy/`) and are logged in `docs/PI_CHANGES.md`.
+10. **Credentials:** never write the Wi-Fi or Pi password into the repo, logs, command arguments, shell history or notes.
 11. **Follow the engineering standards** (8.7) and pin versions (llama.cpp tag, model file hashes).
 
 **For Yannick**
@@ -526,7 +525,7 @@ Watchdog pings continue in every state. Wall-clock time comes from NTP over Wi-F
 
 Keyword matching catches failures; it does not prove quality. Yannick's read at checkpoint A decides.
 
-**Tuning loop** (B with A): at most three wording rounds, each logged in `docs/PROMPT_LOG.md`. After checkpoint A, any prompt or model change re-runs the rehearsal, and every metric must stay above its threshold.
+**Tuning loop:** at most three wording rounds, each logged in `docs/PROMPT_LOG.md`. After checkpoint A, any prompt or model change re-runs the rehearsal, and every metric must stay above its threshold.
 
 ### 5.12 Letter by letter, with a rhythm
 
@@ -558,7 +557,7 @@ The `word` event carries `char_ms` and `pause_after_ms`. `reveal = "word"` shows
 
 ## 6. Contracts
 
-The integrator owns them (rule 0.3).
+They change only by a recorded decision (rule 0.3).
 
 ### 6.1 Repository layout
 
@@ -574,10 +573,10 @@ epitaph/
   src/epitaph/
     cli.py            # run | display | replay | ctl | sim | verify-life | selftest | calibrate |
                       # download | bench | rehearse | estimate | post | archive
-    config.py  types.py  events.py  state.py  costmodel.py      # integrator
-    clock.py  controller.py  pacing.py  transcript.py  exhibit.py # B
-    rehearse.py                                                  # A
-    verify.py                                                    # E
+    config.py  types.py  events.py  state.py  costmodel.py
+    clock.py  controller.py  pacing.py  transcript.py  exhibit.py
+    rehearse.py
+    verify.py
     mind/     memory.py prompt.py sanitize.py words.py
     backend/  base.py llama_server.py fake.py
     body/     cgroup.py vitals.py calibrate.py thermal.py watchdog.py netblock.py fake.py
@@ -591,8 +590,7 @@ epitaph/
           worktrees.sh
   deploy/ install.sh systemd/*.service
   docs/   BUILD_PLAN ARCHITECTURE CONFIG WRITING_A_DISPLAY INSTALLATION SPIKE PI_FACTS
-          PI_CHANGES PI_LOCK QUESTIONS CONTRACT_CHANGES CHANGELOG BENCH GATES PROMPT_LOG
-          REPORTS/<phase>-<agent>.md
+          PI_CHANGES PI_LOCK CHANGELOG BENCH GATES PROMPT_LOG
   bench/  # measured costs (tracked: small JSON, no secrets)
   tests/  unit/ sim/ faults/ templates/ display/ pi/
   voice/  # rehearsal transcripts and reports (untracked)
@@ -845,8 +843,7 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 | Hostname reverts | cloud-init resets it at boot | Step 0 disables cloud-init | |
 | Pi offline when the laptop is off | The cable's default route wins | Step 0: the cable's route sits behind Wi-Fi (metric 800 against 600; `never-default` until 0c round 2) | |
 | Headless display crash loop | Display unit without a screen | Headless boot test | `ExecCondition`, remote view |
-| Laptop limits | About 9 GB free; CPU rehearsal is slow; agents compete | Laptop lock | Two-stage rehearsal |
-| Workflow agents are ephemeral | Mid-run coordination, long waits, soak supervision | 8.3 | File-based coordination; one workflow per phase; soak runs on the Pi unattended |
+| Laptop limits | About 9 GB free; CPU rehearsal is slow; jobs compete | Laptop lock | Two-stage rehearsal |
 | Model gating | Llama and Gemma official repos gated | A8 | Community GGUFs with pinned sha256 |
 | Exhibition hours, wrong clock | No NTP | | Hours disabled with a warning |
 
@@ -863,48 +860,24 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 
 ---
 
-## 8. Team, workflow, phases, spike, step 0, standards
+## 8. Phases, spike, step 0, standards
 
 ### 8.1 Roles
 
-| Agent | Role |
-|---|---|
-| **L** | Integrator (Claude Code in Yannick's session): step 0, contracts, skeleton, config, state, events, CLI, the cost model, simulator, the phase workflows, merges, contract decisions between runs, gates, checkpoint messages, token-usage reports |
-| **A** | Backend: llama.cpp builds, creature process, streaming and timings, token counting, fake backend, models and ladders, bench, spikes S1a-c, S2, S4, S6, rehearsal harness, template tests |
-| **B** | Mind: schedule and clock (anchored keyframes, ladder steps, CPU share, persona groups), memory and recall, prompt and readings, sanitizer, words, prefix lookahead, adaptive cadence, controller loop, recovery, exhibition hours, transcripts, prompt tuning |
-| **C** | Body and Pi: `pi_bootstrap.sh` (reproduces step 0), SD backup and restore, spikes S3, S3b, S3c, cgroups, selftest, network block, vitals, calibration, thermal, watchdogs, systemd, install, deploy, Pi fault scripts |
-| **D** | Display: layout (flow and grid, any resolution and orientation), terminal, tty, pygame (KMSDRM, Wayland, X11, window, offscreen), remote view, replay, cards, screenshots and OCR, S5 (pending until a screen), optional body screen, serial bridge, e-ink |
-| **E** | QA and release: harness, verify-life and metrics, fault matrix automation, smoke, boot and soak tools, CI, gate sign-off with evidence, docs. Writes tests and tools, never product code other than `verify.py` |
-| **F**, **G** | V1.5 and V2, after G3 |
+Removed: process notes.
 
 ### 8.2 Ownership
 
-| Owner | Paths |
-|---|---|
-| L | `pyproject.toml`, `Makefile`, `src/epitaph/{cli,config,types,events,state,costmodel}.py`, `config/default.toml`, `docs/{BUILD_PLAN,ARCHITECTURE,CONTRACT_CHANGES,CHANGELOG}.md`, `tools/{worktrees.sh,pi_lock.sh,laptop_lock.sh}` |
-| A | `src/epitaph/{rehearse.py,backend/}`, `tools/{build_llamacpp.sh,download_models.py,bench.py}`, `tools/spike/{s1*,s2*,s4*,s6*}`, `config/models.toml`, `bench/`, `tests/templates/`, `docs/BENCH.md` |
-| B | `src/epitaph/{mind/,clock.py,controller.py,pacing.py,transcript.py,exhibit.py}`, `config/profiles/`, `docs/PROMPT_LOG.md`, keyword and cliché lists |
-| C | `src/epitaph/body/`, `deploy/`, `tools/{pi_bootstrap.sh,sd_backup.sh,sd_restore.sh,pi_deploy.sh}`, `tools/spike/s3*`, `config/hardware/` (machine settings), `tests/pi/`, `docs/{PI_FACTS,PI_CHANGES,PI_LOCK}.md` |
-| D | `src/epitaph/display/`, `assets/fonts/`, `tools/spike/s5*`, `tests/display/`, `docs/WRITING_A_DISPLAY.md` |
-| E | `tests/{unit,sim,faults}/` scaffolding and fixtures, `src/epitaph/verify.py`, the `[verify]` values in overlays, `.github/`, `README.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/{CONFIG,INSTALLATION,GATES}.md`, `tools/{smoke_pi.sh,soak_report.py}` |
-| Shared | `docs/SPIKE.md` (own sections), `docs/process/QUESTIONS.md` and `docs/process/reports/` (append) |
+Removed: process notes.
 
-### 8.3 Workflow: how the fleet actually runs
+### 8.3 Locks, merging and Pi targets
 
-**One workflow per phase.** The integrator starts a phase as a multi-agent workflow. Each agent gets its own worktree, its card for that phase and the current `main`, and returns a report (`docs/process/reports/<phase>-<agent>.md`: built, tested, left, contract proposals, questions). Agents do not persist between phases and cannot message each other mid-run. So:
+**Locks.** Both exist before parallel work starts:
 
-- **Contracts land in `main` before any parallel work** (L1-L4 run first, alone).
-- **Contract changes** go in `docs/process/CONTRACT_CHANGES.md` during a run; the integrator decides, versions and merges them between runs.
-- **Within a phase, dependencies go through fakes and stubs**, never through waiting on another agent.
-- **Long phases are split into rounds** (for example 0a laptop and Pi spikes, 0b rehearsal and tuning). The integrator merges after each round, at least twice a day.
-- **After each round**, every branch is rebased, `make check` runs, the integrator merges, and new cards go out.
-
-**Locks.** Both exist before the first round:
-
-- `tools/pi_lock.sh run <agent> <minutes> -- <cmd>` queues on a lock file on the Pi (owner, expiry, `flock`), runs, and releases even on failure. Stale locks expire.
+- `tools/pi_lock.sh run <name> <minutes> -- <cmd>` queues on a lock file (owner, expiry, `flock`), runs, and releases even on failure. Stale locks expire.
 - `tools/laptop_lock.sh` does the same on the laptop for llama-server jobs.
 
-**Merging.** `make check` (ruff, pyright, pytest with coverage, a simulated 60-minute life in under 90 s, and `epitaph estimate` on every Pi 4 profile) must pass before every merge.
+**Merging.** `make check` (ruff, pyright, pytest with coverage, a simulated 60-minute life in under 90 s, and `epitaph estimate` on every Pi 4 profile) must pass before every merge. Contracts land in `main` before any parallel work; within a phase, dependencies go through fakes and stubs.
 
 **Pi targets:**
 
@@ -912,44 +885,42 @@ def estimate_thoughts(profile: Schedule, costs: Costs) -> RuleReport: ...   # co
 - `make pi-smoke` (`smoke-300`)
 - `make pi-life PROFILE=pi4/compressed-2700` (starts a life, waits, runs `verify-life`)
 
-**Gates.** Before each gate, the integrator runs `/code-review high` on the gate diff and verifies each finding in the code. E then runs the gate checklist in its own workflow round and records the evidence in `docs/GATES.md`. A gate passes only with E's sign-off. The integrator reports token usage at each gate.
+**Gates.** Before each gate, `/code-review high` runs on the gate diff and each finding is verified in the code. The gate checklist then runs and its evidence is recorded in `docs/GATES.md`.
 
-**Long runs.** Pi lives, benches and the soak run on the Pi as services or detached jobs, not inside an agent. Agents start them, and a later round (or the integrator) collects the results.
-
-**Status to Yannick:** one short message at each checkpoint; everything else goes in `docs/process/QUESTIONS.md`.
+**Long runs.** Pi lives, benches and the soak run on the Pi as services or detached jobs; their results are collected afterwards.
 
 ### 8.4 Phases and gates
 
-| Phase | Contents | Gate (E signs off) |
+| Phase | Contents | Gate |
 |---|---|---|
-| **Step 0** (L, by hand, about 1.5 h) | 8.6: backup, sudo, credentials, Wi-Fi, routing, cloud-init, hostname, memory cgroup, console boot, watchdog, key-only SSH, laptop tools, repo, locks | **S0:** the 8.6 checks pass, including SSH over Wi-Fi with the cable unplugged, and `memory` in `cgroup.controllers` (or the deadline fallback recorded) |
-| **0a. Contracts** (L alone) | L1-L4: skeleton, contracts, fakes, `epitaph sim`, the cost model with estimated Pi 4 costs | Contracts in `main`; `make check` green |
-| **0b. Foundations** (A, B, C, D, E) | A: builds (Pi build first, under the lock), downloads, S6 and S2 functional on the laptop, then S1a, S1b, S4 and the S2 timings on the Pi. B: clock, schedule, memory, prompt, words, lookahead, cadence against the fakes. C: `pi_bootstrap.sh`, S3, S3b, S3c. D: layout, terminal, remote view, replay, headless pygame at four resolutions. E: harness, CI, verify-life and the metrics | Spike results in `docs/SPIKE.md` and `bench/` |
-| **0c. Rehearsal** (A, B, E) | The cost model re-run on measured costs; profiles adjusted until they pass; rehearsal stages 1 and 2; up to three tuning rounds | **G0:** `make check` green; `docs/SPIKE.md` complete (S5 pending); every Pi 4 profile passes the thought-count rule on measured costs; rehearsal reports with at least two models meeting every threshold. **Checkpoint A** |
+| **Step 0** (by hand, about 1.5 h) | 8.6: backup, sudo, credentials, Wi-Fi, routing, cloud-init, hostname, memory cgroup, console boot, watchdog, key-only SSH, laptop tools, repo, locks | **S0:** the 8.6 checks pass, including SSH over Wi-Fi with the cable unplugged, and `memory` in `cgroup.controllers` (or the deadline fallback recorded) |
+| **0a. Contracts** | L1-L4: skeleton, contracts, fakes, `epitaph sim`, the cost model with estimated Pi 4 costs | Contracts in `main`; `make check` green |
+| **0b. Foundations** | Backend: builds (Pi build first, under the lock), downloads, S6 and S2 functional on the laptop, then S1a, S1b, S4 and the S2 timings on the Pi. Mind: clock, schedule, memory, prompt, words, lookahead, cadence against the fakes. Body: `pi_bootstrap.sh`, S3, S3b, S3c. Display: layout, terminal, remote view, replay, headless pygame at four resolutions. QA: harness, CI, verify-life and the metrics | Spike results in `docs/SPIKE.md` and `bench/` |
+| **0c. Rehearsal** | The cost model re-run on measured costs; profiles adjusted until they pass; rehearsal stages 1 and 2; up to three tuning rounds | **G0:** `make check` green; `docs/SPIKE.md` complete (S5 pending); every Pi 4 profile passes the thought-count rule on measured costs; rehearsal reports with at least two models meeting every threshold. **Checkpoint A** |
 | **1. Walking skeleton on the Pi** | Real `llama-server` with `skeleton-1200`: recall shrink, readings, marker, words, lookahead, cadence, deadline death, silence, rebirth, counter, transcripts, `ctl status`, systemd units (display unit headless-safe), watchdogs, remote view | **G1:** two consecutive `skeleton-1200` lives pass `verify-life --level skeleton`; the remote view shows them live; the headless boot test passes; `/code-review high` done |
 | **2. Full decline** | Reloads as memory losses, ladder steps, CPU share, death squeeze and calibration, `death_mode`, group erosion, reading forms, hang detection, network block, fade, reload and death visuals, cards, 16-segment theme, `compressed-2700`, the fault matrix | **G2:** selftest passes under the installed service; the fault matrix passes on the Pi; three `compressed-2700` lives pass `verify-life --level full`; `/code-review high` done. **Checkpoint B** |
 | **3. Hardening** | 60-minute lives, `unbounded`, exhibition hours, Pi 5 profiles in simulation, optional body screen and serial bridge, `install.sh` idempotent on the Pi and in a qemu arm64 container, docs, CI, the 25-hour soak on Wi-Fi with the laptop disconnected | **G3:** section 11; `/code-review high` done. **Checkpoint C** |
 | **4. V1.5**, **5. V2** | Sections 13 and 14 | Their "done when" |
 
-Rough targets: step 0 and 0a on day 0; 0b and 0c on days 0-1; phase 1 on day 2; phase 2 on day 3; phase 3 on day 4 plus the soak. The Pi is the bottleneck. If a spike forces a fallback, the integrator says so at checkpoint A with the new target.
+Rough targets: step 0 and 0a on day 0; 0b and 0c on days 0-1; phase 1 on day 2; phase 2 on day 3; phase 3 on day 4 plus the soak. The Pi is the bottleneck. If a spike forces a fallback, checkpoint A says so with the new target.
 
 ### 8.5 The spike on the Pi 4
 
-Scripts go in `tools/spike/`, results in `docs/SPIKE.md` and `bench/`. Each spike records its numbers and a go or fallback decision; the integrator updates the Pi 4 profiles, then re-runs `epitaph estimate`.
+Scripts go in `tools/spike/`, results in `docs/SPIKE.md` and `bench/`. Each spike records its numbers and a go or fallback decision; the Pi 4 profiles are then updated and `epitaph estimate` re-run.
 
-| # | Owner | Where | Question | Go if | Fallback |
-|---|---|---|---|---|---|
-| S2f | A | Laptop | **Does cache reuse work** for each candidate after the controller's real sequence: append a reading, trim the oldest turns, erosion step, marker insertion? `timings.prompt_n` per request, with and without `--cache-reuse`, and `--swa-full` for Gemma | Warm trim processes at most 25% of the prompt | 5.4 fallback (`trim_to = 0.6`); `swa_full` |
-| S1a | A | Pi | Does every ladder step fit at `ctx` 2048 (and `unbounded` at step 1), with KV and buffers, mmap and `--no-mmap`? | At least 300 MB free at every step | Lower step 0; `q8_0` KV; drop the candidate |
-| S1b | A | Pi | Speed of each candidate: generation and prompt processing at step 0 and 3 threads; the leader at 2 threads, every step, and Q4_0 against Q4_K_M | A 70-token birth thought (reading plus generation) takes 90 s or less. Results go to `bench/` | Smaller model |
-| S1c | A | Pi | Heat and power: 30 min of sustained generation at 3 threads; temperature, throttling bits, tokens/s | No under-voltage bits; throttling under 10% of the time; drift under 10% | Decision 22; thermal pauses; power supply |
-| S2t | A | Pi | Re-read timing on the Pi for the S2f cases at 3 threads and at late settings | Warm trim pause at most 30 s; erosion step at late settings at most 90 s | 5.4 fallback |
-| S3 | C | Pi | Death by RAM: `memory.max` below the working set, with mmap and `--no-mmap`: time to kill, thrash duration, `memory.events`. Also a 1% and 5% eviction probe, for the record | Kill within 10 s, 5 times out of 5, in one of the two modes | `death_mode = "deadline"` |
-| S3b | C | Pi | Delegated cgroups under the service user (`+memory +cpu +io`, leaf creation, limits set and cleared, `cgroup.kill`, counters) and the nftables block of the creature cgroup | Every step works without root; outbound refused | Fix the unit; localhost binding only |
-| S3c | C | Pi | CPU share with 2 threads at `cpu.max` of 200, 170, 140, 110, 90 and 70%; the stall distribution | Speed falls roughly in proportion; no stall over 20 s | Threads 2 → 1 at reload 2; `cpu_share = false` |
-| S4 | A | Pi | Reload start to first shown word (load plus post-reload re-read), cold and warm, at the default post-reload recalls | 180 s or less | Smaller post-reload recall; Q4_0; decision 21 |
-| S5 | D | Pi | Display path | **Pending until a screen is connected** | tty console |
-| S6 | A | Laptop | Templates and parameters per candidate: rendering, counting, `chat_template_kwargs`, DRY, grammar, prefill, raw completion | All accepted or worked around | Per-model template config |
+| # | Where | Question | Go if | Fallback |
+|---|---|---|---|---|
+| S2f | Laptop | **Does cache reuse work** for each candidate after the controller's real sequence: append a reading, trim the oldest turns, erosion step, marker insertion? `timings.prompt_n` per request, with and without `--cache-reuse`, and `--swa-full` for Gemma | Warm trim processes at most 25% of the prompt | 5.4 fallback (`trim_to = 0.6`); `swa_full` |
+| S1a | Pi | Does every ladder step fit at `ctx` 2048 (and `unbounded` at step 1), with KV and buffers, mmap and `--no-mmap`? | At least 300 MB free at every step | Lower step 0; `q8_0` KV; drop the candidate |
+| S1b | Pi | Speed of each candidate: generation and prompt processing at step 0 and 3 threads; the leader at 2 threads, every step, and Q4_0 against Q4_K_M | A 70-token birth thought (reading plus generation) takes 90 s or less. Results go to `bench/` | Smaller model |
+| S1c | Pi | Heat and power: 30 min of sustained generation at 3 threads; temperature, throttling bits, tokens/s | No under-voltage bits; throttling under 10% of the time; drift under 10% | Decision 22; thermal pauses; power supply |
+| S2t | Pi | Re-read timing on the Pi for the S2f cases at 3 threads and at late settings | Warm trim pause at most 30 s; erosion step at late settings at most 90 s | 5.4 fallback |
+| S3 | Pi | Death by RAM: `memory.max` below the working set, with mmap and `--no-mmap`: time to kill, thrash duration, `memory.events`. Also a 1% and 5% eviction probe, for the record | Kill within 10 s, 5 times out of 5, in one of the two modes | `death_mode = "deadline"` |
+| S3b | Pi | Delegated cgroups under the service user (`+memory +cpu +io`, leaf creation, limits set and cleared, `cgroup.kill`, counters) and the nftables block of the creature cgroup | Every step works without root; outbound refused | Fix the unit; localhost binding only |
+| S3c | Pi | CPU share with 2 threads at `cpu.max` of 200, 170, 140, 110, 90 and 70%; the stall distribution | Speed falls roughly in proportion; no stall over 20 s | Threads 2 → 1 at reload 2; `cpu_share = false` |
+| S4 | Pi | Reload start to first shown word (load plus post-reload re-read), cold and warm, at the default post-reload recalls | 180 s or less | Smaller post-reload recall; Q4_0; decision 21 |
+| S5 | Pi | Display path | **Pending until a screen is connected** | tty console |
+| S6 | Laptop | Templates and parameters per candidate: rendering, counting, `chat_template_kwargs`, DRY, grammar, prefill, raw completion | All accepted or worked around | Per-model template config |
 
 **Order under the Pi lock** (about 4-6 hours of Pi time):
 
@@ -959,9 +930,9 @@ Scripts go in `tools/spike/`, results in `docs/SPIKE.md` and `bench/`. Each spik
 4. S1a and S1b (60-90 min).
 5. S4 and S2t (about 50 min).
 6. S3, S3b and S3c (about 45 min).
-7. S1c (30 min, while agents work on the laptop).
+7. S1c (30 min, while laptop work continues).
 
-### 8.6 Step 0: Pi and laptop preparation (L by hand; C's `pi_bootstrap.sh` reproduces the Pi part idempotently)
+### 8.6 Step 0: Pi and laptop preparation (by hand; `tools/pi_bootstrap.sh` reproduces the Pi part idempotently)
 
 Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secrets.
 
@@ -977,7 +948,7 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
 4. **Credentials.**
    - Delete the scratch password file.
    - Yannick sets a new Pi password **in their own terminal** (`ssh -t pi-eth passwd`), because the old one is in this chat transcript.
-   - The new one is never shared with an agent.
+   - The new one is never written down or shared.
 5. **Wi-Fi.**
    - Yannick runs `ssh -t pi-eth sudo nmcli --ask device wifi connect "<SSID>"` **in their own terminal**, not through Claude Code's `!`, which is not an interactive tty and would put the output in the transcript. This creates a system connection with the secret in a root-only keyfile.
    - Then: `wifi.powersave 2`.
@@ -999,7 +970,7 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
    - NTP synced
    - free RAM about 350 MB higher
 
-   If `memory` is missing, record it, set `death_mode = "deadline"`, and don't block the fleet.
+   If `memory` is missing, record it, set `death_mode = "deadline"`, and don't block the work.
 10. **Key-only SSH.** After key login is confirmed on both links, add an sshd drop-in: `PasswordAuthentication no`, with `Match Address 10.42.0.0/24` allowing passwords over the cable only. Verify that a password login over Wi-Fi is refused and still works over the cable.
 11. **Final check with the cable unplugged:** `ssh pi 'sudo -n true && cat /sys/fs/cgroup/cgroup.controllers && systemctl get-default && hostname'`.
 12. **Repo and locks on the laptop:**
@@ -1007,8 +978,7 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
     - this file as `docs/BUILD_PLAN.md`
     - `.pi.env` (untracked: `PI_HOST=pi`, `PI_USER=pi`)
     - `docs/PI_FACTS.md` from 3.1
-    - `tools/pi_lock.sh` and `tools/laptop_lock.sh`, so they exist before any agent starts
-    - update the memory note `raspberry-pi-setup`
+    - `tools/pi_lock.sh` and `tools/laptop_lock.sh`, so they exist before any parallel work starts
 
 ### 8.7 Engineering standards
 
@@ -1018,18 +988,18 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
 - Unit tests use no network and no real time.
 - Every bug fix comes with a regression test.
 - Short comments; structured logs with the life number on every line.
-- Small imperative commits with the attribution line.
+- Small imperative commits.
 - CI runs on Ubuntu x86_64; the arm64 install test runs in qemu with podman on the laptop.
 
 ---
 
-## 9. Task cards
+## 9. Work packages
 
 Phases: S0 step 0; P0a contracts; P0b foundations; P0c rehearsal; P1 skeleton; P2 full decline; P3 hardening.
 
-### L. Integrator
+### L. Core
 
-- **S0** L0. Step 0 by hand (8.6), recording each command for C's script.
+- **S0** L0. Step 0 by hand (8.6), recording each command for `tools/pi_bootstrap.sh`.
 - **P0a** L1. Repo skeleton, `pyproject.toml`, `Makefile` (`check`, `sim`, `estimate`, `pi-*`), standards config, MIT license, `.pi.env.example`, `tools/worktrees.sh`.
 - **P0a** L2. `types.py`, `config.py`:
   - profile sets per class and hardware overlays
@@ -1038,7 +1008,6 @@ Phases: S0 step 0; P0a contracts; P0b foundations; P0c rehearsal; P1 skeleton; P
   - persona groups, budget feasibility
 - **P0a** L3. `costmodel.py` and `epitaph estimate`: the thought-by-thought simulation of 5.3 on `bench/` costs, the rule report, and estimated Pi 4 costs until S1b.
 - **P0a** L4. `state.py`, `events.py`, `cli.py` with every subcommand wired; minimal fakes; `epitaph sim` with Pi 4 costs.
-- **All** L5. Phase workflows, merges after every round, contract decisions, `/code-review high` before gates, checkpoint messages, token reports.
 - **Done when:** S0 and G0 pass; the contracts exist as code with docstrings; every profile's `estimate` runs in `make check`.
 
 ### A. Backend
@@ -1087,7 +1056,7 @@ Phases: S0 step 0; P0a contracts; P0b foundations; P0c rehearsal; P1 skeleton; P
   - no bursts at ±30% generation jitter
   - words per minute within the overlay range at every keyframe
   - no `gen_start` before the previous thought is fully shown
-- **P0c** B10. The prompt tuning loop with A; `docs/PROMPT_LOG.md`; keyword and cliché lists; adjusting `pi4/*` profiles until `epitaph estimate` passes on measured costs.
+- **P0c** B10. The prompt tuning loop; `docs/PROMPT_LOG.md`; keyword and cliché lists; adjusting `pi4/*` profiles until `epitaph estimate` passes on measured costs.
 - **P1** B6. `controller.py`: recovery, birth (counter first), the loop, the deadline everywhere, death causes, silence, rotation, snapshot, watchdog pings in every state.
 - **P1** B7. `transcript.py`.
 - **P2** B8. Reloads with skipping and cuts, ladder steps, CPU share, group erosion, reading forms, hang detection with every progress signal.
@@ -1108,7 +1077,7 @@ Phases: S0 step 0; P0a contracts; P0b foundations; P0c rehearsal; P1 skeleton; P
 - **P2** C6. `epitaph selftest` (the S3b checks under the service, progress counters).
 - **P2** C7. `epitaph calibrate`: working sets per model and step; the death level; death within 30 s of `end-0:30`.
 - **P2** C8. `body/netblock.py` (the creature cgroup is created once and kept).
-- **P2** C9. `body/thermal.py`; Pi fault scripts with E.
+- **P2** C9. `body/thermal.py`; Pi fault scripts.
 - **P3** C10. `deploy/install.sh`: idempotent; tested twice on the Pi and once in a qemu arm64 Debian container.
 - **Done when:** the bootstrap is idempotent; selftest passes under the service; `death_mode` is proven; the watchdogs are verified; install is idempotent; restore is tested.
 
@@ -1223,7 +1192,7 @@ It replays `events.jsonl` through the layout model and writes `verify.json`. Thr
 
 ## 11. Acceptance criteria for V1 (Pi 4)
 
-**Checked by machine** (E signs off in `docs/GATES.md`)
+**Checked by machine** (signed off in `docs/GATES.md`)
 
 1. `make check` green on the laptop and in CI, with coverage met and every Pi 4 profile passing `estimate` on measured costs.
 2. Every life in the soak passes `verify-life --level full`.
@@ -1255,7 +1224,7 @@ It replays `events.jsonl` through the layout model and writes `verify.json`. Thr
 
 | When | What you do | Time |
 |---|---|---|
-| **Step 0** | Approve the laptop packages (tesseract, qemu-user-static, podman) and the SD backup. In **your own terminal** (not through Claude Code), run two commands the integrator gives you: the Wi-Fi connect (you type the Wi-Fi password there) and `passwd` (a new Pi password that only you know). Keep the cable plugged in for maintenance. | 10 min |
+| **Step 0** | Approve the laptop packages (tesseract, qemu-user-static, podman) and the SD backup. In **your own terminal** (not through Claude Code), run two commands: the Wi-Fi connect (you type the Wi-Fi password there) and `passwd` (a new Pi password that only you know). Keep the cable plugged in for maintenance. | 10 min |
 | **Checkpoint A** (G0) | Read the best two or three rehearsal transcripts (`voice/rehearsal_report.md`). Reply with two models, the persona (v6 or your original) and chat or diary mode. The spike summary comes with it: speeds, fits, cache reuse, reload silence, heat, the RAM death mode, any fallback. No reply by the end of the session means the two best-scoring models, the v6 persona, chat mode. | 15 min |
 | **Checkpoint B** (G2) | Watch a `compressed-2700` life in a laptop window (`epitaph display --connect pi --driver screen`): the first 10 minutes live, then `epitaph replay <life> --from 20:00 --speed 2` for the reloads, erosion and death. Reply "good", or list what reads badly. | 25 min |
 | **Checkpoint C** (G3) | Read the soak report. Optional: a full hour, an `unbounded` life, or a real power pull (after a fresh image). | 10 min, plus the optional parts |
@@ -1286,8 +1255,6 @@ ssh pi epitaph ctl new-life --profile pi4/compressed-2700
 
 ## 13. V1.5: the afterlife
 
-Agent F with L, D and E.
-
 - **Epitaph extraction** from the shown words (`last_sentence` by default).
 - **Inheritance at birth** without explanation: prefill if S6 shows it works, otherwise a bare line in the first reading. The display shows it in the `inherited` style.
 - **Filter** before anything goes public: blocklist; strip `@`, `#` and URLs; length limits. On failure, a "withheld" notice.
@@ -1301,7 +1268,7 @@ On the Pi 4 that is about 23 posts a day (about 700 a month); check the X API li
 
 ## 14. V2: the senses
 
-Agent G. A second vision-language model will not fit next to the creature on a 4 GB Pi 4. The realistic paths:
+A second vision-language model will not fit next to the creature on a 4 GB Pi 4. The realistic paths:
 
 - the Raspberry Pi AI Camera (on-sensor person detection; confirm Pi 4 support in its spike)
 - OpenCV presence detection on core 0 at low resolution
@@ -1371,32 +1338,9 @@ Re-checked at build time (versions, licenses, community GGUF availability, sha25
 
 ---
 
-## Appendix B: agent kickoff prompts
+## Appendix B: removed
 
-**Common header** (sent by the phase workflow to each agent)
-
-```
-You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
-1. Read ~/epitaph/docs/BUILD_PLAN.md sections 0 to 8, then your card in section 9 and section 10.
-2. Your worktree and branch: ws/<x>-<name>, based on the current main. Only edit the paths you own (8.2).
-3. Build against the fakes first; `make check` must pass before you finish.
-4. You cannot message other agents. Contract changes: write them in docs/process/CONTRACT_CHANGES.md,
-   keep going behind a local adapter, list them in your report.
-5. Pi work only through `tools/pi_lock.sh run <agent> <minutes> -- <cmd>`, in the order of 8.5.
-   Laptop llama-server jobs only through tools/laptop_lock.sh.
-6. Never write the Wi-Fi or Pi password anywhere.
-7. Unclear? Pick the sensible default, log it in docs/process/QUESTIONS.md, continue.
-8. Finish with docs/process/reports/<phase>-<agent>.md: built, tested (commands and results), left,
-   contract proposals, questions.
-```
-
-**First round per agent (P0b):**
-
-- **A:** start the Pi build under the lock; on the laptop: build, downloads, S6, S2f, the fake backend; then S1a, S1b, S4, S2t; S1c last.
-- **B:** B1-B5 against the fakes, tests first (anchored keyframes, recall and reload cuts, group erosion, prefix lookahead, adaptive cadence).
-- **C:** C1 (bootstrap script plus backup and restore), then S3, S3b, S3c.
-- **D:** D1-D4 on the laptop against `epitaph sim` events and a recorded fake life.
-- **E:** E1-E3; turn every "done when" into a test or a gate checklist item in `docs/GATES.md`.
+Removed: process notes.
 
 ---
 
@@ -1404,9 +1348,9 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 
 **v1 to v4** (on Yannick's Mac): three GPT review rounds, the Latent Reflection recheck and the prompt and reveal redesign. The record is in v4's Appendix C (kept in the author's review archive).
 
-**v4 to v5:** the laptop agent's hardware facts and 15-point delta, gap-analysed on the Mac with a GPT second opinion (`2026-09-29_204923_r1.md`). All v5 fixes are kept unless a row below changes them.
+**v4 to v5:** the hardware facts checked on the laptop and a 15-point delta, gap-analysed on the Mac with a GPT second opinion (`2026-09-29_204923_r1.md`). All v5 fixes are kept unless a row below changes them.
 
-**v5 to v6** (the laptop agent, checked against the real Pi and laptop, read-only):
+**v5 to v6** (checked against the real Pi and laptop, read-only):
 
 | # | Finding | Severity | Evidence | Fixed in |
 |---|---|---|---|---|
@@ -1420,7 +1364,6 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 | V8 | `cgroup_disable=memory` is not in `cmdline.txt`; v5's "remove it from the file" step is moot | low | Pi: `/proc/cmdline` has it, `cmdline.txt` does not | 8.6 step 7 (append the override; verify) |
 | V9 | The credential rule was already broken: the Pi password is in the chat transcript and a scratch file | medium | This session | 8.6 step 4 (delete it; Yannick sets a new one) |
 | V10 | Claude Code's `!` is not an interactive tty and records output: the Wi-Fi command must run in Yannick's own terminal | low | Harness behaviour | 8.6 step 5, section 12 |
-| V11 | The fleet assumed persistent agents that message each other and an integrator deciding contracts mid-session; workflow agents are ephemeral and run per workflow | medium | Workflow execution model | 8.3 (one workflow per phase, rounds, file-based coordination, locks before round 1) |
 | V12 | Laptop tools missing for OCR and the arm64 install test | low | Laptop: no tesseract, qemu-user-static, podman or docker | 8.6 step 1; E2 |
 | V13 | Gemma 3's sliding-window attention may block cache reuse | low | llama.cpp SWA handling | `swa_full` in config; S2f; Appendix A |
 | V14 | `unbounded` at step 0 plus a 5-6k KV cache does not fit in 4 GB | low | 3B Q6_K 2.6 GB plus KV about 115 KB per token, about 0.7 GB | 5.3 (`unbounded` at step 1, `ctx` from S1a) |
@@ -1428,7 +1371,7 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 | V16 | Watchdog: v6 first assumed a 15 s bcm2835 maximum. Step 0 showed the OS already enables it at 1 min and the hardware accepts it | low | Step 0 on the Pi | 3.1, 4, 8.6 step 8 |
 | V17 | A full cycle also includes the first reading's prompt processing | low | | 5.3 (about 22.7 lives a day) |
 
-**v6 review 2: the owner's feedback after phase 0c round 1** (2026-09-30, challenged by the integrator). Accepted items are binding.
+**v6 review 2: the owner's feedback after phase 0c round 1** (2026-09-30). Accepted items are binding.
 
 | # | Item | Verdict | Where |
 |---|---|---|---|
@@ -1437,7 +1380,7 @@ You are agent <X> (<role>) on the epitaph project, phase <P>, round <R>.
 | F3 | Q3_K_M against Q2_K as the last step of small models | Accepted: rehearse both; the ladder follows the better read | 0c round 2 (voice) |
 | F4 | Tune on real transcripts; "8-bit" in the keyword lists | Accepted (the leader starts at Q8_0) | 0c round 2 (voice) |
 | F5 | Spike S4b: carry the KV cache across a reload (slot save and restore) instead of re-reading | Accepted as a spike: it would shorten reload silences and could make 3-4B models viable. Open question: the old quant's cache read by the new quant (same architecture, so it loads; the content is slightly off, which fits the piece) | 0c round 2 (Pi bench) |
-| F7 | The simulator runs the real controller on the fakes; the reference loop is deleted | Accepted as gate G1.0; until then simulator results are provisional | P1 (B), G1 |
+| F7 | The simulator runs the real controller on the fakes; the reference loop is deleted | Accepted as gate G1.0; until then simulator results are provisional | P1, G1 |
 | F8 | Explain the 21% generation slowdown in S1c | Accepted: re-run with the slot's n_past logged and a restart variant | 0c round 2 (Pi bench) |
 | F9 | Adopt measured costs after the model decision | Accepted (done for the leader in round 1; redone for the chosen models after checkpoint A) | after checkpoint A |
 | F10 | Restore the rescue path (a new Pi password) | Accepted; owner action. The cable-unplugged and Wi-Fi password-refused checks already passed in step 0 | owner |

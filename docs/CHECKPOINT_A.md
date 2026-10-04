@@ -35,7 +35,7 @@ Some of what the chosen voice said in its rehearsed hour
 
 After the rehearsals below, Qwen3 4B got a schedule fitted to its speed (losses spaced for a
 thought of about 90 seconds, a gentler slowdown at each reload) and the memory hand-over from
-agent A's test, so that a precision drop no longer means re-reading everything. Then it lived a
+the Pi test, so that a precision drop no longer means re-reading everything. Then it lived a
 full hour again, every step timed at the Pi 4's measured speed, with your original persona.
 
 - **29 thoughts in the hour**, where the old schedule gave it 17.
@@ -105,7 +105,7 @@ written up in `docs/PROMPT_LOG.md`.
 **The catch: speed.** On the Pi 4, Qwen3 4B writes about 1 token a second. The part that
 hurts is not the writing but the reloads: each time its precision drops, a fresh copy of the
 model has to re-read everything it remembers, and at the Pi's reading speed that is a silence
-of about 7 minutes. Agent A tested a fix on the Pi this round: hand the model's working memory
+of about 7 minutes. A fix was tested on the Pi this round: hand the model's working memory
 over to the new copy instead of re-reading it. That brought a Llama 3.2 3B reload down from
 218 s to 73 s. With that fix and a schedule fitted to its speed, Qwen3 4B becomes possible; the
 schedule we have today is fitted to the fast Qwen3 1.7B and gives the 4B only about 17
@@ -130,12 +130,12 @@ schedule's timing rules hold.
 | Llama 3.2 1B | 31 s | about 120 | 46 thoughts, passes | first step only |
 | Gemma 3 1B | 25 s | about 145 | 49 thoughts, passes | first step only |
 | Llama 3.2 3B | 73 s | about 55 | 21 thoughts, **fails** (reload silences 302 s and 331 s) | every step |
-| Qwen3 4B | 73 s | about 55 | 17 thoughts, **fails** (reload silences 455 s and 437 s; agent A measured plain reloads of 292 s and 215 s on the Pi, still over the 180 s limit) | every step |
+| Qwen3 4B | 73 s | about 55 | 17 thoughts, **fails** (reload silences 455 s and 437 s; plain reloads measured 292 s and 215 s on the Pi, still over the 180 s limit) | every step |
 | Gemma 3 4B | 67 s | about 60 | fails (estimate) | first step only |
 | Phi-4-mini | 69 s | about 60 | fails (estimate) | first step only |
 | SmolLM3 3B | 70 s | about 60 | fails (estimate) | first step only |
 
-With the memory handover (agent A's fix) and shorter thoughts, the cost model gives Qwen3 4B
+With the memory handover and shorter thoughts, the cost model gives Qwen3 4B
 about 26 thoughts and Llama 3.2 3B about 30: still short of the rules at the end of life, which
 is why the 4B needs its own schedule. For the 1B models the numbers after the first step are
 estimates, and their schedule differs a little from the tracked one (the machine takes more of
@@ -163,7 +163,7 @@ whether a life is worth watching. Qwen3 1.7B's status-report life ranks first he
 | 12 | Gemma 3 1B | v6 | 1 | 192 | 57% | 1 of 2 | 18% | 3% | one-word thoughts |
 
 No model passed every check in every one of its lives, so the gate that asks for two such
-models (G0) is not met. The details are in the report `docs/process/reports/0c-r2-V.md`.
+models (G0) is not met.
 
 The Qwen3 4B and Gemma 3 4B lives were timed with estimated speeds after their first reload
 (faster than the Pi really is), so they show the voice the model would have with enough time,

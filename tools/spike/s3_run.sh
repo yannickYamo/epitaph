@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run spike S3, S3b or S3c on the Pi (BUILD_PLAN 8.5). Agent C. Run it under the Pi lock:
+# Run spike S3, S3b or S3c on the Pi (BUILD_PLAN 8.5). Run it under the Pi lock:
 #   tools/pi_lock.sh run C 30 -- tools/spike/s3_run.sh s3b
 #   tools/pi_lock.sh run C 60 -- tools/spike/s3_run.sh s3  --model /var/lib/epitaph/models/.../Q4_K_M.gguf --eviction
 #   tools/pi_lock.sh run C 30 -- tools/spike/s3_run.sh s3c --model ...

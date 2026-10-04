@@ -1,4 +1,4 @@
-"""tools/smoke_pi.sh and tools/headless_boot_check.sh against a fake Pi (card E4).
+"""tools/smoke_pi.sh and tools/headless_boot_check.sh against a fake Pi (BUILD_PLAN 9 E4).
 
 The fake Pi is a folder of stand-in commands on PATH: `ssh` runs the remote command locally,
 `sudo` drops itself, `systemd-run` runs the unit in the foreground, `systemctl` answers from

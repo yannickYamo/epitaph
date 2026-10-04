@@ -11,7 +11,7 @@
 #     --status       report the rescue and the networking state; change nothing
 #     --disarm       networking on, then remove the rescue (a rescue armed by a run that
 #                    stopped early, or a leftover)
-#     --agent A      name on the Pi lock (default $AGENT, else L)
+#     --agent NAME   name on the Pi lock (default $AGENT, else L)
 #     --dry-run      print the commands; no lock, no SSH
 #
 # Within one hold of the Pi lock it:

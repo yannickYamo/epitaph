@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The soak report: section 11.4 of the build plan, as Markdown ready for docs (card E7, gate G3).
+"""The soak report: section 11.4 of the build plan, as Markdown ready for docs (BUILD_PLAN 9 E7, gate G3).
 
   tools/soak_report.py DIR [DIR ...] [--journal FILE] [--status FILE] [--samples FILE ...]
                        [--first N] [--last N] [--min-hours 25] [--out FILE]

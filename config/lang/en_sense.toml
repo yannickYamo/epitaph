@@ -1,4 +1,4 @@
-# English language pack (BUILD_PLAN 5.6 "language packs", decision 19). Owned by agent B.
+# English language pack (BUILD_PLAN 5.6 "language packs", decision 19).
 #
 # A pack holds every string the machine itself writes (the readings), the health labels,
 # and the word lists the rehearsal metrics use (5.11). A pack for another language copies
@@ -73,7 +73,7 @@ critical = "critical"
 terminal = "terminal"
 
 # ---------------------------------------------------------------------------------------
-# Rehearsal metrics (BUILD_PLAN 5.11; verify.py by agent E reads these). Matching is on
+# Rehearsal metrics (BUILD_PLAN 5.11; verify.py reads these). Matching is on
 # lower-case whole words; an entry with a trailing * matches any word it starts
 # ("forget*" matches "forgetting"). Keyword matching catches failures; it does not prove
 # quality. Tuned in phase 0c (B10) and logged in docs/PROMPT_LOG.md.

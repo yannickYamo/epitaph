@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sample the Pi during the soak, for tools/soak_report.py (card E7; gate G3, BUILD_PLAN 11.4).
+# Sample the Pi during the soak, for tools/soak_report.py (BUILD_PLAN 9 E7; gate G3, BUILD_PLAN 11.4).
 #
 #   tools/soak_sample.sh [options]
 #     --out FILE     append the samples here (default logs/pi/soak-samples.tsv)
