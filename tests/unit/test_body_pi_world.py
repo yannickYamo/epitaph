@@ -265,6 +265,26 @@ def test_names() -> None:
     assert names("cron") == [] and names(None) == []
 
 
+def test_the_processes_counted_are_those_of_birth(machine: Machine, tmp_path: Path) -> None:
+    """New processes never make the world grow, a reused pid is a new process, and the next
+    life counts its own world."""
+    w = world(machine, tmp_path)
+    proc = tmp_path / "proc"
+    for pid in range(1, 25):
+        (proc / str(pid) / "stat").write_text(f"{pid} (a thing) S 1 " + "0 " * 17 + "500 0\n")
+    assert w.inventory().processes == 24
+    (proc / "900").mkdir()
+    (proc / "900" / "cmdline").write_bytes(b"sshd: someone\x00")
+    assert w.inventory().processes == 24  # one more runs, none of those at birth
+    (proc / "7" / "cmdline").write_bytes(b"")
+    assert w.inventory().processes == 23
+    (proc / "8" / "stat").write_text("8 (other) S 1 " + "0 " * 17 + "9999 0\n")
+    assert w.inventory().processes == 22  # pid 8 again, started later: not the one at birth
+    w.restore()
+    assert w.inventory().processes == 24  # the next life counts what runs at its own birth
+    w.restore()
+
+
 def test_count_processes(tmp_path: Path) -> None:
     assert count_processes(fake_proc(tmp_path / "p", user=7, kernel=3)) == 7
     assert count_processes(tmp_path / "absent") == 0

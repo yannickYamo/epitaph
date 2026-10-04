@@ -48,6 +48,7 @@ class Screen:
         self.stalls: list[tuple[float, float]] = []
         self.events: list[tuple[float, str]] = []
         self.task = None
+        self.fed_stalls: list[tuple[float, float]] = []
 
     def start(self) -> None:
         import asyncio
@@ -65,6 +66,7 @@ class Screen:
         import asyncio
         import contextlib
 
+        self.fed_stalls = list(self.s.stats.stalls)  # before the wait the stop itself ends
         self.s.stop()
         if self.task is not None:
             self.task.cancel()
@@ -106,7 +108,7 @@ def test_every_letter_at_one_pace_with_fixed_pauses_and_no_hesitation() -> None:
     for (ta, a), (tb, b) in itertools.pairwise(sc.words):
         gap = 2.0 if a.word.turn != b.word.turn else a.pause_after_ms / 1000
         assert tb == pytest.approx(typed_end(ta, a) + gap)
-    assert sc.stalls == [] and sc.s.stats.stalls == []
+    assert sc.stalls == [] and sc.fed_stalls == []
     assert [m.turn for _, m in sc.ends] == [1, 2, 3]
 
 
@@ -127,7 +129,7 @@ def test_the_screen_waits_at_birth_for_the_first_thought_then_never_waits_when_f
 
     sc = run_virtual(main)
     assert sc.words[0][0] == pytest.approx(5 * len(TEXT.split()))
-    assert sc.s.stats.stalls == []
+    assert sc.fed_stalls == []
 
 
 def test_a_word_that_comes_late_is_a_stall_measured_from_when_the_screen_was_ready() -> None:
@@ -145,9 +147,13 @@ def test_a_word_that_comes_late_is_a_stall_measured_from_when_the_screen_was_rea
     (t0, one), (t1, _) = sc.words
     ready = typed_end(t0, one) + one.pause_after_ms / 1000
     assert t1 == pytest.approx(10.0)
-    assert sc.s.stats.stalls == [(pytest.approx(ready), pytest.approx(10.0 - ready))]
-    assert sc.stalls == sc.s.stats.stalls  # over the report threshold, so reported
+    assert sc.fed_stalls == [(pytest.approx(ready), pytest.approx(10.0 - ready))]
+    assert sc.stalls == sc.fed_stalls  # over the report threshold, so reported
     assert sc.s.stats.max_stall_s == pytest.approx(10.0 - ready)
+    # the screen was waiting again when it stopped: that blank before the death is recorded
+    (t2, two) = sc.words[1]
+    blank_from = typed_end(t2, two) + two.pause_after_ms / 1000
+    assert sc.s.stats.stalls[1:] == [(pytest.approx(blank_from), pytest.approx(15.0 - blank_from))]
 
 
 def test_the_buffer_is_bounded_by_thoughts_and_by_letters() -> None:
@@ -202,7 +208,9 @@ def test_stop_drops_the_backlog_where_it_is() -> None:
     st = sc.s.stats
     assert st.dropped_words == 2 * len(TEXT.split()) - shown
     assert st.dropped_letters == sum(len(w) for w in (TEXT.split() * 2)[shown:])
-    assert sc.s.open_turn == 1 and len(sc.s.open_words) == shown
+    # the word it was typing when it stopped was never whole on the screen: not shown
+    assert sc.s.open_turn == 1 and len(sc.s.open_words) == shown - 1
+    assert st.stalls == []  # it was typing, not waiting
 
 
 def test_a_screen_event_waits_its_turn_in_the_stream() -> None:

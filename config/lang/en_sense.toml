@@ -21,6 +21,9 @@ time_minimal = ""
 minimal = ""
 forgotten_quote = 'forgotten: "{quote}"'
 forgotten_more = "and more"
+# said when the nearest proportion is the one last said and the share is below it, so that a
+# real loss never reads as no change ("you think at less than half of the speed ...")
+less = "less than {frac}"
 ram = "your memory is being taken"
 
 [readings.full]

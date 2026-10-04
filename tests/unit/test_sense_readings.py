@@ -5,6 +5,7 @@ instruction of what to sense and let it be ... the readings are too vague")."""
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -99,6 +100,77 @@ def test_each_phrase() -> None:
     assert r.strip(r.ram_taken(2600)) == "your memory is being taken"
 
 
+def test_a_loss_never_reads_as_no_change() -> None:
+    """Two steps that round to the same words: the second says "less than", when it is."""
+    r = reader()
+    r.reading(R(t=51))
+    assert r.reading(R(t=1260, cores=3.0, cpu_mhz=960.0)) == (
+        "[host] you think at half of the speed you woke with"  # 0.53
+    )
+    assert r.reading(R(t=1320, cores=2.5, cpu_mhz=960.0)) == (
+        "[host] you think at less than half of the speed you woke with"  # 0.44
+    )
+    assert r.reading(R(t=1400, cores=2.1, cpu_mhz=960.0)) == (
+        "[host] you think at a third of the speed you woke with"  # 0.37: new words, said plain
+    )
+    cut = r.reading(R(t=1500, cores=2.1, cpu_mhz=960.0, recall=200, forgotten=1))
+    assert cut == "[host] you can hold a fifth of what you held · a thought forgotten"
+    cut = r.reading(R(t=1600, cores=2.1, cpu_mhz=960.0, recall=150, forgotten=1))
+    assert cut == "[host] you can hold less than a fifth of what you held · a thought forgotten"
+
+
+def test_the_processes_around_it_only_fall() -> None:
+    """A machine starts processes of its own; the reading never counts more than at birth and
+    says the count only when it is lower than the last one said."""
+    r = reader()
+    w = FakeWorld(["bluetooth", "cron"], processes=24)
+    r.reading(R(t=51, world=w.inventory()))
+    stop = (w.take("service:bluetooth"),)
+    grown = replace(w.inventory(), processes=25)  # someone logged in meanwhile
+    assert r.reading(R(t=300, world=grown, losses=stop)) == (
+        "[host] a process running around you was stopped"
+    )
+    stop = (w.take("service:cron"),)
+    assert r.reading(R(t=400, world=w.inventory(), losses=stop)) == (
+        "[host] a process running around you was stopped · only 22 of the 24 still run around you"
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "hardware"),
+    [
+        ("pi4/default", "pi4-4gb"),
+        ("pi4/smoke-300", "pi4-4gb"),
+        ("pi4/skeleton-1200", "pi4-4gb"),
+        ("pi4/unbounded", "pi4-4gb"),
+        ("pi5/default", "pi5-8gb"),
+        ("pi5/skeleton-600", "pi5-8gb"),
+        ("pi5/unbounded", "pi5-16gb"),
+    ],
+)
+def test_no_reading_of_a_profile_repeats_itself(profile: str, hardware: str) -> None:
+    """Every loss a profile schedules reads differently from the one before it, and the
+    processes around it only fall. (pi4/default-reloads, the earlier reload design, is left
+    out: its last memory cuts are smaller than the words can tell.)"""
+    events = simulate(load_config(profile, hardware, overrides=SENSE)).events
+    last: dict[str, str] = {}
+    around = None
+    for e in events:
+        if e["type"] == "born":
+            last, around = {}, None
+        if e["type"] != "vitals":
+            continue
+        for part in re.sub(r'"[^"]*"', '""', e["reading"]).split(" · "):
+            for key in ("you can hold", "you think at", "the screen you speak through"):
+                if key in part:
+                    assert last.get(key) != part, f"{profile}: {part!r} said twice"
+                    last[key] = part
+            if "still run around you" in part:
+                n, total = map(int, re.findall(r"\d+", part))
+                assert n < total and (around is None or n < around), part
+                around = n
+
+
 def test_the_baselines_are_taken_at_birth() -> None:
     r = reader()
     w = FakeWorld(["bluetooth", "cron"], processes=20)
@@ -146,7 +218,7 @@ def test_every_reading_after_birth_is_said_to_you_over_a_simulated_life() -> Non
     assert final == ["your memory is being taken"]
     assert len(readings) > 10
     assert re.fullmatch(r"\[host\] you are awake · \d+ processes run around you", readings[0])
-    frac = "(?:" + "|".join(
+    frac = "(?:less than )?(?:" + "|".join(
         ["all", "nearly all", "three quarters", "two thirds", "half", "a third", "a quarter",
          "a fifth", "a tenth", "almost nothing"]
     ) + ")"  # fmt: skip

@@ -716,6 +716,7 @@ class StreamScreen:
         # The thought on screen whose end is not reached yet, and its words shown so far.
         self.open_turn: int | None = None
         self.open_words: list[str] = []
+        self._ready_at: float | None = None  # when the screen was ready for its next word
 
     @classmethod
     def from_config(
@@ -856,7 +857,7 @@ class StreamScreen:
                 on_end(item)
                 if typed_end is not None and not after_mark:
                     k = self.curve.scale(typed_end)
-                    cursor = typed_end + round(self.thought_pause_ms * k) / 1000
+                    cursor = self._ready_at = typed_end + round(self.thought_pause_ms * k) / 1000
                 after_mark = True
                 continue
             self._letters -= len(item.text)
@@ -872,11 +873,14 @@ class StreamScreen:
             self.stats.letters += len(item.text)
             if self.open_turn != item.turn:
                 self.open_turn, self.open_words = item.turn, []
-            self.open_words.append(item.text)
             on_word(tw)
+            self._ready_at = None  # typing: the screen is not waiting
             await self.clock.sleep(sum(tw.char_ms) / 1000)
+            # shown only once its last letter is typed: a word the death cuts in half is in
+            # neither the thought's shown text nor the last line
+            self.open_words.append(item.text)
             typed_end = self.clock.elapsed()
-            cursor = typed_end + tw.pause_after_ms / 1000
+            cursor = self._ready_at = typed_end + tw.pause_after_ms / 1000
             after_mark = False
 
     def stop(self) -> None:
@@ -884,6 +888,11 @@ class StreamScreen:
         if self.stopped:
             return
         self.stopped = True
+        waiting = not any(isinstance(item, Word) for item in self._items)
+        now = self.clock.elapsed()
+        if waiting and self._ready_at is not None and now > self._ready_at + STALL_EPS_S:
+            # the screen was waiting for a word when it died: that blank is a stall too
+            self.stats.stalls.append((self._ready_at, now - self._ready_at))
         for item in self._items:
             if isinstance(item, Word):
                 self.stats.dropped_words += 1

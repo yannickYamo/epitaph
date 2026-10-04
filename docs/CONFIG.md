@@ -36,7 +36,10 @@ clock), `your radio was switched off`, `your light was switched off` or `the scr
 through has half of its light`; the death reading is `your memory is being taken`. A
 proportion is the nearest of all, nearly all, three quarters, two thirds, half, a third, a
 quarter, a fifth, a tenth and almost nothing (`fraction_words` in `mind/prompt.py`), against
-what the reader saw at birth. A template may use `{frac}` (memory, screen, `thinking`) and,
+what the reader saw at birth. When two steps of one quantity round to the same words and the
+share fell below them, the second is said through the pack's `less` template (`less than
+{frac}`), so a loss never reads as no change. The processes counted are those of birth that
+still run, and the count is said only when it is lower than the last one said. A template may use `{frac}` (memory, screen, `thinking`) and,
 for `around`, `{n}`, `{total}` (the processes at birth) and `{gone}`. A pack key `thinking`,
 when set, replaces the cores and clock lines (it is empty in `en` and `en_words`). In every
 wordless pack a reading with nothing new is a bare `[host]`. A pack may leave a field empty

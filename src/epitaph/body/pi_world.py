@@ -96,22 +96,33 @@ def valid_service(name: str) -> bool:
     return bool(SERVICE_NAME.match(name)) and not PROTECTED.match(name)
 
 
-def count_processes(proc: Path = PROC) -> int:
-    """User-space processes: /proc entries with a command line (kernel threads have none)."""
-    n = 0
+def processes(proc: Path = PROC) -> frozenset[tuple[str, str]]:
+    """The user-space processes: /proc entries with a command line (kernel threads have
+    none), each as (pid, start time), so that a reused pid is not taken for the old process."""
+    found: set[tuple[str, str]] = set()
     try:
         entries = list(proc.iterdir())
     except OSError:
-        return 0
+        return frozenset()
     for d in entries:
         if not d.name.isdigit():
             continue
         try:
-            if (d / "cmdline").read_bytes():
-                n += 1
+            if not (d / "cmdline").read_bytes():
+                continue
         except OSError:
             continue  # exited meanwhile
-    return n
+        try:  # field 22 of stat, counted after the command name (which may hold spaces)
+            started = (d / "stat").read_text().rpartition(")")[2].split()[19]
+        except (OSError, IndexError):
+            started = ""
+        found.add((d.name, started))
+    return frozenset(found)
+
+
+def count_processes(proc: Path = PROC) -> int:
+    """How many user-space processes run now."""
+    return len(processes(proc))
 
 
 def led_state(leds: Path = LEDS, names: Sequence[str] = LED_NAMES) -> OnOff | None:
@@ -175,6 +186,7 @@ class PiWorld:
         self.leds = leds
         self.drm = drm
         self.failures = 0
+        self._birth: frozenset[tuple[str, str]] | None = None
 
     @classmethod
     def from_config(cls, cfg: Config) -> PiWorld:
@@ -207,10 +219,18 @@ class PiWorld:
         return states.get(word)
 
     def inventory(self) -> WorldState:
-        """What is there now; the screen is the display's to know (None)."""
+        """What is there now; the screen is the display's to know (None).
+
+        `processes` counts those of the life's first inventory that still run. A machine
+        starts processes of its own (a timer, someone logging in): they were not around the
+        creature at birth, so they never make its world grow.
+        """
+        now = processes(self.proc)
+        if self._birth is None:
+            self._birth = now
         return WorldState(
             services=self.running_services(),
-            processes=count_processes(self.proc),
+            processes=len(now & self._birth),
             radio=self.radio(),
             light=led_state(self.leds),
             screen=None,
@@ -275,6 +295,7 @@ class PiWorld:
 
     def restore(self) -> None:
         """Everything the helper took, back (services, radio, lights); never raises."""
+        self._birth = None  # the next life counts its own world
         try:
             rc = self._helper("restore")
         except Exception:  # a restore must never stop a death or a start
