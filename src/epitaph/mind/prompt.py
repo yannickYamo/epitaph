@@ -55,6 +55,7 @@ _DEFAULT_READINGS: dict[str, Any] = {
     "minimal": "{time} · {recall}",
     "forgotten_quote": 'forgotten: "{quote}"',
     "forgotten_more": "and {n} more",
+    "less": "",
     "echo": 'your words now: "{echo}"',
     "ram": "ram {mb} MB taken",
     "full": {
@@ -201,11 +202,16 @@ _FRACTIONS = (
 )
 
 
+def nearest_fraction(r: float) -> tuple[float, str]:
+    """The nearest named proportion to a ratio: its value and its words."""
+    r = max(0.0, min(1.0, r))
+    return min(_FRACTIONS, key=lambda fr: abs(fr[0] - r))
+
+
 def fraction_words(r: float) -> str:
     """A ratio as plain words ("half", "a third", "a tenth"): proportions a mind can feel,
     where units and numbers invite it to recite them (round 9)."""
-    r = max(0.0, min(1.0, r))
-    return min(_FRACTIONS, key=lambda fr: abs(fr[0] - r))[1]
+    return nearest_fraction(r)[1]
 
 
 def _fmt_num(x: float) -> str:
@@ -442,6 +448,9 @@ class Reader:
         self._cores: float | None = None
         self._speed: float | None = None
         self._screen: int | None = None
+        # the proportion last said of each quantity: its words, the share, the phrase
+        self._said: dict[str, tuple[str, float, str]] = {}
+        self._procs_said: int | None = None  # the count of processes last said
 
     @classmethod
     def from_config(cls, cfg: Config, lang: Lang | None = None) -> Reader:
@@ -493,7 +502,7 @@ class Reader:
             self._mem_birth = x.recall
             self._compute_birth = x.cores * (x.cpu_mhz or 1800.0)
             if x.world is not None and x.world.processes > 0:
-                self._procs_birth = x.world.processes
+                self._procs_birth = self._procs_said = x.world.processes
 
         mem_was = self._decide_mem(x)
         bits_was = self._bits if self._bits is not None and self._bits != bits else None
@@ -555,7 +564,7 @@ class Reader:
             lang.form(f, "memory").format(
                 recall=x.recall,
                 was=was(None if mem_was is None else str(mem_was)),
-                frac=self._frac(x.recall, self._mem_birth),
+                frac=self._frac("memory", x.recall, self._mem_birth),
             )
         )
         if x.forgotten == 1:
@@ -573,7 +582,7 @@ class Reader:
         if thinking:
             # one phrase for cores and clock: how fast it thinks, against its birth
             compute = x.cores * (x.cpu_mhz or 1800.0)
-            parts.append(thinking.format(frac=self._frac(compute, self._compute_birth)))
+            parts.append(thinking.format(frac=self._frac("thinking", compute, self._compute_birth)))
         else:
             parts.append(
                 lang.form(f, "cores").format(
@@ -596,10 +605,37 @@ class Reader:
             parts.append(lang.form(f, "temp").format(temp=f"{x.cpu_c:.0f}"))
         return self._line(prefix, parts)
 
-    @staticmethod
-    def _frac(now: float, birth: float | None) -> str:
-        """`now` as a share of what it had at birth, in words ("half"); "all" if unknown."""
-        return fraction_words(now / birth) if birth else "all"
+    def _frac(self, key: str, now: float, birth: float | None) -> str:
+        """`now` as a share of what it had at birth, in words ("half"); "all" if unknown.
+
+        A loss must never read as no change: when the nearest words are the ones last said
+        of this quantity (`key`) and the share is below them, the pack's `less` template
+        says so ("less than half"). A pack without one repeats the words.
+        """
+        if not birth:
+            return "all"
+        r = now / birth
+        value, words = nearest_fraction(r)
+        phrase = words
+        last = self._said.get(key)
+        if last is not None and last[0] == words:
+            less = self.lang.r("less")
+            if abs(r - last[1]) < 1e-9:
+                phrase = last[2]  # nothing moved: the same words
+            elif less and r < last[1] and r < value:
+                phrase = less.format(frac=words)
+        self._said[key] = (words, r, phrase)
+        return phrase
+
+    def _around(self, f: str, processes: int) -> str | None:
+        """The processes left of those at birth, or None when no fewer than last said (a
+        machine starts processes of its own: the count may only fall, like what it tells)."""
+        total = self._procs_birth or processes
+        n = min(processes, total)
+        if self._procs_said is not None and n >= self._procs_said:
+            return None
+        self._procs_said = n
+        return self.lang.form(f, "around").format(n=n, total=total, gone=total - n)
 
     def _line(self, prefix: str, parts: list[str]) -> str:
         """The reading: the non-empty parts after the prefix (a language pack may leave a
@@ -620,17 +656,14 @@ class Reader:
         if w.screen:
             out.append(
                 lang.form(f, "screen").format(
-                    pct=w.screen, was="", frac=fraction_words(w.screen / 100)
+                    pct=w.screen, was="", frac=self._frac("screen", w.screen, 100)
                 )
             )
             self._screen = w.screen
         if w.processes > 0:
             total = self._procs_birth or w.processes
-            out.append(
-                lang.form(f, "around").format(
-                    n=w.processes, total=total, gone=max(0, total - w.processes)
-                )
-            )
+            n = min(w.processes, total)
+            out.append(lang.form(f, "around").format(n=n, total=total, gone=total - n))
         return out
 
     def _world_losses(self, f: str, x: ReadingInput, was: Callable[[str | None], str]) -> list[str]:
@@ -658,16 +691,13 @@ class Reader:
                     lang.form(f, "screen").format(
                         pct=pct,
                         was=was(None if old is None else f"{old}%"),
-                        frac=fraction_words(pct / 100),
+                        frac=self._frac("screen", pct, 100),
                     )
                 )
         if stopped and x.world is not None and x.world.processes > 0:
-            total = self._procs_birth or x.world.processes
-            out.append(
-                lang.form(f, "around").format(
-                    n=x.world.processes, total=total, gone=max(0, total - x.world.processes)
-                )
-            )
+            around = self._around(f, x.world.processes)
+            if around is not None:
+                out.append(around)
         return out
 
     def _changes(
@@ -693,7 +723,7 @@ class Reader:
                 lang.form(f, "memory").format(
                     recall=x.recall,
                     was=was(str(mem_was)),
-                    frac=self._frac(x.recall, self._mem_birth),
+                    frac=self._frac("memory", x.recall, self._mem_birth),
                 )
             )
         if self.material and x.forgotten_quotes:
@@ -715,7 +745,7 @@ class Reader:
         thinking = lang.form(f, "thinking")
         if thinking and (cores_was is not None or clock_was is not None):
             compute = x.cores * (x.cpu_mhz or 1800.0)
-            out.append(thinking.format(frac=self._frac(compute, self._compute_birth)))
+            out.append(thinking.format(frac=self._frac("thinking", compute, self._compute_birth)))
             cores_was = clock_was = None  # said once, as how fast it thinks
         if cores_was is not None:
             out.append(
