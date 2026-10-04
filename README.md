@@ -63,7 +63,7 @@ The project was built in five days by a team of AI coding agents working from on
 
 ## What broke, and the fix
 
-**Every failure came from the machine, not the model. Most were found on the Pi, not on paper.**
+**Most of these failures only showed up once lives ran on the Pi.**
 
 | Failure | Fix |
 |---|---|
@@ -76,13 +76,13 @@ The project was built in five days by a team of AI coding agents working from on
 
 ## How we know
 
-**Machines check timing, memory and recovery. People judge the voice.**
+**Scripts check timing, memory and recovery. The voice was judged by reading whole lives.**
 
 `epitaph verify-life` replays any recorded life and checks its timing, memory budgets, pace,
 death and rebirth. `make check` runs lint, strict types, about 1,500 tests, a simulated life, the
 cost model and the small-chip engines; CI runs it on every push. The voice metrics advise but
 never decide ([ADR-028](docs/DECISIONS.md)). Every prompt change shipped only after the owner
-read whole transcripts. A metric can catch a failure; only a reader can approve a voice.
+read whole transcripts.
 
 ## What is still open
 
@@ -128,8 +128,8 @@ and the phase reports.
   `stories260K` (llama2.c, MIT).
 - Font: IBM Plex Mono (SIL Open Font License).
 
-Built by Yannick with a team of AI coding agents. The agents built the machine. The machine makes
-the art.
+Built by Yannick Maurice with a team of AI coding agents: they wrote the code, and he judged the
+voice.
 
 ## License
 
