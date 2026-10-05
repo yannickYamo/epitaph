@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,7 @@ def test_install_insists_on_the_source_path() -> None:
     assert 'realpath -m "$PREFIX/src"' in INSTALL.read_text()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_arm64_test_parses_and_has_help() -> None:
     assert ARM64.stat().st_mode & 0o111
     assert run("-n", str(ARM64)).returncode == 0

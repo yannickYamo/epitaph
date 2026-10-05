@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+# no window: SDL's offscreen driver on Linux, its dummy one where offscreen needs OpenGL
+os.environ.setdefault("SDL_VIDEODRIVER", "offscreen" if sys.platform == "linux" else "dummy")
 pygame = pytest.importorskip("pygame")
 
 from epitaph.display import screenshot as shot  # noqa: E402

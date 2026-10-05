@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -202,6 +203,7 @@ def test_relaunch_argv() -> None:
     assert argv[-3:] == ["py", "-m", "epitaph"]
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_relaunch(monkeypatch: pytest.MonkeyPatch) -> None:
     ran: list[list[str]] = []
     monkeypatch.setattr(selftest.shutil, "which", lambda name: "/usr/bin/" + name)

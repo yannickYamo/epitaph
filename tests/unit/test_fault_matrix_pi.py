@@ -147,6 +147,7 @@ def test_collect_with_no_lives_fails(pi: dict[str, str], tmp_path: Path) -> None
     assert res.returncode == 1 and "no finished life" in res.stderr
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_collect_dry_run_touches_nothing(tmp_path: Path) -> None:
     env = {**os.environ, "EPITAPH_SSH": "false", "PI_HOST": "pi", "EPITAPH_PYTHON": sys.executable}
     res = run(COLLECT, env, "--dry-run", "--lives", "2", "--out", str(tmp_path / "out"))

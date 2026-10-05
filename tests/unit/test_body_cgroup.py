@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -344,6 +345,7 @@ def test_never_adopts_a_foreign_scope(tmp_path: Path) -> None:
     assert not (root / "supervisor").exists()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_drop_page_cache(tmp_path: Path) -> None:
     f = tmp_path / "model.gguf"
     f.write_bytes(b"x" * 8192)

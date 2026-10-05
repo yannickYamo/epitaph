@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import itertools
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,8 @@ from epitaph.display.layout import (
 from epitaph.display.terminal import TerminalDriver
 from epitaph.display.themes import PLAIN, SEGMENT16, contrast_ratio, mix
 
-os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+# no window: SDL's offscreen driver on Linux, its dummy one where offscreen needs OpenGL
+os.environ.setdefault("SDL_VIDEODRIVER", "offscreen" if sys.platform == "linux" else "dummy")
 
 Event = dict[str, Any]
 DREAD_LIFE = Path(__file__).parent / "data" / "dread-2x1800.jsonl"

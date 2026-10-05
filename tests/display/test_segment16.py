@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,8 @@ from epitaph.display.themes import segment16 as seg
 
 from .test_layout import born, ev, thought
 
-os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+# no window: SDL's offscreen driver on Linux, its dummy one where offscreen needs OpenGL
+os.environ.setdefault("SDL_VIDEODRIVER", "offscreen" if sys.platform == "linux" else "dummy")
 
 
 def test_every_drawable_character_has_a_glyph() -> None:

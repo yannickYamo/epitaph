@@ -544,6 +544,7 @@ def _fake_pi(tmp_path: Path, ssh_rc: int | None = None) -> dict[str, str]:
     return env
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_the_sampler_appends_one_line_per_sample(tmp_path: Path) -> None:
     env = _fake_pi(tmp_path)
     out = tmp_path / "samples.tsv"

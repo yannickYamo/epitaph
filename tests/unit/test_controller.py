@@ -11,6 +11,7 @@ import asyncio
 import itertools
 import json
 import socket
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -611,6 +612,7 @@ def test_rotation_across_lives() -> None:
     assert [e["model"] for e in of(ev, "birth_loading")] == names
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_sd_notify_sends_one_datagram(tmp_path: Path) -> None:
     path = tmp_path / "notify.sock"
     with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as srv:
@@ -621,6 +623,7 @@ def test_sd_notify_sends_one_datagram(tmp_path: Path) -> None:
     assert not sd_notify("READY=1", {"NOTIFY_SOCKET": str(tmp_path / "gone.sock")})
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_sd_notify_abstract_socket() -> None:
     name = f"epitaph-test-{id(object())}"
     with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as srv:

@@ -206,6 +206,7 @@ def test_no_epitaph_on_the_pi(fake_pi: dict[str, str], tmp_path: Path) -> None:
     assert "no epitaph command on the Pi" in res.stderr
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the Pi's tools and body are Linux's")
 def test_smoke_dry_run_touches_nothing(tmp_path: Path) -> None:
     env = {**os.environ, "EPITAPH_SSH": "false", "PI_HOST": "pi", "EPITAPH_PYTHON": sys.executable}
     res = run(SMOKE, env, "--dry-run", "--profile", "pi4/skeleton-1200", "--lives", "2")
