@@ -182,4 +182,4 @@ jobs:
         run: make venv
 
       - name: make check
-        run: make check
+        run: make -k check

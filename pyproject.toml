@@ -100,6 +100,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.pyright]
 include = ["src"]
 pythonVersion = "3.11"
+pythonPlatform = "Linux"         # the body is Linux's (cgroups, posix_fadvise), wherever it is checked
 typeCheckingMode = "basic"
 strict = [
   "src/epitaph/mind",
