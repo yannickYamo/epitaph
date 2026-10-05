@@ -1,4 +1,4 @@
-"""Exhibition hours (BUILD_PLAN 5.10): when the piece is on show, from the wall clock.
+"""Exhibition hours: when the piece is on show, from the wall clock.
 
 `[exhibit] hours = "10:00-18:00"` names the opening hours in local time; an empty string means
 always on, and a closing time before the opening time runs across midnight ("20:00-02:00").

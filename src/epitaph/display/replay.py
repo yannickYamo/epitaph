@@ -1,4 +1,4 @@
-"""`epitaph replay`: any past life, any speed, from any moment (BUILD_PLAN 4 decision 8).
+"""`epitaph replay`: any past life, any speed, from any moment.
 
     epitaph replay 12 --speed 2 --from 20:00           # life 12 in a terminal
     epitaph replay lives/000012 --driver screen

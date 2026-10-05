@@ -1,4 +1,4 @@
-"""Exhibition hours (BUILD_PLAN 5.10): the hours, the time sync, and the controller outside them.
+"""Exhibition hours: the hours, the time sync, and the controller outside them.
 
 The controller runs on the fakes in virtual time; the wall clock is a fake that starts at a
 chosen moment and follows the virtual clock. No network, no real time.

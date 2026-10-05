@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Spike S1c: heat, power and speed drift under 30 minutes of thoughts (BUILD_PLAN 8.5).
+"""Spike S1c: heat, power and speed drift under 30 minutes of thoughts.
 
 Thought after thought at step 0 with a rolling memory, while a sampler logs temperature,
 `vcgencmd get_throttled` and the ARM clock every 5 s.
 Go: no under-voltage bit ever; throttling (bits 1, 2, 3 now) under 10% of samples; tokens/s in
 the last 5 minutes within 10% of the first 5.
 
-Round 2 (review item F8) explains the drift, so every thought also logs:
+Round 2 explains the drift, so every thought also logs:
   - the slot's logical context from GET /slots (n_past = prompt + decoded tokens, n_ctx);
   - with --kv-debug, the KV cache's high-water mark: the cells attention runs over
     (llama.cpp's n_kv is the highest used cell + 1, padded to 256). A trim frees cells at the

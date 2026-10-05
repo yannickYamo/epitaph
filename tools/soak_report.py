@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The soak report: section 11.4 of the build plan, as Markdown ready for docs (BUILD_PLAN 9 E7, gate G3).
+"""The soak report: section 11.4 of the build plan, as Markdown ready for docs (gate G3).
 
   tools/soak_report.py DIR [DIR ...] [--journal FILE] [--status FILE] [--samples FILE ...]
                        [--first N] [--last N] [--min-hours 25] [--out FILE]
@@ -15,7 +15,7 @@ verify.json). The other inputs are optional, and a criterion without its input r
               throttled bits, disk), one file or several
   --first/--last   the soak's life numbers (default: every life found)
 
-Criteria (BUILD_PLAN 11, items 2 and 4):
+Criteria (items 2 and 4):
   - duration at least --min-hours (25), from the first life's load to the last record;
   - every finished life passes `verify-life` (its verify.json, written by collect_lives.sh);
   - no missed life: every gap from `death_shown` to the next `birth` is within the silence +
@@ -49,7 +49,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-MARGIN_S = 300.0  # BUILD_PLAN 10.3 / 11.4: silence + measured load + 5 min
+MARGIN_S = 300.0  # silence + measured load + 5 min
 DEFAULT_SILENCE_S = 90.0
 MIN_HOURS = 25.0
 MAX_RSS_GROWTH_MB = 20.0
@@ -723,8 +723,8 @@ def render(
         lede += f" (lives {lives[0].n:06d} to {lives[-1].n:06d})"
     if span:
         lede += f" over {span / 3600:.1f} hours"
-    out += [lede + ". The life count is reported, not required (BUILD_PLAN 11.4).", ""]
-    out += ["| Criterion (BUILD_PLAN 11) | Result | Measured |", "|---|---|---|"]
+    out += [lede + ". The life count is reported, not required.", ""]
+    out += ["| Criterion | Result | Measured |", "|---|---|---|"]
     out += [f"| {c.name} | {c.result} | {c.measured} |" for c in crit]
     out.append("")
 

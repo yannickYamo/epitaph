@@ -1,4 +1,4 @@
-"""Life clocks and the schedule (BUILD_PLAN 5.2, 5.3).
+"""Life clocks and the schedule.
 
 The life clock is monotonic time since the model finished
 loading; it never pauses and never reads the wall clock.
@@ -112,7 +112,7 @@ class FakeClock:
 
 
 class RehearsalClock(FakeClock):
-    """Virtual time charged at Pi costs while a real model runs on the laptop (BUILD_PLAN 5.11)."""
+    """Virtual time charged at Pi costs while a real model runs on the laptop."""
 
 
 # ---------------------------------------------------------------------------------------
@@ -153,7 +153,7 @@ class _VirtualSelector(selectors.DefaultSelector):
 
 class VirtualEventLoop(asyncio.SelectorEventLoop):
     """An asyncio loop whose clock is virtual: when every task waits, time jumps to the next
-    timer. Deterministic, and a 60-minute life runs in milliseconds."""
+    timer. Deterministic, and a 30-minute life runs in milliseconds."""
 
     def __init__(self, start: float = 0.0, real_wait_s: float = 2.0) -> None:
         """Begin at virtual time start seconds.
@@ -247,7 +247,7 @@ class Schedule:
 
     @classmethod
     def from_profile(cls, cfg: Config, lifespan_s: float | None = None) -> Schedule:
-        """The schedule of the configured profile, optionally rescaled (BUILD_PLAN 6.4).
+        """The schedule of the configured profile, optionally rescaled.
         Fractional keyframes scale with the lifespan; end-anchored ones keep their offset."""
         return cls(cfg.profile, lifespan_s)
 
@@ -274,7 +274,7 @@ class Schedule:
             frac = min(1.0, max(0.0, (t_s - self.times[i]) / span)) if span > 0 else 0.0
 
         # Recall is cut at a reload, not eased into it: the reload is the life's big loss
-        # (BUILD_PLAN 5.4), so it holds until a keyframe that changes step or threads.
+        # , so it holds until a keyframe that changes step or threads.
         reload_next = nxt is not None and (nxt["step"], nxt["threads"]) != (
             cur["step"],
             cur["threads"],

@@ -15,7 +15,7 @@ causes, death flush, silence and rebirth. Only the world around it is fake:
 - the persona cache (`[backend] persona_cache`) is one store shared by the lives' fakes, as
   the disk is: the first birth reads the system prompt, the next ones restore it.
 
-Event conventions (contract decisions E2, E3, D2, D5, D6, E4): every event carries `t`, the
+Event conventions: every event carries `t`, the
 life clock in seconds (0 before birth); `birth_loading` carries the resolved `profile`,
 `hardware` and `lifespan_s`; every memory cut emits `forget`, the reload's included;
 `gen_end` carries `prompt_n` and `tok_s`. `ts` is virtual wall time, consistent with `t`.

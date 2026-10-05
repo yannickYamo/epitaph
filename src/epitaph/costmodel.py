@@ -1,4 +1,4 @@
-"""The cost model: a thought-by-thought estimate of a life from machine costs (BUILD_PLAN 5.3).
+"""The cost model: a thought-by-thought estimate of a life from machine costs.
 
 It answers one question before any Pi time is spent: with these costs, does the profile give
 the model enough thoughts after every loss to notice it? Costs come from bench/*.json
@@ -11,7 +11,7 @@ on real lives, because a profile is where they are won or lost:
   fresh server, from the reload to the first word after it;
 - **speed decline** (`verify.max_speed_ratio_end_vs_start`, full-level profiles): generation
   speed in the last 5 minutes against the first 5;
-- **speed monotonic** (review 2, F2): generation never speeds up across a reload. The first
+- **speed monotonic**: generation never speeds up across a reload. The first
   thought after each reload may not be modelled faster than the last thought before it.
   Speeds here follow the context, which a reload cuts: when the bench measured a short
   context (the birth thought) and a deep one, the speed at a thought is interpolated
@@ -30,7 +30,7 @@ What the estimate assumes, from the spikes:
   down to that share of itself over `late_after_s` of life, and keeps the slower value from
   then on. Whether a reload resets the slowdown is not measured, so it is not assumed.
 - The system prompt is sized from the real persona text, per erosion step.
-- The memory-gap marker rides on the reading after the first loss (decision A3), so it
+- The memory-gap marker rides on the reading after the first loss, so it
   costs its own tokens and no re-read; cache reuse holds (S2f: 2-8% re-read per edit).
 """
 
@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from epitaph.clock import Schedule
-from epitaph.config import REPO_ROOT, Config, profile_rules, reading_tokens, system_tokens
+from epitaph.config import DATA_ROOT, Config, profile_rules, reading_tokens, system_tokens
 from epitaph.mind.memory import approx_tokens
 from epitaph.mind.prompt import Persona
 from epitaph.pacing import StreamCurve
@@ -161,7 +161,7 @@ def load_costs(cfg: Config, model: str | None = None, bench_dir: Path | None = N
         cache_reuse_works=bool(cfg.get("estimate.cache_reuse_works", True)),
     )
     name = model or str(cfg.get("life.models", [""])[0])
-    bench = bench_dir or REPO_ROOT / "bench"
+    bench = bench_dir or DATA_ROOT / "bench"
     measured = sorted(bench.glob(f"{cfg.hw_class}-{name}-*.json")) if bench.exists() else []
     late: list[float] = []
     short_ctx: list[float] = []
@@ -281,7 +281,7 @@ def estimate(cfg: Config, costs: Costs, schedule: Schedule | None = None) -> Rul
 
         if (k.step, k.threads) != (life.step, life.threads) and t - life.last_reload >= min_gap:
             reload_start = t
-            # The reload cuts memory the way Memory.cut_for_reload does (contract C-B4).
+            # The reload cuts memory the way Memory.cut_for_reload does.
             life.memory = min(life.memory, int(k.recall * trim_to))
             t += costs.load(k.step)
             life.step, life.threads, life.last_reload = k.step, k.threads, reload_start

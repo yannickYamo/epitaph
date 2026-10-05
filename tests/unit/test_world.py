@@ -274,7 +274,7 @@ def test_each_reading_comes_right_before_its_thought(life_events: list[dict[str,
             before = [x for x in first[:i] if x["type"] in ("reading", "word")]
             assert before[-1]["type"] == "reading" and before[-1]["turn"] == e["turn"]
             assert not before[-1]["text"].startswith("[host]")
-    # readings_names off (panel 4): the loss is felt, its name never given
+    # readings_names off: the loss is felt, its name never given
     cfg = load_config("pi4/default", "pi4-4gb")
     unnamed = Reader.from_config(cfg).lang.form("full", "stopped_unnamed")
     assert unnamed == "a process running around you was stopped"  # en_sense (round 9)

@@ -1,4 +1,4 @@
-"""The controller (BUILD_PLAN 5.8, 5.9, 6.3) on the fakes, in virtual time.
+"""The controller on the fakes, in virtual time.
 
 Every death cause, a death during a reload, recovery of an interrupted life, the life
 counter, the sync rule, the death flush, hang detection and watchdog pings in every state.
@@ -737,7 +737,7 @@ def test_the_last_words_end_within_the_display_limit(monkeypatch: pytest.MonkeyP
 
 
 def test_a_lost_network_block_kills_the_creature_before_its_next_thought() -> None:
-    """ADR-005, review 2026-10-01: checked every turn, not only at a spawn."""
+    """ADR-005: checked every turn, not only at a spawn."""
     from epitaph.body.cgroup import CgroupError
 
     calls = iter([None, None, CgroupError("rule gone")])

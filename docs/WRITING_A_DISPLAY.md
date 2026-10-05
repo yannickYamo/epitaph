@@ -1,7 +1,7 @@
 # Writing a display
 
-A display is a separate process that subscribes to the controller's events and draws them
-(BUILD_PLAN 4, 6.3). Everything a display needs to know about a life already lives in
+A display is a separate process that subscribes to the controller's events and draws them.
+Everything a display needs to know about a life already lives in
 `epitaph.display.layout`, which is pure Python, so a new display only draws.
 
 ## The pieces
@@ -18,8 +18,8 @@ A display is a separate process that subscribes to the controller's events and d
 | `display/remote.py` | `epitaph display [--connect HOST]`: SSH tunnel, reconnect, snapshot redraw |
 | `display/presence.py` | `epitaph display --screen-present`: is a screen connected (the unit's `ExecCondition`) |
 | `display/replay.py` | `epitaph replay LIFE --speed --from`: republish `events.jsonl` |
-| `display/screenshot.py` | Offscreen PNGs; OCR, contrast and whole-word checks (test D13) |
-| `display/bench.py` | CPU share of the pygame screen while typing and during a fade (D7) |
+| `display/screenshot.py` | Offscreen PNGs; OCR, contrast and whole-word checks |
+| `display/bench.py` | CPU share of the pygame screen while typing and during a fade |
 
 ## A new driver in four methods
 
@@ -44,7 +44,7 @@ class MyDriver:
 
 Then `asyncio.run(drive(MyDriver(), remote.reconnecting(connect)))`.
 
-## Rules every driver keeps (BUILD_PLAN 5.12)
+## Rules every driver keeps
 
 - **Typing runs on the display's clock.** `LifeView` schedules each word after the previous
   one, letter by letter from `char_ms`, then `pause_after_ms`. Draw what `compose_*` returns
@@ -80,14 +80,14 @@ Then `asyncio.run(drive(MyDriver(), remote.reconnecting(connect)))`.
 - **Silence styles** (`silence_style`): `dark`, `death_card` (the card stays),
   `last_words` (no death fade; the words come back after the card), `idle` (dark, with
   one dim mark, `Frame.idle`, resting `idle_step_seconds` in each place) and `vigil`
-  (the installation's default; see the dread plan below).
+  (the installation's default; see the next section).
 - **Snapshots:** a `snapshot` event resets the view to exactly what it describes; after a
   reconnect or an overflow, redraw everything. Besides the words it carries `mode`, each
   fading word's `fade`, the current `reload`, `groups_left`, `quant`, and after death the
   `death` record and `death_shown_ago`, so a display that connects mid-reload, mid-fade or
   on the death card draws the same screen as one that saw every event.
 
-## The dread plan (owner, 2026-10-01)
+## The installation's screen
 
 The screen of an installation life speaks in two voices and goes dark with its machine.
 `LifeView` does all of it from the events of the shared interface; a driver only draws
@@ -99,7 +99,7 @@ the new parts of the `Frame`.
   "machine" thoughts placed right above the thought of its `turn` (no blank line), and
   the words that follow wait for it. The pauses after them give that time back (at most
   half of each), so the screen does not drift behind the machine. The life's first
-  reading (turn 1, the inventory) is typed one fact a line (`machine_line_pause_ms`
+  reading (turn 1), when it lists several facts, is typed one fact a line (`machine_line_pause_ms`
   between lines). Its spans are `kind = "machine"`, `col` counted in the machine's own
   cells (`Frame.machine_cols`): the screen draws them `machine_scale` (0.55) of the text's
   size in `Theme.machine` (a dim grey, 7.5:1), a terminal in the same cells. While a
@@ -143,7 +143,7 @@ the new parts of the `Frame`.
 
 `tests/display/data/dread-2x1800.jsonl` is two simulated `pi4/default` lives with
 readings, world losses and the vigil (`python -m tests.display.dread OUT`), the stand-in
-`tests/display/test_dread.py` draws at the D13 sizes, in a terminal, on the grid and
+`tests/display/test_dread.py` draws at the four test sizes, in a terminal, on the grid and
 through `epitaph replay`.
 
 ## The 16-segment theme
@@ -156,7 +156,7 @@ upper-case letters, digits and ASCII punctuation, everything else mapped (`é` �
 the idle mark a lone decimal point. In a terminal the theme only gives the colours and the
 charset. Cells are cached per character and colour, so a typed letter costs one blit.
 
-## Cheap redraws (BUILD_PLAN 9 D7)
+## Cheap redraws
 
 The Pi has four cores and the creature gets three, so a display must stay well under 5% of
 one core. `drive` does not redraw a still screen: it sleeps until `LifeView.next_change`
@@ -168,9 +168,9 @@ diffing cells.
 
 ## Watching the Pi from the laptop
 
-`epitaph display --connect pi --driver terminal` opens `ssh -N -L <free port>:127.0.0.1:7707`
-(keys only, `BatchMode`), subscribes through it and draws in the terminal. `pi` means
-`pi,pi-eth`: every (re)start of the tunnel tries Wi-Fi first, then the cable. When the
+`epitaph display --connect <host> --driver terminal` opens `ssh -N -L <free port>:127.0.0.1:7707`
+(keys only, `BatchMode`), subscribes through it and draws in the terminal. `<host>` is an SSH
+alias; with a comma-separated list, every (re)start of the tunnel tries each in order. When the
 tunnel or the controller goes away the status strip says `reconnecting`; the view retries
 with backoff (0.5 s doubling to 5 s), starts a new ssh when the old one has died, and
 redraws everything from the snapshot the bus sends first on every subscription. If no
@@ -193,7 +193,7 @@ uses the same answer to choose between the screen and the terminal.
 
 ## Checking a display
 
-- `python -m epitaph.display.screenshot --out DIR [--events LIFE.jsonl]`: D13 at 800×480,
+- `python -m epitaph.display.screenshot --out DIR [--events LIFE.jsonl]`: readability at 800×480,
   1280×720, 1920×1080 and 1080×1920 (OCR ≥ 95%, contrast ≥ 12:1, no split words), on the
   built-in sample and on a recorded life (a simulated `pi4/skeleton-1200` life by default)
   at two moments: a full screen before the first forgetting, and just before death.
@@ -202,9 +202,9 @@ uses the same answer to choose between the screen and the terminal.
   death cards (OCR and the contrast of every line, `screenshot.readability_card`).
 - `pytest -m display tests/display`: the same as tests. `tests/display/data/skeleton-1200.jsonl`
   is the recorded fake life (`epitaph sim --profile pi4/skeleton-1200 --hardware pi4-4gb
-  --events --seed 0`). `tests/display/data/default-1800.jsonl` is the 30-minute installation
-  life (`--profile pi4/default`, two reloads that forget, erosion, an OOM death), standing in
-  for a real Pi life: `test_full_life.py` draws all of it frame by frame on the plain screen,
+  --events --seed 0`). `tests/display/data/default-1800.jsonl` is a 30-minute life of the
+  earlier reload design (now `pi4/default-reloads`: two reloads that forget, erosion, an OOM
+  death), standing in for a real Pi life: `test_full_life.py` draws all of it frame by frame on the plain screen,
   the portrait screen, the 16-segment grid and the terminal, and plays it through `epitaph
   replay`. OCR tests carry the `tesseract` marker: they skip when tesseract is missing,
   except in CI (`CI` set), where they fail instead.
@@ -213,5 +213,4 @@ uses the same answer to choose between the screen and the terminal.
   800×480, 1280×720 and 1920×1080, new drawing against whole-frame painting; scenarios
   `typing`, `fade` (a reload) and `death` (the death fade and the typed card), `--theme
   segment16` for the LED grid. Run it on the Pi pinned to one core (`taskset -c 0`) for the
-  numbers that matter. On the laptop at 1280×720 every case stays under 1% of one core
-  (phase 2 report D).
+  numbers that matter. On a laptop at 1280×720 every case stays under 1% of one core.

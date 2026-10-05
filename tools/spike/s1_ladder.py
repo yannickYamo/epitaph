@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Round 2 of S1b on the Pi: one model's whole ladder at 3 and 2 threads (BUILD_PLAN 8.5, A2).
+"""Round 2 of S1b on the Pi: one model's whole ladder at 3 and 2 threads.
 
 For each ladder step, two servers in a row, both with `-tb 3` (prompt threads, as the backend
 runs them) and the Pi 4's load mode (`--load-mode dio`, spike S3):

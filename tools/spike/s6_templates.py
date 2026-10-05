@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spike S6: templates and parameters per candidate (BUILD_PLAN 8.5).
+"""Spike S6: templates and parameters per candidate.
 
 For one model file it checks, against a real llama-server:
   - the chat template: system role kept, thinking tags, `chat_template_kwargs`

@@ -1,4 +1,4 @@
-"""The body contract: cgroups, limits, vitals, death (BUILD_PLAN 6.4).
+"""The body contract: cgroups, limits, vitals, death.
 
 Implemented in cgroup.py, vitals.py and fake.py.
 """
@@ -26,7 +26,7 @@ class Body(Protocol):
         ...
 
     def progress(self) -> ProgressCounters:
-        """The creature's monotonic progress counters, for hang detection (BUILD_PLAN 5.9)."""
+        """The creature's monotonic progress counters, for hang detection."""
         ...
 
     def kill_now(self, cause: Cause) -> None:

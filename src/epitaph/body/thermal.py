@@ -1,5 +1,5 @@
 # pyright: strict
-"""Heat: the temperature, the firmware's throttling bits, and the thermal pause (BUILD_PLAN 9 C9).
+"""Heat: the temperature, the firmware's throttling bits, and the thermal pause.
 
 The Pi 4 runs the creature at 40-57 °C with no fan (spikes S1c, S7), far below the firmware's
 own throttling at 80-85 °C, so at normal temperatures nothing here ever pauses a life. The

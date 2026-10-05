@@ -1,4 +1,4 @@
-"""Model files: resolve, download, pin and push GGUFs (BUILD_PLAN 9 A8).
+"""Model files: resolve, download, pin and push GGUFs.
 
 `config/models.toml` says which repo and file name pattern each model uses; this module turns
 that into concrete files, pins each file's sha256 (the Hugging Face LFS object id, which is
@@ -233,7 +233,7 @@ def download(ref: FileRef, root: Path | None = None, log: Callable[[str], None] 
 
 
 def pick_host(candidates: Sequence[str] = ("pi-eth", "pi"), timeout: float = 20.0) -> str:
-    """The first ssh alias in `candidates` that answers (BUILD_PLAN F12).
+    """The first ssh alias in `candidates` that answers.
 
     Model files are large, so the cable (`pi-eth`) comes first and Wi-Fi (`pi`) is the
     fallback. Raises ModelFileError when none answers.
@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     """Command line: resolve, fetch, push or list model files; return the exit status."""
     import argparse
 
-    ap = argparse.ArgumentParser(description="Resolve, download and push model files (A8).")
+    ap = argparse.ArgumentParser(description="Resolve, download and push model files.")
     ap.add_argument("action", choices=["resolve", "fetch", "push", "list"])
     ap.add_argument("--models", default="all", help="comma list, or 'all'")
     ap.add_argument("--quants", default="step0", help="step0 | ladder | Q4_0,... (mixable)")

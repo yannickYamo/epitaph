@@ -1,4 +1,4 @@
-"""The cost model's `speed_monotonic` rule (review 2, F2): no reload speeds generation up.
+"""The cost model's `speed_monotonic` rule: no reload speeds generation up.
 
 Crafted costs pin the rule (a rise, a slowdown, a rise that only the shorter context after
 the reload causes, the warn mode) on the v6 reference schedule's reload times (tests/conftest.py

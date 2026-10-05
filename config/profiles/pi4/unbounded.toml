@@ -1,4 +1,4 @@
-# Homage to Latent Reflection (BUILD_PLAN 5.3): never forgets; dies when the context is
+# Homage to Latent Reflection: never forgets; dies when the context is
 # full (cause=full). Ladder step 1 because step 0 plus a large KV cache does not fit in
 # 4 GB. The deadline is only a safety net.
 # ctx: 5120 was sized from spike S1a's free RAM for Qwen3 1.7B, which filled it at about

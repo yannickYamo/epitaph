@@ -1,4 +1,4 @@
-"""Model file resolution, pinning and the free-space check (BUILD_PLAN 9 A8). No network."""
+"""Model file resolution, pinning and the free-space check. No network."""
 
 from __future__ import annotations
 

@@ -1,3 +1,3 @@
 # The laptop (hardware class dev): the installation's life, so `epitaph sim` and `epitaph run
-# --backend fake` work with no flags (BUILD_PLAN 11.7). Timing on a laptop is not the Pi's.
+# --backend fake` work with no flags. Timing on a laptop is not the Pi's.
 extends = "pi4/default"

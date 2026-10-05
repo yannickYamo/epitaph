@@ -1,4 +1,4 @@
-"""verify-life for the rehearsal (BUILD_PLAN 5.11): language-pack word lists, rehearsal
+"""verify-life for the rehearsal: language-pack word lists, rehearsal
 headers and sidecar metadata, the screen level, `--summary`, and `compare`."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# The local screen (BUILD_PLAN 4, 10.2). Installed by deploy/install.sh into /etc/systemd/system.
+# The local screen. Installed by deploy/install.sh into /etc/systemd/system.
 # Headless (no connected HDMI connector) the ExecCondition exits 1: systemd skips the unit
 # cleanly, with no failure and no restart loop (gate G1.3). The remote view needs no unit.
 # A screen plugged in later starts it, and an unplugged one stops it: the udev rule

@@ -1,4 +1,4 @@
-"""Output sanitizer: what the creature writes, made fit for the screen (BUILD_PLAN 5.7 step 2).
+"""Output sanitizer: what the creature writes, made fit for the screen.
 
 Removes thinking blocks, markdown, emoji, stray tags and control characters, and cuts the
 thought where the model starts writing a reading of its own (`[host]`) or leaks a template

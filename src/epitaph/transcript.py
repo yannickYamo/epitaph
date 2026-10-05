@@ -1,4 +1,4 @@
-"""Transcripts: one folder per life, `lives/<n>/` (BUILD_PLAN 6.1, 7).
+"""Transcripts: one folder per life, `lives/<n>/`.
 
 - `meta.json`: what the life runs with (atomic, at birth).
 - `events.jsonl`: every event of the life, one JSON line each. Events are buffered and

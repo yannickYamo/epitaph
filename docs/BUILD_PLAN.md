@@ -17,7 +17,7 @@
 > 4. **Step 0 had hidden traps**, found by checking the Pi (3.1, 8.6):
 >    - cloud-init re-applies the hostname `raspberrypi` on every boot, so a rename silently reverts
 >    - the cable route would win over Wi-Fi, so with the laptop off the Pi loses internet and NTP
->    - a whole-card `dd` image would be about 50 GB, because the unused space still holds old data from the card's previous use
+>    - a whole-card `dd` image would be about 50 GB: `dd` copies the unused space too
 >    - `cgroup_disable=memory` is injected by the firmware, not written in `cmdline.txt`
 >    - the Pi password is already in a chat transcript and a scratch file
 > 5. **Laptop prerequisites** that v5 assumed but that are missing: tesseract (OCR test), qemu-user-static and podman (arm64 install test).
@@ -143,7 +143,7 @@ Sources: the artist's build video script and the piece's description, both suppl
 | Item | Fact | Consequence |
 |---|---|---|
 | Board | Raspberry Pi 4 Model B Rev 1.5, 4 GB, 4 × Cortex-A72 at 1.8 GHz; bootloader 2022-04-26; kernel 6.18.50+rpt-rpi-v8; Debian 13 (trixie) | Primary target; about 1.4 tokens/s for a 3B model |
-| Storage | 2017 SanDisk 64 GB SD card (SP64G), about 40-45 MB/s reads; discard supported. Partitions: p1 512 MB vfat, p2 59 GB ext4 (6.7 GB used); the unused space still holds old data from its previous use | Cold load of a 2 GB quant about 45-60 s. RAM squeeze by eviction is not viable (5.5). Image backup must be partition-aware (8.6) |
+| Storage | 2017 SanDisk 64 GB SD card (SP64G), about 40-45 MB/s reads; discard supported. Partitions: p1 512 MB vfat, p2 59 GB ext4 (6.7 GB used) | Cold load of a 2 GB quant about 45-60 s. RAM squeeze by eviction is not viable (5.5). Image backup must be partition-aware (8.6) |
 | Memory cgroup | `/proc/cmdline` has `cgroup_disable=memory`, but `cmdline.txt` does not: **the firmware injects it**. Controllers: cpuset, cpu, io, pids | Step 0 appends `cgroup_enable=memory cgroup_memory=1` (the standard override) and verifies. `cpu` already works |
 | cloud-init | Enabled; `preserve_hostname: false`; runs `update_hostname` and `update_etc_hosts` on every boot; user-data sets hostname `raspberrypi` | A hostname change reverts at the next boot. Step 0 disables cloud-init after its first-boot work (8.6) |
 | sudo | Asks for a password | Step 0 adds a sudoers drop-in |
@@ -938,7 +938,7 @@ Every step is logged in `docs/PI_CHANGES.md`: commands and results, never secret
 
 1. **Laptop tools.** `sudo apt install tesseract-ocr qemu-user-static podman` (Yannick approves). Check free disk.
 2. **Partition-aware SD backup** (`tools/sd_backup.sh`, about 5 min instead of about 30 min and about 50 GB):
-   - `sudo fstrim -v /` on the Pi, so blocks left from the card's previous use are discarded
+   - `sudo fstrim -v /` on the Pi, so unused blocks are discarded
    - `sfdisk -d /dev/mmcblk0` (partition table)
    - `dd` of p1 (512 MB)
    - `e2image -ra -p /dev/mmcblk0p2 -` (used blocks only), streamed over SSH, zstd-compressed, with sha256 files
@@ -1360,7 +1360,7 @@ Removed: process notes.
 | V4 | Cache reuse decides whether trims and erosion are cheap, yet v5 designed around the pessimistic case and tested it late | medium | llama-server `--cache-reuse` shifts matching chunks | S2f first on the laptop; `trim_to` from S2; the rehearsal clock charges `prompt_n` |
 | V5 | cloud-init would revert the hostname rename on every boot | medium | Pi: cloud-init enabled, `preserve_hostname: false`, `update_hostname` and `update_etc_hosts` every boot | 8.6 step 6 (disable cloud-init after first boot) |
 | V6 | With the cable plugged in, the Pi's Ethernet default route (metric 100) beats Wi-Fi (600): with the laptop off, the Pi loses internet and NTP | medium | NetworkManager default metrics; the cable goes through laptop sharing | 8.6 step 5 (`never-default` on the Pi's wired connection); 10.4 "laptop off" |
-| V7 | A whole-card `dd` image would be about 50 GB and take 30 min: the unused space holds old data from the card's previous use | medium | The card had been used before | 8.6 step 2 (fstrim, then partition table plus p1 plus `e2image` of used blocks); `sd_restore.sh` tested |
+| V7 | A whole-card `dd` image would be about 50 GB and take 30 min: `dd` copies the unused space too | medium | Measured on the card | 8.6 step 2 (fstrim, then partition table plus p1 plus `e2image` of used blocks); `sd_restore.sh` tested |
 | V8 | `cgroup_disable=memory` is not in `cmdline.txt`; v5's "remove it from the file" step is moot | low | Pi: `/proc/cmdline` has it, `cmdline.txt` does not | 8.6 step 7 (append the override; verify) |
 | V9 | The credential rule was already broken: the Pi password is in the chat transcript and a scratch file | medium | This session | 8.6 step 4 (delete it; Yannick sets a new one) |
 | V10 | The Wi-Fi command asks for a password: it must run in an interactive terminal | low | Observed | 8.6 step 5, section 12 |
@@ -1387,7 +1387,6 @@ Removed: process notes.
 | F11 | Swap on the Pi | Accepted with a correction: the Pi runs zram (2 GB, compressed RAM) with write-back to a 2 GB /var/swap file on the SD card, swappiness 60. Keep zram, disable the SD write-back, swappiness 10; the creature keeps `memory.swap.max = 0` | 0c round 2 (Pi ops) |
 | F12 | Reliable name resolution | Accepted: epitaph.local failed again during this review. Every tool falls back to the cable address; a DHCP reservation is the owner's option | 0c round 2 (Pi ops) |
 | F13 | Laptop cgroup leftover | It disappears when that terminal closes; no action needed | owner |
-| F14 | Scrub personal details from docs | Done for the card's previous use. The 10.42.0.x subnet is NetworkManager's generic default for a shared cable and stays: the SSH rule depends on it | done |
 | F6 | If S4b fails, re-plan the 3B profile: a deep memory cut at each reload, or a single reload instead of two | Accepted, in that order: a deep cut first (it keeps two losses and makes each reload a stronger noticing moment; the rehearsal must show it still reads coherently), a single reload only as the last resort (the arc flattens: precision falls once, the late decline rests on CPU share and erosion). Built as per-model profiles (`config/profiles/pi4/default-<model>.toml`) that must pass `epitaph estimate` on measured costs | after round 2, if S4b is NO-GO and a 3B model is voice-worthy |
 
 **Owner decisions after the voice tests (2026-09-30).**

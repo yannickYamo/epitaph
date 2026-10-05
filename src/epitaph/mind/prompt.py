@@ -1,4 +1,4 @@
-"""What the model sees: persona, erosion, readings, diary text (BUILD_PLAN 5.4, 5.6).
+"""What the model sees: persona, erosion, readings, diary text.
 
 - `Persona` holds the persona groups and the mechanics, one paragraph each. Groups are
   removed from the end, so G1, the knowledge of its death, goes last, and the mechanics go
@@ -831,7 +831,7 @@ def speaks_raw(prompt: Mapping[str, Any], system_text: str) -> bool:
     Always in diary mode (`prompt.mode = "diary"`). In chat mode, only once the persona and
     the mechanics are all gone (`system_text` is empty) and `prompt.bare_mode = "raw"`: with
     no system prompt left, an instruct model's chat template makes it answer the reading as
-    an assistant ("It seems like you're referring to..."; phase 0c round 2, every model),
+    an assistant ("It seems like you're referring to..."; every model),
     while the raw text only has the readings and its own remembered words to go on.
     """
     if str(prompt.get("mode", "chat")) == "diary":

@@ -1,5 +1,5 @@
 # pyright: strict
-"""The hardware watchdog check (BUILD_PLAN 4, 9 C5).
+"""The hardware watchdog check (9 C5).
 
 The controller unit is `Type=notify` with `WatchdogSec=30`; the controller itself sends
 READY=1, WATCHDOG=1 and STOPPING=1 (`epitaph.controller.sd_notify`), and stops pinging when its

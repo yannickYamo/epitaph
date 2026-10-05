@@ -1,4 +1,4 @@
-# Raspberry Pi 5, 16 GB: simulated and config-validated only (BUILD_PLAN 3.2).
+# Raspberry Pi 5, 16 GB: simulated and config-validated only.
 class = "pi5"
 
 [backend]

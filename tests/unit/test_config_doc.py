@@ -1,4 +1,4 @@
-"""docs/CONFIG.md cannot drift from the configuration files (BUILD_PLAN 9 E8).
+"""docs/CONFIG.md cannot drift from the configuration files.
 
 Every key in config/default.toml, the hardware overlays, the profiles and config/models.toml has
 a row in CONFIG.md; every row names a key that exists; a default written as one TOML value

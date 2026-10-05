@@ -1,4 +1,4 @@
-"""Shared data types: the vocabulary every module codes against (BUILD_PLAN 6.4).
+"""Shared data types: the vocabulary every module codes against.
 
 These types are part of the contract between modules; change them deliberately (CONTRIBUTING.md,
 "Proposing a contract change").
@@ -45,7 +45,7 @@ FULL_MHZ = 1800.0  # the Pi 4's full clock; spike S7 measured speed linear below
 
 @dataclass(frozen=True)
 class Knobs:
-    """Every schedule-driven setting at one moment of a life (BUILD_PLAN 5.3).
+    """Every schedule-driven setting at one moment of a life.
 
     Stepped fields: phase, health, step, threads, persona_groups, readings.
     Interpolated fields: everything else.
@@ -141,7 +141,7 @@ class Word:
 
 @dataclass(frozen=True)
 class TimedWord:
-    """A released word with its typing cadence (BUILD_PLAN 5.12)."""
+    """A released word with its typing cadence."""
 
     word: Word
     char_ms: tuple[int, ...]
@@ -163,7 +163,7 @@ class CreatureStatus:
 
 @dataclass(frozen=True)
 class ProgressCounters:
-    """Monotonic counters used for hang detection (BUILD_PLAN 5.9)."""
+    """Monotonic counters used for hang detection."""
 
     cpu_usec: int = 0
     io_rbytes: int = 0
@@ -192,7 +192,7 @@ class Vitals:
 
 @dataclass
 class RuleViolation:
-    """One broken thought-count rule (BUILD_PLAN 5.3)."""
+    """One broken thought-count rule."""
 
     rule: str
     at_s: float

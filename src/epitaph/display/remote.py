@@ -1,5 +1,5 @@
 """`epitaph display`: a driver fed by the controller's event bus, locally or through an
-SSH tunnel (BUILD_PLAN 4 decision 7, 9 D3).
+SSH tunnel.
 
     epitaph display                          # on the Pi: 127.0.0.1:7707
     epitaph display --connect pi             # on the laptop: ssh -N -L <free>:127.0.0.1:7707 pi
@@ -13,7 +13,7 @@ the bus sends first on every subscription.
 
 `--connect` takes SSH aliases in order of preference. Each (re)start of the tunnel tries
 them in turn, so the view moves to the cable when mDNS fails and back to Wi-Fi when it
-returns (BUILD_PLAN F12). The bare alias `pi` implies `pi,pi-eth`, the two aliases every
+returns. The bare alias `pi` implies `pi,pi-eth`, the two aliases every
 tool uses (docs/PI_FACTS.md).
 """
 

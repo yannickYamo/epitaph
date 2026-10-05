@@ -1,4 +1,4 @@
-"""The display model: events in, frames out (BUILD_PLAN 5.12, 6.3, 9 D1).
+"""The display model: events in, frames out (9 D1).
 
 Pure Python, no I/O and no real time: every call takes the display time `now` (seconds,
 any monotonic origin). Drivers (terminal, pygame, e-ink, serial) feed events to a
@@ -18,7 +18,7 @@ any monotonic origin). Drivers (terminal, pygame, e-ink, serial) feed events to 
 - `compose_grid` gives an N x M character grid (LED matrix, small panel) with a charset
   map and a memory gauge instead of fading.
 - `verify_probe` replays a recorded life through the same model for `epitaph verify-life`
-  (split words, bright words near the end; BUILD_PLAN 10.3).
+  (split words, bright words near the end).
 """
 
 from __future__ import annotations
@@ -293,7 +293,7 @@ class Vigil:
 
 
 class LifeView:
-    """Everything a display needs, fed by events (BUILD_PLAN 6.3).
+    """Everything a display needs, fed by events.
 
     Not thread-safe: one driver feeds and reads it from a single thread or event loop.
     """
@@ -316,7 +316,7 @@ class LifeView:
         self.reload_info: dict[str, Any] = {}
         self.death: dict[str, Any] = {}
         self.groups_left: int | None = None
-        # the opening hours outlive a life: a new life outside them stays dark (BUILD_PLAN 5.10)
+        # the opening hours outlive a life: a new life outside them stays dark
         self.exhibit_open: bool = getattr(self, "exhibit_open", True)
         self.tail = 0.0  # display time when the typing queue is empty
         self.loading_at: float | None = None
@@ -1177,7 +1177,7 @@ class LifeView:
         return " · ".join(parts)
 
     def snapshot(self, now: float, **extra: Any) -> dict[str, Any]:
-        """A `snapshot` event (BUILD_PLAN 6.3) reproducing this view without animation.
+        """A `snapshot` event reproducing this view without animation.
 
         Besides the contract's fields it carries what a display needs to redraw the same
         screen: `mode`, `open_turn`, each fading word's `fade` progress, the current
@@ -1782,7 +1782,7 @@ def gauge_bar(fraction: float | None, cols: int, charset: Charset | str = "unico
 
 
 # ---------------------------------------------------------------------------------------
-# verify-life probe (BUILD_PLAN 10.3)
+# verify-life probe
 
 
 class ConfigLike(Protocol):

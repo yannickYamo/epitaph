@@ -1,5 +1,5 @@
 # pyright: strict
-"""The real body: a delegated cgroup v2 subtree around the creature (BUILD_PLAN 5.5, 9 C3).
+"""The real body: a delegated cgroup v2 subtree around the creature (9 C3).
 
 Layout under the controller's delegated cgroup (systemd `Delegate=yes`)::
 

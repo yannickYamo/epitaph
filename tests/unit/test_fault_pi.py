@@ -1,4 +1,4 @@
-"""tools/fault_pi.sh without a Pi: arguments, the lock, and the dry run (BUILD_PLAN 10.4)."""
+"""tools/fault_pi.sh without a Pi: arguments, the lock, and the dry run."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def test_hang_waits_for_a_busy_creature_not_the_transcript() -> None:
 
 
 def test_the_matrix_row_names_are_accepted() -> None:
-    """tools/fault_matrix_pi.sh names rows as BUILD_PLAN 10.4 does; fault_pi.sh maps them."""
+    """tools/fault_matrix_pi.sh names the rows; fault_pi.sh maps them."""
     for row, own in (("creature-network", "netblock"), ("controller-killed", "controller-kill")):
         out = subprocess.run(
             ["bash", str(FAULT), row, "--dry-run"], capture_output=True, text=True, check=True

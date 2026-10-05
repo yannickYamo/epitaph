@@ -1,4 +1,4 @@
-"""`epitaph selftest` against a fake cgroupfs and a fake clock helper (BUILD_PLAN 9 C6)."""
+"""`epitaph selftest` against a fake cgroupfs and a fake clock helper."""
 
 from __future__ import annotations
 

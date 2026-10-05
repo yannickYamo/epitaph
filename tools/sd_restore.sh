@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore a backup made by sd_backup.sh onto a card or a loop file (BUILD_PLAN 8.6 step 2).
+# Restore a backup made by sd_backup.sh onto a card or a loop file.
 # DESTROYS everything on the target. Usage: tools/sd_restore.sh <backup_dir> <target_device_or_file>
 set -euo pipefail
 

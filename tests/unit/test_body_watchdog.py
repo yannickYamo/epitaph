@@ -1,4 +1,4 @@
-"""The hardware watchdog check (BUILD_PLAN 9 C5), with no systemd."""
+"""The hardware watchdog check, with no systemd."""
 
 from __future__ import annotations
 

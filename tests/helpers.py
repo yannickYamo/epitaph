@@ -134,7 +134,7 @@ class LifeBuilder:
     def thought(
         self,
         text: str,
-        wpm: float = 40.0,  # decision 30: inside the Pi 4 birth range 15-60
+        wpm: float = 40.0,  # inside the Pi 4 birth range 15-60
         first_word_after_s: float = 2.0,
         pause_s: float = 3.0,
         tok_s: float | None = None,
@@ -262,7 +262,7 @@ def retext(
 
 def slowing(events: list[Event]) -> list[Event]:
     """Make generation speed never rise: every `gen_end` and `vitals` `tok_s` becomes the
-    lowest seen so far in the stream (review 2, F2's `speed_monotonic`).
+    lowest seen so far in the stream (`speed_monotonic`).
 
     For tests about something else that record a life on a profile, so they do not depend on
     how the profile's CPU share is tuned at each reload."""

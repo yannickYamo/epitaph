@@ -1,9 +1,9 @@
-# The controller: lives, deaths and rebirths, for as long as the machine runs (BUILD_PLAN 4).
+# The controller: lives, deaths and rebirths, for as long as the machine runs.
 # Installed by deploy/install.sh into /etc/systemd/system. @USER@ is the service user (pi by
 # default: the Pi is dedicated to the piece, and the state and models already belong to it).
 [Unit]
 Description=epitaph controller (a small model lives and dies on this machine)
-Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/BUILD_PLAN.md
+Documentation=https://github.com/yannickYamo/epitaph/blob/main/docs/INSTALLATION.md
 # No network: the controller needs none, and the piece must start in a room without one
 # (docs/INSTALLATION.md "Offline"). Wanting network-online.target would hold the start until
 # NetworkManager-wait-online gives up. time-sync.target is ordering only, never wanted: with

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install epitaph on a Raspberry Pi from the deployed source (BUILD_PLAN 9 C5, C10). Idempotent:
+# Install epitaph on a Raspberry Pi from the deployed source. Idempotent:
 # a second run changes nothing and says so ("changed: 0").
 #
 #   sudo deploy/install.sh [--user USER] [--enable] [--no-selftest] [--check] [--container]
@@ -60,7 +60,7 @@ while [ $# -gt 0 ]; do
     --no-selftest) SELFTEST=0 ;;
     --check) MODE=check ;;
     --container) CONTAINER=1; SELFTEST=0 ;;
-    -h|--help) sed -n '2,/^set -euo/{/^#/p}' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -euo/{/^#/p;}' "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
   shift

@@ -1,4 +1,4 @@
-"""Birth and death cards, and the silence between lives (BUILD_PLAN 5.12, 9 D7).
+"""Birth and death cards, and the silence between lives (9 D7).
 
 Pure Python, no I/O and no real time, like `layout`. A card replaces the text: the birth
 card while the model loads and until its first word, the death card after the last word

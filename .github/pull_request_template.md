@@ -1,6 +1,6 @@
 ## What and why
 
-<!-- One or two sentences. Link the issue or the BUILD_PLAN section. -->
+<!-- One or two sentences. Link the issue. -->
 
 ## How it was tested
 

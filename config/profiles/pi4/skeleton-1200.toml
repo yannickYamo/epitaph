@@ -1,4 +1,4 @@
-# Phase 1 (BUILD_PLAN 5.3): 20 min at ladder step 0, no reloads, squeeze or erosion.
+# 20 min at ladder step 0, no reloads, squeeze or erosion.
 # Exercises recall shrink, sampling, cadence and deadline death.
 lifespan = "20:00"
 death = "none"

@@ -1,7 +1,7 @@
-"""The real backend against a real llama-server (BUILD_PLAN 10.1: template and cache-reuse rows).
+"""The real backend against a real llama-server (template and cache-reuse rows).
 
 Needs the laptop llama.cpp build and a small model; run under the laptop lock:
-  tools/laptop_lock.sh run A 15 -- env PYTHONPATH=src .venv/bin/python \
+  tools/laptop_lock.sh run <name> 15 -- env PYTHONPATH=src .venv/bin/python \
       -m pytest -m model tests/templates
 Model: EPITAPH_TEST_MODEL (default llama-3.2-1b-instruct:Q4_K_M) in ~/epitaph-models.
 """

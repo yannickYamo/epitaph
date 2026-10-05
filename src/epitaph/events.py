@@ -1,4 +1,4 @@
-"""Event bus and control channel: JSON lines over TCP on 127.0.0.1 (BUILD_PLAN 6.3).
+"""Event bus and control channel: JSON lines over TCP on 127.0.0.1.
 
 Every connection may subscribe to events, send control commands, or both:
   -> {"subscribe": true}              the server sends a snapshot, then every event

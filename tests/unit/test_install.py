@@ -1,4 +1,4 @@
-"""Static checks of deploy/install.sh's container mode and its arm64 test (BUILD_PLAN 9 C10).
+"""Static checks of deploy/install.sh's container mode and its arm64 test.
 
 The install itself runs as root, so it is exercised end to end by tools/test_install_arm64.sh
 (make install-test-arm64) in an emulated arm64 container, not here.

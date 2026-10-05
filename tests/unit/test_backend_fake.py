@@ -1,4 +1,4 @@
-"""The fake creature: speeds, prompt cache, cache reuse and every fault hook (BUILD_PLAN 9 A4)."""
+"""The fake creature: speeds, prompt cache, cache reuse and every fault hook."""
 
 from __future__ import annotations
 

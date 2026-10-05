@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spike S4: reload start to the first token, cold and warm (BUILD_PLAN 8.5).
+"""Spike S4: reload start to the first token, cold and warm.
 
 A reload stops the creature at one ladder step and starts it one step down; the memory is cut
 to the post-reload recall (x trim_to, as `Memory.cut_for_reload` does) and re-read in full by

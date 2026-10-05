@@ -1,4 +1,4 @@
-"""The afterlife (V1.5, BUILD_PLAN 13): what a life leaves behind.
+"""The afterlife (V1.5): what a life leaves behind.
 
 Part 1, built: each life's epitaph, taken from the words it showed (`epitaph.py`), filtered,
 and kept on this machine's disk in an append-only outbox (`outbox.py`) by the keeper the

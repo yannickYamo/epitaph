@@ -1,5 +1,5 @@
 # pyright: strict
-"""Vitals and machine facts read from the running system (BUILD_PLAN 9 C4).
+"""Vitals and machine facts read from the running system.
 
 Every reader takes its paths from a `SysPaths`, so the unit tests point them at a
 temporary directory. Nothing here needs root. A missing file gives `None`, never an error:

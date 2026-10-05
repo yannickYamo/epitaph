@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Named exclusive locks shared by every job on this laptop (BUILD_PLAN 8.3).
+# Named exclusive locks shared by every job on this laptop.
 # All jobs start on the laptop, so a local flock serialises them. The kernel releases
 # the lock when the holder exits, so a crashed job can never leave a stale lock, and
 # the time limit kills a command that overruns its reservation.

@@ -1,4 +1,4 @@
-"""The backend contract: the creature process and how the controller talks to it (BUILD_PLAN 6.4).
+"""The backend contract: the creature process and how the controller talks to it.
 
 Implemented in llama_server.py and fake.py.
 """
@@ -69,7 +69,7 @@ class Backend(Protocol):
         ...
 
     async def count_past_tokens(self, messages: list[Msg]) -> int:
-        """Tokens of these messages on the rendered chat template (BUILD_PLAN 5.4)."""
+        """Tokens of these messages on the rendered chat template."""
         ...
 
     def on_death(self, fn: Callable[[CreatureStatus], None]) -> None:

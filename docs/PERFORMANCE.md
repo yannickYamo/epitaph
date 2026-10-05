@@ -11,15 +11,18 @@ comes from a run on the Pi 4 (or a laptop run charged at Pi 4 costs) recorded in
 Everything is measured against one budget: the number of thoughts in a life, and whether each
 loss is followed by enough of them for the model to notice it. The life was one hour until the
 owner shortened it to thirty minutes (ADR-024); the tables below keep the figures of the time.
+The sections on reloads, erosion and the echo describe the earlier design, kept as
+`pi4/default-reloads`: the installed life has one model and no reload (ADR-030).
 
 | | Value |
 |---|---|
 | Reading speed, 3-4B models on a Pi 4 | 2.3-2.7 tokens/s |
 | Writing speed, 3-4B models | 1.0-1.4 tokens/s |
 | Reading / writing, Qwen3 1.7B (Q8_0) | 6.0 / 1.65-1.84 tokens/s |
-| Reveal speed (owner decision 30) | 165 ms per letter at birth, 720 ms at the end |
+| Reveal speed of the installed stream (cost model) | 266 ms per letter at birth, 583 ms at the end |
 | Thoughts in the one-hour life, Qwen3 1.7B, measured costs | about 40 |
-| Thoughts in the 30-minute life, Qwen3 4B, measured costs | about 12 |
+| Thoughts in the 30-minute life with reloads, Qwen3 4B, measured costs | about 12 |
+| Thoughts shown in the installed 30-minute life, Qwen3 4B (cost model) | 10 |
 
 ## What changed, and what it bought
 
@@ -53,7 +56,7 @@ A reload is the life's largest loss, but each second of it is a blank screen.
 | System prompt read during the birth card (ADR-013) | **67-73 s** |
 | Qwen3 1.7B (Q8_0), without prefill | 81 s |
 
-### No dead time at birth (dread plan W4)
+### No dead time at birth
 
 Between two lives the screen was dark for the 90 s silence, then for the load, the reading
 of the persona and the whole first thought: about four minutes. Now the silence is the only
@@ -62,7 +65,7 @@ dark time. Qwen3 4B on the Pi 4, `pi4/default`, at the measured costs:
 | From the end of the silence | Before | Now |
 |---|---|---|
 | Model load (64 s) | after the silence | **inside the silence**, as soon as the death has freed the RAM (`[life] load_during_silence`) |
-| System prompt (240 tokens) | read: 95 s | **restored** from the persona cache: about 1 s (35 MB from the SD card, spike S4b for the restore) |
+| System prompt | read: 72 s in the cost model | **restored** from the persona cache: about 1 s (35 MB from the SD card, spike S4b for the restore) |
 | The screen starts | when the first thought is written | on its **first sentence**, at 45 s of life at the earliest (`[reveal] stream_birth`, `stream_birth_min_s`) |
 | First words | about 230 s | **45 s** |
 
@@ -73,16 +76,12 @@ quant, context, persona or mechanics reads its persona once and saves it for the
 read).
 
 The old birth's two and a half minutes of writing before the first word were the stream's
-head start. Without it the stream needed a new curve: 260 ms a letter at birth (33 words a
-minute, as before), slowing with the hardware ten minutes ahead (`stream_gamma` 0.75,
-`stream_lead_s` 600), 680 ms at the end. The cost model replays it with every cost 15% slower:
-it never starves, and no slower birth pace of that shape starves either. The 45 s floor is a
-dial between the first words and the pace: with no floor (31 s, 36 s with the margin) the same
-shape needs 264 ms and leaves more words unshown at the death; the shape the fit picks by
-itself (333 ms, `stream_gamma` 0.5) has slower paces that starve just before the death, and
-starved there in one of six simulated lives. `epitaph estimate` prints the birth line and
-fails a stream profile whose first words come later than `[estimate] max_first_words_s` (45 s
-on the Pi 4).
+head start. Without it the stream needed a new curve. As installed: 266 ms a letter at birth
+(33 words a minute), slowing with the hardware ten minutes ahead (`stream_gamma` 0.5,
+`stream_lead_s` 600), 583 ms at the end. The cost model replays it with every cost 20% slower
+and it never starves. The 45 s floor is a dial between the first words and the pace: a later
+start buys a faster birth pace. `epitaph estimate` prints the birth line and fails a stream
+profile whose first words come later than `[estimate] max_first_words_s` (45 s on the Pi 4).
 
 ### The cost of forgetting
 

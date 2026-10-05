@@ -1,5 +1,4 @@
-"""The terminal driver: ANSI escapes only, so it works in any terminal and over SSH
-(BUILD_PLAN 9 D2).
+"""The terminal driver: ANSI escapes only, so it works in any terminal and over SSH.
 
 It draws the flow layout into a cell buffer and writes only the cells that changed since
 the last frame, so typing a letter costs a few bytes. Letters appear with each word's

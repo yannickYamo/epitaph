@@ -1,4 +1,4 @@
-"""A fake creature for tests and the simulator (BUILD_PLAN 9 A4).
+"""A fake creature for tests and the simulator.
 
 It streams canned first-person text at the speeds of a real machine on the injected clock,
 reacts to what changed in the last reading, and degrades with precision and temperature.
@@ -166,7 +166,7 @@ class FakeBackend:
         self.cache_reuse = costs.cache_reuse_works if cache_reuse is None else cache_reuse
         self.cache_reuse_min = cache_reuse_min
         self.faults = faults or FakeFaults()
-        # Phase 0a API, kept for callers that use it.
+        # Kept for callers that use it.
         self.fail_after_tokens: int | None = None
         self.fail_signal = SIGKILL
         self.hung = False

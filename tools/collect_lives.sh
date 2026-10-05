@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gather evidence from the running installation without stopping it (BUILD_PLAN 9 E6; gate G2.3).
+# Gather evidence from the running installation without stopping it (gate G2.3).
 #
 #   tools/collect_lives.sh [options]
 #     --lives N              the newest N finished lives (default 3)
@@ -12,7 +12,7 @@
 #                            skipped
 #     --dry-run              print the commands; no SSH, no verify
 #
-# Read-only on the Pi, so it takes no Pi lock (BUILD_PLAN 8.3: the lock serialises work that
+# Read-only on the Pi, so it takes no Pi lock (the lock serialises work that
 # changes or loads the Pi; this only lists and copies files). It:
 #   1. finds the Pi (tools/pi_host.sh) and lists <state>/lives: a life is finished when its
 #      death.json exists; the life in progress has none and is never judged;

@@ -1,4 +1,4 @@
-"""Shared fixtures (BUILD_PLAN 9 E1, 10).
+"""Shared fixtures.
 
 - configs: `pi4_default`, `load_cfg` (any profile and overlay), `v6_default` and `v6_cfg`
   (the v6 reference configuration: see V6_REFERENCE)
@@ -74,7 +74,7 @@ V6_REFERENCE: dict[str, Any] = {
         "readings_material": False,
     },
     "backend": {"reload_handover": "reread"},
-    # The v6 schedule rises slightly at both reloads on the measured 1.7B costs (review 2, F2);
+    # The v6 schedule rises slightly at both reloads on the measured 1.7B costs;
     # the rule only warned until checkpoint A made it a failure for the installation.
     "estimate": {"speed_monotonic": "warn"},
 }

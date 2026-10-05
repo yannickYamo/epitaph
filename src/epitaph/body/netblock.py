@@ -1,5 +1,5 @@
 # pyright: strict
-"""The creature has no network (ADR-005, BUILD_PLAN 5.6, 9 C8).
+"""The creature has no network (ADR-005).
 
 An nftables rule matching the creature cgroup (`socket cgroupv2`) refuses every outbound packet
 that is not for loopback: llama-server serves the controller on 127.0.0.1, and nothing else

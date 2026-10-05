@@ -1,6 +1,6 @@
 #!/bin/sh
 # epitaph-display-hotplug: the local display follows a screen plugged in or out after boot
-# (BUILD_PLAN 4, 10.2). Installed root-owned, mode 0755, as /usr/local/sbin/epitaph-display-hotplug
+#. Installed root-owned, mode 0755, as /usr/local/sbin/epitaph-display-hotplug
 # by deploy/install.sh, and run only by epitaph-display-hotplug.service, which two things start:
 #   - the udev rule 90-epitaph-display.rules, on every DRM change event (the kernel sends one
 #     when a connector is plugged or unplugged): the screen appears within a second or two;

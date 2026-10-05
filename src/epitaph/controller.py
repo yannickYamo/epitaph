@@ -1,4 +1,4 @@
-"""The controller: the production life loop (BUILD_PLAN 5.8, 5.9, 6.3).
+"""The controller: the production life loop.
 
 Two layers:
 
@@ -111,7 +111,7 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 EPS = 1e-6
-WATCHDOG_MAX_S = 5.0  # BUILD_PLAN 5.10: pings in every state, at least this often
+WATCHDOG_MAX_S = 5.0  # pings in every state, at least this often
 HANG_TICK_S = 1.0  # how often progress is read while a request is in flight
 RECORDS_KEPT = 100  # LifeRecords the controller keeps in memory (status, tests)
 STALL_MARGIN_S = 60.0  # added to a state's own limit before the loop counts as stuck
@@ -250,7 +250,7 @@ RateFn = Callable[[int, int, float], float]  # tokens/s at (step, threads, compu
 
 
 class Life:
-    """The loop of BUILD_PLAN 5.8 for one life, with the real mind, on any clock and backend.
+    """The loop of one life, with the real mind, on any clock and backend.
 
     Deaths reach it through `on_death` (the backend's callback, or `CreatureDied` in a
     thought) and `declare_death` (a death the controller decided); either emits `death`
@@ -830,7 +830,7 @@ class Life:
             self.declare_death(Cause.CRASH.value)
 
     async def thermal_pause(self) -> None:
-        """Wait before the next request while the CPU is above `thermal_limit_c` (C9).
+        """Wait before the next request while the CPU is above `thermal_limit_c`.
 
         The life clock keeps running (a pause is lost time, like any other silence); each
         wait is an event, so the supervisor sees progress."""
@@ -939,7 +939,7 @@ class Life:
 
 
 # ---------------------------------------------------------------------------------------
-# guarding the backend: deaths the controller declares, and hangs (BUILD_PLAN 5.9)
+# guarding the backend: deaths the controller declares, and hangs
 
 
 @dataclass(frozen=True)
@@ -1258,7 +1258,7 @@ class _Current:
 
 
 class Controller:
-    """Lives back to back on one machine; survives every death (BUILD_PLAN 5.8)."""
+    """Lives back to back on one machine; survives every death."""
 
     def __init__(
         self,
@@ -1669,7 +1669,7 @@ class Controller:
         nxt = sch.times[i + 1] if i + 1 < len(sch.times) else math.inf
         return max(nxt - t, 0.05)  # a floor: a sliver of float time must not stall the loop
 
-    # -- exhibition hours (BUILD_PLAN 5.10) ------------------------------------------------
+    # -- exhibition hours ------------------------------------------------
 
     def _show(self, shown: bool) -> None:
         """Tell the displays whether the piece is on show (`exhibit {open}`), on a change."""

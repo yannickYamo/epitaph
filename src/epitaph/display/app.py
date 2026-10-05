@@ -1,4 +1,4 @@
-"""The loop every display driver shares: events in, frames out (BUILD_PLAN 6.4 Display).
+"""The loop every display driver shares: events in, frames out.
 
 A driver owns a `LifeView` and knows how to draw a `Frame`. `drive` feeds it events from
 any async source (the local bus, the SSH tunnel, a replay) while a render loop redraws it

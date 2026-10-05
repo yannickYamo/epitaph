@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build llama.cpp at the pinned tag (BUILD_PLAN 9 A1). Runs on the machine it is built for.
+# Build llama.cpp at the pinned tag. Runs on the machine it is built for.
 #   tools/build_llamacpp.sh [tag] [prefix]      default tag from config/models.toml, prefix ~/llama.cpp
 #   tools/build_llamacpp.sh --pi [tag]          build on the Pi as a detached unit, under the Pi lock
 #
@@ -16,7 +16,7 @@ tag_from_config() {
 
 if [ "${1:-}" = "--pi" ]; then
   # Take the Pi lock first, then do everything (host probe, copy, build, poll) inside it.
-  shift; exec "$here/pi_lock.sh" run A 120 -- "$0" --pi-locked "$@"
+  shift; exec "$here/pi_lock.sh" run "${HOLDER:-build}" 120 -- "$0" --pi-locked "$@"
 fi
 if [ "${1:-}" = "--pi-locked" ]; then
   TAG="${2:-$(tag_from_config)}"; TAG="${TAG:-b11277}"

@@ -1,4 +1,4 @@
-"""Is a screen connected? The display unit's `ExecCondition` (BUILD_PLAN 4, 9 D6).
+"""Is a screen connected? The display unit's `ExecCondition` (9 D6).
 
     epitaph display --screen-present     # exit 0: a screen is connected; 1: none
 

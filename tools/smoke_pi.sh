@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run lives on the Pi and judge them on the laptop (BUILD_PLAN 8.3, 10.1, 9 E4; gates G1.1, G1.4).
+# Run lives on the Pi and judge them on the laptop (9 E4; gates G1.1, G1.4).
 #
 #   tools/smoke_pi.sh [options]
 #     --profile P    profile to run (default pi4/smoke-300)
@@ -169,7 +169,7 @@ if remote_script start "$UNIT" "$RUN_USER" "$RC_FILE" "$EPI" run --profile "$PRO
 unit="$1"; user="$2"; rc_file="$3"; shift 3
 group="$(id -gn "$user")"; home="$(getent passwd "$user" | cut -d: -f6)"
 rm -f "$rc_file"
-# As the installed unit runs it (BUILD_PLAN 4): a delegated cgroup for the creature, the
+# As the installed unit runs it: a delegated cgroup for the creature, the
 # controller on core 0. The exit code goes to a file: a finished transient unit is unloaded,
 # and with it its result.
 sudo -n systemd-run --unit="$unit" --uid="$user" --gid="$group" --setenv=HOME="$home" \

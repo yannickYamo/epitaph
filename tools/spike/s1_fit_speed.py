@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spikes S1a and S1b on the Pi: memory fit and speed per model file (BUILD_PLAN 8.5).
+"""Spikes S1a and S1b on the Pi: memory fit and speed per model file.
 
 One run = one model file, one thread count, one load mode:
   1. cold load (page cache dropped first when --cold): spawn to /health = load_s

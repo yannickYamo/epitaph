@@ -1,4 +1,4 @@
-"""Screenshots and the readability measurements of test D13 (BUILD_PLAN 5.12, 9 D5).
+"""Screenshots and the readability measurements of test D13 (9 D5).
 
 - `render_png` draws a view (or a list of events) offscreen at any size and saves a PNG.
 - `ocr_words` reads a PNG back with tesseract.

@@ -32,9 +32,9 @@ The first version put the dread in the prompt, and it read as acting. Now the dr
 | How it gets its voice | From the prompt | Too small to read a prompt, so Qwen3 4B lived badge lives under the installation's prompt and taught it the voice, 200 fine-tuning steps on a laptop CPU | Same taught weights as the badge |
 | What it loses | Services, radio, light, screen, CPU, clock, memory, RAM | Light, memory window, clock (250 to 48 MHz), screen, RAM | Light, memory window, clock (240 to 80 MHz), heap |
 | Speed | About 1 token a second | About 8 tokens a second at 250 MHz | Not yet measured on hardware |
-| Status | v1.0, running, 30-minute lives | Ran on the badge | Whole lives on a simulated ESP32; compiles for an ESP32 and a Pico; no real board yet |
+| Status | v1.0, running, 30-minute lives | An earlier build ran on the badge; this one passes its simulated life and has not yet run on it | Whole lives on a simulated ESP32; compiles for an ESP32 and a Pico; no real board yet |
 
-Taking it to another board means saying what that board can lose, and nothing else: one overlay file on a Linux board, three hooks in C on a microcontroller, one small class in MicroPython. What a board cannot do is skipped and never reported. [PORTING.md](docs/PORTING.md) is the guide.
+Taking it to another board means saying what that board can lose, and nothing else: one overlay file on a Linux board, four hooks in C on a microcontroller, one small class in MicroPython. What a board cannot do is skipped and never reported. [PORTING.md](docs/PORTING.md) is the guide.
 
 More boards are planned, and the reason is a question rather than a hardware itch: how much of what the model says comes from the model, and how much from the machine shrinking around it. Nothing has measured that split yet.
 
@@ -43,11 +43,11 @@ More boards are planned, and the reason is a question rather than a hardware itc
 | Outcome | Evidence |
 | --- | --- |
 | The Pi edition has run 55 lives | Last count; the kernel kills each life at 29:30 and it is reborn |
-| Three consecutive lives passed at the full level | Gate G2.3, with the kill landing within 0.9 s of the RAM squeeze |
+| Three consecutive lives passed at the full level | Gate G2.3, on the earlier reload design, with the kill landing within 0.9 s of the RAM squeeze |
 | The text stream holds while the Pi slows to a third of its speed | The model writes ahead into a buffer and the pace follows measured costs: about 33 words a minute at birth, 15 at the end |
-| Every stripped part comes back | Services, radio, LEDs, clock and screen restored at each death, checked on the Pi |
+| Every stripped part comes back | Services, radio, LEDs and clock restored at each death, checked on the Pi. The Pi has no screen connected yet, so the screen's dimming is tested in simulation only |
 | The piece survives its own failures | Model process crash, hang, controller killed, two controllers at once, network access - all tested on the Pi, all passed |
-| The voice settled over nine prompt rounds | Each round judged by the owner reading whole lives, recorded in `docs/PROMPT_LOG.md` |
+| The voice settled over nine prompt rounds | Each round was judged on whole transcripts, recorded in `docs/PROMPT_LOG.md` |
 
 ## What broke, and the fix
 
@@ -56,7 +56,7 @@ More boards are planned, and the reason is a question rather than a hardware itc
 | A prompt that demanded fear produced theatre | The prompt names what to sense; the readings carry the weight |
 | Reloading the model at lower precision changed who was speaking | One model, one quantization, fixed sampling for the whole life |
 | A slowing Pi delivered words in bursts | The model writes ahead into a buffer; the screen types on one fitted curve |
-| Under mmap, the RAM squeeze paged instead of killing | Direct I/O loading; the kill came within 0.3 s in every calibration run |
+| Under mmap, the RAM squeeze paged instead of killing | Direct I/O loading; the kill came within 0.4 s in every calibration run |
 | A clock step inside a thought was never applied | A supervisor applies each step on time |
 | The badge edition stopped near five minutes from heap fragmentation | Its cache is allocated once, and errors are logged rather than fatal |
 | The small chips fed the model readings in tokens it was never taught, and died before reading the last one | Readings are encoded as in training; the last reading is read and answered, then the death |
@@ -64,9 +64,9 @@ More boards are planned, and the reason is a question rather than a hardware itc
 
 ## How it's checked
 
-`epitaph verify-life` replays any recorded life and checks timing, memory budgets, pace, death and rebirth. `make check` runs lint, strict types, about 1,500 tests, a simulated life, the cost model and the small-chip engines, and CI runs it on every push.
+`epitaph verify-life` replays any recorded life and checks timing, memory budgets, pace, death and rebirth. `make check` runs lint, strict types, about 1,500 tests, a simulated life, the cost model and the small-chip engines. CI runs these checks on every pull request.
 
-Voice metrics advise and never decide - that's written down as ADR-028 in `docs/DECISIONS.md`. Every prompt change shipped only after the owner read whole transcripts.
+Voice metrics advise and never decide - that's written down as ADR-028 in `docs/DECISIONS.md`. Every prompt change was judged on whole transcripts.
 
 ## What is still open
 
@@ -92,13 +92,12 @@ make -C badge/esp32 life                               # a life on a simulated E
 .venv/bin/epitaph probe                                # what your machine has for a life to lose
 ```
 
-On a Pi 4 (4 GB, official 5.1 V / 3 A supply), `tools/pi_bootstrap.sh`, `tools/build_llamacpp.sh
---pi`, `tools/download_models.py` and `deploy/install.sh` set up the installation;
-[INSTALLATION.md](docs/INSTALLATION.md) covers the room. Watch a life from a laptop with
-`epitaph display --connect <host> --driver screen`.
+On a Pi 4 (4 GB, official 5.1 V / 3 A supply), follow "Install on a Pi" in
+[INSTALLATION.md](docs/INSTALLATION.md), which also covers the room. Watch a life from a laptop
+with `epitaph display --connect <host> --driver screen`.
 
-The [docs index](docs/README.md) leads to the design, the 31 decision records, the measurements
-and the phase reports.
+The [docs index](docs/README.md) leads to the design, the 31 decision records and the
+measurements.
 
 ## Credits
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spike S4b: carry the KV cache across a reload instead of re-reading it (review item F5).
+"""Spike S4b: carry the KV cache across a reload instead of re-reading it.
 
 llama-server b11277 can save a slot's KV cache to a file and restore it
 (`POST /slots/0?action=save|restore`, files under `--slot-save-path`). A reload then becomes:

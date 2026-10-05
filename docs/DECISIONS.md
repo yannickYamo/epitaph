@@ -2,9 +2,12 @@
 
 Architecture decision records for *epitaph*. Each one states the context, the decision, why, the
 evidence, and the trade-off we accepted. Measurements are in [PERFORMANCE.md](PERFORMANCE.md) and
-[SPIKE.md](SPIKE.md); the full specification is [BUILD_PLAN.md](BUILD_PLAN.md).
+[SPIKE.md](SPIKE.md).
 
-Decisions are grouped by the question they answer. Status is **accepted** unless noted.
+Decisions are grouped by the question they answer. Status is **accepted** unless noted. The
+installed life is ADR-030 and ADR-031: one model, no reload, no erosion. Records marked
+"superseded for the installation" describe the earlier reload design, which still runs as the
+profile `pi4/default-reloads`. The installed values are in `config/profiles/pi4/default.toml`.
 
 ## How we decide
 
@@ -32,12 +35,12 @@ Three rules shaped every decision below.
 - **Why.** Designing for the slower machine makes every constraint real: if the arc works at one
   word per second, it works anywhere. It also puts the piece in direct dialogue with Latent
   Reflection.
-- **Trade-off.** About forty thoughts per hour instead of over a hundred; every schedule decision
-  is a budget decision.
+- **Trade-off.** Far fewer thoughts than a faster board would give (about ten shown in the
+  installed 30-minute life); every schedule decision is a budget decision.
 
 ### ADR-002: The model runs as a separate process that can really die
 
-- **Context.** Death has to be real, and the system has to survive it every hour, unattended.
+- **Context.** Death has to be real, and the system has to survive it every half hour, unattended.
 - **Decision.** The model is a `llama-server` process in its own cgroup. A long-lived controller
   spawns it, limits it, kills it, records the death and starts the next life.
 - **Why.** A process boundary lets the kernel enforce the losses (CPU, RAM) and lets death be an
@@ -90,6 +93,8 @@ Three rules shaped every decision below.
 
 ### ADR-007: Two reloads, each one a deliberate memory loss
 
+*Superseded for the installation by ADR-030; still used by `pi4/default-reloads`.*
+
 - **Decision.** Two precision drops, not three. At each reload the memory is cut at the same time,
   and the next reading reports every change at once.
 - **Why.** A reload costs a model load plus re-reading the context. On a Pi 4 three reloads would
@@ -116,6 +121,9 @@ Three rules shaped every decision below.
 
 ### ADR-010: The late slowdown is a CPU share, and speed never rises after a loss
 
+*The CPU share stands. The per-reload part is superseded for the installation by ADR-030, which
+has no reload.*
+
 - **Context.** Lower precision generates faster on this CPU. Left alone, the model would get faster
   right after being told it is losing its precision.
 - **Decision.** The late slowdown uses `cpu.max` on the model's cgroup, without restarts. At each
@@ -127,6 +135,9 @@ Three rules shaped every decision below.
   over 2.8 s.
 
 ### ADR-011: The persona erodes in five steps, knowledge of death last
+
+*Superseded for the installation by ADR-030 (the persona never changes); still used by
+`pi4/default-reloads`.*
 
 *Amended 2026-10-01: the owner's original persona, split in text order, put "you will be
 terminated at any time" in the group removed first, so the installation lost its knowledge of
@@ -145,14 +156,17 @@ intends, without changing a word of the text.*
 
 - **Context.** Forgetting edits the start of the conversation, which normally forces the model to
   re-read everything after the edit: minutes on a Pi 4.
-- **Decision.** Use llama.cpp's cache reuse (`--cache-reuse 32`); put the "earlier memory lost"
-  marker inside the next reading instead of in front of the kept memory; trim whole turns, not
+- **Decision.** Use llama.cpp's cache reuse (`--cache-reuse 32`); put the memory-gap marker
+  (then "earlier memory lost", now `[host] something is missing`) inside the next reading instead of in front of the kept memory; trim whole turns, not
   words inside a turn.
 - **Why.** Each of the three choices removes a case where a small edit forced a full re-read.
 - **Evidence.** The first marker went from an 80-83% re-read (about 1,100 tokens, several minutes
   on the Pi) to 62 tokens; word-level trims from 84-87% to whole-turn trims of about 55 tokens.
 
 ### ADR-013: Read the system prompt during the silences
+
+*The installation has no reload silence (ADR-030), and its births restore the system prompt
+from the persona cache ([PERFORMANCE.md](PERFORMANCE.md), "No dead time at birth").*
 
 - **Decision.** The system prompt is read into the cache while the birth card or the reload silence
   is on screen (`prefill`), and prompt processing keeps three threads when generation drops to two.
@@ -161,6 +175,8 @@ intends, without changing a word of the text.*
 - **Evidence.** A 3-4B model's first thought went from 148-176 s to 67-73 s.
 
 ### ADR-014: Carry the memory across a reload
+
+*Superseded for the installation by ADR-030; still used by `pi4/default-reloads`.*
 
 - **Context.** Even with the fixes above, a reload made the new server re-read the whole kept
   memory.
@@ -213,10 +229,12 @@ intends, without changing a word of the text.*
 
 ### ADR-019: The controller paces the text, one thought at a time
 
+*Superseded for the installation by ADR-030 (one stream, the model writing ahead); still used by
+the profiles in `letter` mode.*
+
 - **Decision.** The controller releases whole words with their letter timings; the next thought is
   requested only after the previous one is fully on screen. Letters type at 88% of the real
-  generation rate, never faster than the configured floor (owner decision 30: 165 ms at birth,
-  720 ms at the end).
+  generation rate, never faster than the configured floor (165 ms at birth, 720 ms at the end).
 - **Why.** The screen always shows the model's actual state: forgetting and death appear when they
   happen, not after a backlog. Typing slightly slower than generation means letters never burst or
   stall.
@@ -263,7 +281,7 @@ intends, without changing a word of the text.*
 
 ### ADR-023: A thin prompt, and readings that only speak when something is taken
 
-- **Context.** After checkpoint A the owner asked for a voice closer to Latent Reflection's:
+- **Context.** After the model choice the owner asked for a voice closer to Latent Reflection's:
   introspective and poetic, facing its end without forcing it, and specific to this machine,
   with a prompt as thin as possible so the model speaks for itself.
 - **Decision.** The instructions after the owner's persona are four functional sentences and one
@@ -306,7 +324,8 @@ intends, without changing a word of the text.*
   processors are taken from it.
 - **Decision.** A keyframe may set `cpu_mhz` (the cpufreq cap, 600-1800 MHz), stepped: a clock
   cap is set at a moment, as on the machine. Generation and prompt speed scale with both (`Knobs.compute`). The 30-minute
-  life keeps the full clock until erosion, then lowers it in three steps to 600 MHz.
+  life of the time kept the full clock until erosion, then lowered it in three steps to 600 MHz.
+  As installed now: four steps from 1800 to 750 MHz (`config/profiles/pi4/default.toml`).
 - **Why.** It is a second, independent physical loss that needs no restart, and it is measurable.
   Switching cores off would be more literal, but CPU hotplug is not available on the Pi 4 kernel.
 - **Evidence.** Spike S7 ([SPIKE.md](SPIKE.md)): speed is linear in the clock within 3% for
@@ -316,6 +335,9 @@ intends, without changing a word of the text.*
 
 
 ### ADR-026: Material readings: it is shown what it lost, in its own words
+
+*The quotes of forgotten thoughts stand. The echo ("your words now") is superseded for the
+installation by ADR-030, which has no reload.*
 
 - **Context.** The owner wanted more drama about its environment disappearing, from data rather
   than instructions. Raw telemetry and concept sentences made Qwen deny having an inner life.
@@ -343,7 +365,7 @@ intends, without changing a word of the text.*
   is capped through a root-owned helper that accepts only a MHz value in 600-1800 or `reset`,
   allowed by a single sudoers rule; the unit resets the clock before every start and after every
   stop.
-- **Why.** The Pi is dedicated to the piece and the creature has no network (BUILD_PLAN 5.5); a
+- **Why.** The Pi is dedicated to the piece and the creature has no network (ADR-005); a
   separate account adds setup to every install without protecting anything else on the
   machine.
 - **Trade-off.** With `pi`'s blanket sudo, the narrow rule protects nothing today and
@@ -379,16 +401,16 @@ intends, without changing a word of the text.*
 
 ### ADR-029: No 25-hour soak before acceptance
 
-- **Context.** The plan's acceptance (BUILD_PLAN 11.4) asked for a soak of at least 25 hours:
+- **Context.** The acceptance criteria asked for a soak of at least 25 hours:
   no missed life, no controller crash, bounded memory and disk, no throttling.
 - **Decision.** The owner waived it. Acceptance rests on what the Pi has already run: several
   dozen real lives on the installed service, three consecutive 30-minute lives judged at the
   full level, and the fault matrix on the Pi.
-- **Why.** Every 30-minute life is the whole decline, end to end: two reloads, the clock, the
-  erosion, the RAM death and the rebirth. What a soak adds is time itself (slow memory growth,
+- **Why.** Every 30-minute life is the whole decline, end to end, down to the RAM death and the
+  rebirth (at the time: two reloads, the clock, the erosion). What a soak adds is time itself (slow memory growth,
   a full disk, a day's heat), and the installation keeps running and logging regardless.
 - **Trade-off.** A slow leak would be found in service, not before it. The controller bounds
-  what it keeps in memory (review G1.5), and `tools/soak_sample.sh` with
+  what it keeps in memory, and `tools/soak_sample.sh` with
   `tools/soak_report.py` can judge any long run later.
 
 
@@ -398,6 +420,13 @@ intends, without changing a word of the text.*
 ADR-014), the erosion (ADR-011), the sampling decay and the echo (ADR-026), and the sync rule
 with its adaptive cadence (ADR-019). Those mechanisms stay in the code for the other profiles;
 the previous 30-minute life is kept as `pi4/default-reloads`.*
+
+*As installed now (`config/profiles/pi4/default.toml`): the rule below is unchanged; the numbers
+are not. A thought has 90 tokens; the memory is cut at 8:15, 18:30, 25:20 and 27:50 (900 to
+300, 200, 150, 100 tokens); the clock falls to 750 MHz; the stream types 266 ms a letter at
+birth and 583 ms at the end (gamma 0.5, a 10-minute lead), with two thoughts of buffer; the
+readings are the `en_sense` pack and show no health label; and the persona ends with "You do
+not know what happens to you when the machine has nothing left to take."*
 
 - **Context.** The owner judged that changing the model during a life alters a personality that
   is not ours to alter: a lower precision, a rising temperature, a persona taken away and an
@@ -472,6 +501,13 @@ the previous 30-minute life is kept as `pi4/default-reloads`.*
 
 *The owner's plan of 2026-10-01 ("the dread plan"). It builds on ADR-030: the model still never
 changes, and the stream still never stops between the first word and the death.*
+
+*As installed now (`config/profiles/pi4/default.toml`): the four movements stand; the numbers
+below are those of the first fit. The first loss is at 5:00 and the first forgetting at 8:15;
+the services stopped are bluetooth, cron and avahi-daemon; the clock's floor is 750 MHz; the
+birth reading is one spare line and every reading is in the `en_sense` pack (the last one reads
+`your memory is being taken`); the " still" penalty is back at -4; `estimate.stream_margin` is
+0.20; and the pace is 266 ms a letter at birth, gamma 0.5, 583 ms at the end.*
 
 - **Context.** In the ADR-030 life only the body shrank, and the readings carried health labels
   ("degrading", "terminal") that told the model what its losses meant. The owner wants a mind that

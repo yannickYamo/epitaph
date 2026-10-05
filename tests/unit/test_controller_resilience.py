@@ -139,7 +139,7 @@ def test_long_but_moving_states_are_not_stalls() -> None:
 
 
 def test_ping_history_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression: every ping time was kept for ever (BUILD_PLAN 11: memory under 20 MB)."""
+    """Regression: every ping time was kept for ever (memory under 20 MB)."""
     monkeypatch.setattr(controller_mod, "PING_HISTORY", 20)
     ctl, _ = run(cfg_of(SMOKE))
     assert ctl.pings > 20 and len(ctl.ping_times) == 20

@@ -5,7 +5,7 @@ import json
 import pytest
 
 from epitaph.clock import Schedule
-from epitaph.config import RULE_DEFAULTS, ConfigError, load_config
+from epitaph.config import REPO_ROOT, RULE_DEFAULTS, ConfigError, load_config
 from epitaph.costmodel import (
     Costs,
     estimate,
@@ -32,7 +32,7 @@ def test_pi4_profiles_pass_with_bench_costs(name: str) -> None:
 @pytest.mark.parametrize("hardware", ["pi5-8gb", "pi5-16gb"])
 @pytest.mark.parametrize("name", ["pi5/default", "pi5/skeleton-600", "pi5/unbounded"])
 def test_pi5_profiles_pass_on_the_overlay_estimates(name: str, hardware: str) -> None:
-    """BUILD_PLAN 11.8: the Pi 5 profiles pass the estimate on the Pi 5 overlays' estimated
+    """The Pi 5 profiles pass the estimate on the Pi 5 overlays' estimated
     costs (no Pi 5 has been measured); speed never rises across a reload; unbounded fills."""
     cfg = load_config(name, hardware)
     costs = load_costs(cfg)
@@ -51,7 +51,7 @@ def test_the_kept_qwen3_1_7b_profile_passes_with_its_model() -> None:
 
 
 def test_default_life_has_about_forty_thoughts() -> None:
-    # 38 on measured Qwen3 1.7B costs since the reloads lower the CPU share (review 2, F2).
+    # 38 on measured Qwen3 1.7B costs since the reloads lower the CPU share.
     # Pinned to the v6 reference (V6_REFERENCE); the 4B installation since checkpoint A has
     # about 23.
     cfg = v6_config()
@@ -164,7 +164,6 @@ def test_system_prompt_falls_back_to_the_estimate_without_persona_text() -> None
 def test_slot_handover_shortens_reloads_and_fits_the_4b() -> None:
     """ADR-014 (contract A16): a reload that carries the cache is silent for the load, not the
     re-read, and the Qwen3 4B profile only fits the hour with it."""
-    from pathlib import Path
 
     m = "qwen3-4b-instruct-2507"
     reports = {}
@@ -174,7 +173,7 @@ def test_slot_handover_shortens_reloads_and_fits_the_4b() -> None:
             "pi4-4gb",
             overrides={"life": {"models": [m]}, "backend": {"reload_handover": handover}},
         )
-        reports[handover] = estimate(cfg, load_costs(cfg, m, Path("bench/measured")))
+        reports[handover] = estimate(cfg, load_costs(cfg, m, REPO_ROOT / "bench" / "measured"))
     assert reports["slot"].thoughts > reports["reread"].thoughts
     assert reports["slot"].ok, format_report(reports["slot"])
     assert not reports["reread"].ok

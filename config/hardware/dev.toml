@@ -1,4 +1,4 @@
-# The laptop: development, rehearsal and CI (BUILD_PLAN 3.2).
+# The laptop: development, rehearsal and CI.
 class = "dev"
 
 [backend]

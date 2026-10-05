@@ -18,27 +18,19 @@
 | [AFTERLIFE.md](AFTERLIFE.md) | Each life's last words, kept on the card for posting later, with no network needed |
 | [badge/README.md](../badge/README.md) | The piece on small chips: a Tufty 2350 badge and an ESP32 |
 | [PORTING.md](PORTING.md) | Taking the piece to another board: a Linux machine, a microcontroller in C, a MicroPython board |
+| [PI_FACTS.md](PI_FACTS.md) | The reference Pi 4: its setup, the installed services, and lessons from operating it |
 
-## Specification and evidence
+## Evidence
 
 | Document | Contents |
 |---|---|
-| [BUILD_PLAN.md](BUILD_PLAN.md) | The original specification the piece was built from (historical: the decisions records supersede it) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Module map |
 | [SPIKE.md](SPIKE.md) | Every risky assumption, measured on the Pi 4 with a go criterion set in advance |
-| [PROFILES.md](PROFILES.md) | How each life schedule was fitted to measured costs |
-| [PROMPT_LOG.md](PROMPT_LOG.md) | Every change to the prompt and sampling, with the metrics it produced |
+| [PROFILES.md](PROFILES.md) | How the life schedule was fitted to measured costs |
+| [PROMPT_LOG.md](PROMPT_LOG.md) | Every change to the prompt and sampling, and what it produced |
 | [CHECKPOINT_A.md](CHECKPOINT_A.md) | The model and persona choice, with real transcripts from rehearsed lives |
-| [GATES.md](GATES.md) | Every acceptance criterion and the command that proves it, including the soak report (`tools/soak_report.py`) |
-
-## Operating the Pi
-
-| Document | Contents |
-|---|---|
-| [PI_FACTS.md](PI_FACTS.md) | The target machine, the installed services, and lessons learned operating it |
-| [PI_CHANGES.md](PI_CHANGES.md) | Every system change made to the Pi |
-| [PI_LOCK.md](PI_LOCK.md) | How work on the single Pi is serialised |
+| [GATES.md](GATES.md) | The acceptance criteria, the command that proves each, and what is still open |
 
 ## History
 
-[CHANGELOG.md](CHANGELOG.md) summarises each phase. [CONTRIBUTING.md](../CONTRIBUTING.md) describes how to work on the code.
+[CHANGELOG.md](CHANGELOG.md) lists what changed, by version. [CONTRIBUTING.md](../CONTRIBUTING.md)
+describes how to work on the code and has the module map.

@@ -1,4 +1,4 @@
-"""`epitaph rehearse`: laptop lives with the real model, timed as on the Pi 4 (BUILD_PLAN 5.11).
+"""`epitaph rehearse`: laptop lives with the real model, timed as on the Pi 4.
 
 The model really runs: a llama-server on the laptop, started with the same llama.cpp tag and
 the same flags as on the Pi (`--jinja`, `--cache-reuse`, `ctx`, `--swa-full` where needed),
@@ -35,9 +35,9 @@ Two stages:
   `epitaph verify-life <folder> --level rehearsal` works on it), `thoughts.txt`,
   `highlights.md`, `verify.json`, `charges.json` and `report.md`.
 
-Run it under the laptop lock (BUILD_PLAN 8.3), one llama-server at a time:
+Run it under the laptop lock, one llama-server at a time:
 
-    tools/laptop_lock.sh run A 30 -- .venv/bin/python -m epitaph.rehearse \\
+    tools/laptop_lock.sh run <name> 30 -- .venv/bin/python -m epitaph.rehearse \\
         --stage life --model qwen3-4b-instruct-2507 --profile pi4/default
 
 `--backend fake` runs the same harness on the fake creature, in seconds and without a model.
@@ -63,7 +63,15 @@ from epitaph.backend.fake import FakeBackend
 from epitaph.backend.llama_server import LlamaServerBackend, ServerSettings
 from epitaph.body.fake import FakeBody
 from epitaph.clock import FakeClock, Schedule, VirtualClock, run_virtual
-from epitaph.config import REPO_ROOT, Config, deep_merge, load_config, parse_duration
+from epitaph.config import (
+    DATA_ROOT,
+    IN_CHECKOUT,
+    REPO_ROOT,
+    Config,
+    deep_merge,
+    load_config,
+    parse_duration,
+)
 from epitaph.controller import Life, ServerSlots, SlotStore, echo_head, slot_saved
 from epitaph.costmodel import Costs, estimate, load_costs
 from epitaph.events import Event
@@ -118,8 +126,8 @@ __all__ = [
 
 T = TypeVar("T")
 
-DEFAULT_OUT = REPO_ROOT / "voice"
-DEFAULT_BENCH = REPO_ROOT / "bench" / "measured"
+DEFAULT_OUT = (REPO_ROOT if IN_CHECKOUT else Path.cwd()) / "voice"
+DEFAULT_BENCH = DATA_ROOT / "bench" / "measured"
 DEFAULT_MODELS_DIR = "~/epitaph-models"
 LAPTOP_PORT = 8093  # not the controller's 8081, so a rehearsal never meets a dev server
 STAGES = ("screen", "life")
@@ -518,7 +526,7 @@ class PiClockBackend:
     def revive(self) -> None:
         """Restart the laptop server at the same quant after it quit on its own.
 
-        The laptop server sometimes exits mid-life for reasons of its own (phase 0c round 2:
+        The laptop server sometimes exits mid-life for reasons of its own (seen in rehearsal:
         a clean shutdown between two requests, twice in five lives). That is the harness, not
         the creature, so nothing is charged: the Pi would not have noticed. Before the next
         request, everything but its new reading is read into the new server's cache,
@@ -1169,10 +1177,10 @@ def _stamp() -> str:
 
 
 def _append_index(out_root: Path, line: str) -> None:
-    """Add one line to `<out>/rehearsal_report.md`, the index of every run (A3)."""
+    """Add one line to `<out>/rehearsal_report.md`, the index of every run."""
     index = out_root / "rehearsal_report.md"
     if not index.exists():
-        _write(index, "# Rehearsal runs\n\nOne line per run (BUILD_PLAN 5.11). Newest last.\n\n")
+        _write(index, "# Rehearsal runs\n\nOne line per run. Newest last.\n\n")
     with index.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
 
@@ -1219,7 +1227,7 @@ def _config(args: argparse.Namespace, persona: str | None, model: str, profile: 
 def with_ladder(spec: ModelSpec, ladder: str) -> ModelSpec:
     """`spec` with its precision ladder replaced by a comma list ("Q8_0,Q4_K_M,Q3_K_M").
 
-    For tuning runs that compare a last step (review 2, F3). The Pi costs stay keyed by
+    For tuning runs that compare a last step. The Pi costs stay keyed by
     step, so a quant that was never benched is charged at the rates of the step it replaces;
     the report says which ladder ran. Raises ValueError for an empty list.
     """
@@ -1439,7 +1447,7 @@ def run_life_stage(args: argparse.Namespace) -> Path:
 
 
 def life_meta(cfg: Config, args: argparse.Namespace, measured: bool) -> dict[str, Any]:
-    """The rehearsal header verify-life reads from `meta.json` (proposal E10).
+    """The rehearsal header verify-life reads from `meta.json`.
 
     `measured` says whether every Pi rate the life was charged at was a measurement.
     """

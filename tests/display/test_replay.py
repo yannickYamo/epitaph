@@ -1,4 +1,4 @@
-"""D3: replay republishes events.jsonl at the original cadence (BUILD_PLAN 4 decision 8)."""
+"""Replay republishes events.jsonl at the original cadence."""
 
 from __future__ import annotations
 

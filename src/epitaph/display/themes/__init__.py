@@ -1,4 +1,4 @@
-"""Display themes: colours and the font, shared by every driver (BUILD_PLAN 5.12).
+"""Display themes: colours and the font, shared by every driver.
 
 A theme maps a word's state (live, fading, forgotten, inherited) and fade progress to a
 colour. Contrast is checked on these colours by the tests and on the rendered pixels by
@@ -16,9 +16,11 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from epitaph.config import DATA_ROOT
+
 Rgb = tuple[int, int, int]
 
-FONT_DIR = Path(__file__).resolve().parents[4] / "assets" / "fonts"
+FONT_DIR = DATA_ROOT / "assets" / "fonts"
 DEFAULT_FONT = FONT_DIR / "IBMPlexMono-Regular.ttf"
 
 

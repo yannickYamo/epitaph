@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The fault matrix on the Pi (BUILD_PLAN 10.4, 9 E6; gates G2.2, A3).
+# The fault matrix on the Pi (9 E6; gates G2.2, A3).
 #
 #   tools/fault_matrix_pi.sh [options]
 #     --rows a,b     only these rows (names from --list)
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
 done
 [[ "$ROW_MIN" =~ ^[1-9][0-9]*$ ]] || { echo "fault_matrix_pi: --row-min must be minutes" >&2; exit 2; }
 
-# name|how|fault (the BUILD_PLAN 10.4 row)|expected
+# name|how|fault|expected
 ROWS=(
   "ram-death|pi|RAM death (\`death_mode = oom\`)|\`cause=oom\` within 10 s; next life after the silence"
   "delegated-cgroups|pi|Delegated cgroups|every S3b step passes (\`epitaph selftest\` under the service)"
@@ -228,7 +228,7 @@ FPI_SUM="$( [ -f "$FAULT_PI" ] && sha256sum "$FAULT_PI" | cut -c1-12 || echo mis
   echo "# Fault matrix on the Pi ($STAMP)"
   echo
   echo "Host \`$HOST\`, commit \`$COMMIT\`, \`fault_pi.sh\` sha256 \`$FPI_SUM\`, holder $HOLDER, $ROW_MIN min per row."
-  echo "Rows from BUILD_PLAN 10.4; logs in \`$(basename "$LOGS")/\`."
+  echo "Logs in \`$(basename "$LOGS")/\`."
   echo
   echo "| Row | Fault | Expected | Result | Seconds | Evidence |"
   echo "|---|---|---|---|---|---|"

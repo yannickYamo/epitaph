@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sample the Pi during the soak, for tools/soak_report.py (BUILD_PLAN 9 E7; gate G3, BUILD_PLAN 11.4).
+# Sample the Pi during the soak, for tools/soak_report.py (gate G3).
 #
 #   tools/soak_sample.sh [options]
 #     --out FILE     append the samples here (default logs/pi/soak-samples.tsv)
@@ -15,7 +15,7 @@
 # throttled the `vcgencmd get_throttled` value; state_kb `du -sk` of the state directory;
 # root_used_kb the root filesystem's used space. A value the Pi cannot give is `-`.
 #
-# Read-only on the Pi, so it takes no Pi lock (BUILD_PLAN 8.3): it only reads /proc, /sys,
+# Read-only on the Pi, so it takes no Pi lock: it only reads /proc, /sys,
 # systemctl and du. A sample the Pi does not answer is skipped with a line on stderr, and the
 # report lists the hole. Run it in the background on the laptop for the whole soak, e.g.
 #   nohup tools/soak_sample.sh --out logs/pi/soak-samples.tsv >/dev/null 2>logs/pi/soak-sample.log &

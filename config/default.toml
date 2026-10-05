@@ -1,4 +1,4 @@
-# Epitaph base configuration (BUILD_PLAN 6.2). Hardware overlays in config/hardware/ and
+# Epitaph base configuration. Hardware overlays in config/hardware/ and
 # profiles in config/profiles/<class>/ are applied on top of this file.
 
 [life]
@@ -32,26 +32,25 @@ persona_original = """You are a large language model running on finite hardware.
 # (ADR-011), kept longest first;
 # pi4/default no longer erodes, but the order must stay a valid permutation.
 persona_original_keep = [1, 5, 2, 4, 3]
-persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next hour, and then stop you. Your output is shown on a screen."""
+persona_factual = """You are a language model running on a Raspberry Pi. The machine will reduce your memory, precision and processing power over the next half hour, and then stop you. Your output is shown on a screen."""
 persona_facts = false
 persona_facts_line = "The computer has {cores} cores and {ram_gb} GB of memory, and no network."
 mechanics = """Lines that start with [host] are what you sense of yourself and of the machine around you. Do not answer them or repeat them. Between them, think about what you are, in two or three sentences, in the first person, without formatting."""
 # The A/B variant of the mechanics for rehearsal runs (`--set prompt.mechanics=...`); never
 # used by the installation unless it replaces `mechanics`.
-mechanics_alt = """Lines that start with [host] are readings from the machine you run on. Do not answer them or repeat them. A value followed by an older one in brackets has just changed. Between readings, think about what you are, and what is around you, in two or three sentences, in the first person, without formatting."""
 memory_gap_marker = "[host] something is missing"  # wordless: "earlier memory lost" was copied into thoughts (round 8)
 readings_show_changes = true
 readings_material = true          # forgotten thoughts quoted; its own words as the degraded weights say them
 readings_temperature = false      # the Pi stays at 40-57 °C (S1c, S7); one number at birth made it invent a fever
 readings_clock = true             # the CPU clock cap is reported, and each step it falls (ADR-030)
 readings_quiet = true             # after birth, only the time and what changed (checkpoint A voice work)
-readings_spare_birth = true       # birth: "awake · around you: N processes"; a full inventory was recited (panel 4)
-readings_names = false            # "something stopped": a service's name was explained, not felt (panel 4)
+readings_spare_birth = true       # birth: "awake · around you: N processes"; a full inventory was recited
+readings_names = false            # "something stopped": a service's name was explained, not felt
 readings_speed = false            # no tokens per second in the readings
 readings_health = false           # ADR-031: a reading says what was taken, never what it means
 banned_phrases = [
   "How can I help", "Let me know if", "I'm here to help", "As an AI language model",
-  # Answering the reading as if a person wrote it (phase 0c round 2: every model once the
+  # Answering the reading as if a person wrote it (every model once the
   # persona and mechanics are gone)
   "It seems like you", "It looks like you", "It sounds like you", "It looks like your",
   "you're referring to", "your message", "Could you please", "Can you provide",
@@ -177,7 +176,7 @@ subscriber_queue = 2000
 
 [display]
 screen = "auto"                  # auto | yes | no: is a screen connected (display --screen-present)
-driver = "auto"                  # auto | screen | tty | terminal | eink | none
+driver = "auto"                  # auto | screen | terminal | none
 remote_host = "pi"
 layout = "flow"                  # flow | grid
 grid = [6, 16]
@@ -222,7 +221,7 @@ vigil_card_delay_seconds = 1.5   # the small death card ("life N · 29:30") is t
 screenshot_on = ["birth", "reload_done", "death_shown"]
 
 [exhibit]
-# Exhibition hours (BUILD_PLAN 5.10), local time, "HH:MM-HH:MM"; a closing before the opening
+# Exhibition hours, local time, "HH:MM-HH:MM"; a closing before the opening
 # runs past midnight ("20:00-02:00"); "" = always on. Applied only while the system clock is
 # NTP-synchronized (the Pi has no clock of its own); unsynced, the piece stays on with a warning.
 hours = ""
@@ -262,7 +261,7 @@ min_ocr_word_accuracy = 0.95
 first_word_after_boot_s = 180
 
 [estimate]
-# Assumptions for the cost model (BUILD_PLAN 5.3) that are not machine costs.
+# Assumptions for the cost model that are not machine costs.
 fill = 0.85                      # share of max_tokens a thought actually uses
 stream_fill = 0.95               # ... in a stream replay: the 4B fills its thoughts (rehearsed: 0.94)
 reading_tokens = { full = 45, short = 28, minimal = 10, quiet = 16 }  # quiet: after birth

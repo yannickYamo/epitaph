@@ -1,6 +1,6 @@
-"""Body checks on the real Pi (BUILD_PLAN 10.1, 10.4). Run from the laptop under the lock:
+"""Body checks on the real Pi. Run from the laptop under the lock:
 
-tools/pi_lock.sh run C 20 -- .venv/bin/python -m pytest -m pi tests/pi -q
+tools/pi_lock.sh run <name> 20 -- .venv/bin/python -m pytest -m pi tests/pi -q
 """
 
 from __future__ import annotations

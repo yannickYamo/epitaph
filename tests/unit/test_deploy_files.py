@@ -1,4 +1,4 @@
-"""Static checks of deploy/: the units, the sudoers rule and the scripts (BUILD_PLAN 9 C5)."""
+"""Static checks of deploy/: the units, the sudoers rule and the scripts."""
 
 from __future__ import annotations
 

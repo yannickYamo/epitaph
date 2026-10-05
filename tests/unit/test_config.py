@@ -66,7 +66,7 @@ def test_unknown_model_is_rejected() -> None:
 
 def test_overlay_overrides_base() -> None:
     cfg = load_config("pi4/default", "pi4-4gb")
-    assert cfg.get("verify.wpm_birth_range") == [15, 60]  # decision 30
+    assert cfg.get("verify.wpm_birth_range") == [15, 60]
     assert cfg.get("body.token_gap_timeout_s") == 120
 
 
@@ -111,6 +111,6 @@ def test_creature_network_must_be_blocked_or_allowed(value: object) -> None:
 
 
 def test_the_laptop_has_a_default_profile() -> None:
-    """BUILD_PLAN 11.7: `epitaph sim` and `epitaph run --backend fake` need no flags."""
+    """`epitaph sim` and `epitaph run --backend fake` need no flags."""
     cfg = load_config(None, "dev")
     assert cfg.profile.lifespan_s == 1800.0

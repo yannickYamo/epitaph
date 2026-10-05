@@ -1,5 +1,5 @@
 # pyright: strict
-"""`epitaph selftest`: can this machine take the creature's resources away? (BUILD_PLAN 9 C6)
+"""`epitaph selftest`: can this machine take the creature's resources away?
 
 The checks are spike S3b's, made permanent:
 

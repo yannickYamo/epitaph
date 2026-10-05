@@ -1,4 +1,4 @@
-"""The output pipeline and its rhythm (BUILD_PLAN 5.7, 5.12).
+"""The output pipeline and its rhythm.
 
 Per thought: raw chunks -> `Sanitizer` -> `WordSegmenter` -> `Lookahead` (holds only what
 could still become a banned phrase) -> the pacing queue -> `drain`, which releases one word
@@ -66,7 +66,7 @@ def ends_sentence(text: str) -> bool:
 
 @dataclass(frozen=True)
 class BannedHit:
-    """A banned phrase found in a thought (BUILD_PLAN 5.7 step 4)."""
+    """A banned phrase found in a thought."""
 
     phrase: str
     i: int  # index of the phrase's first word within the thought
@@ -287,7 +287,7 @@ class Pacer:
         self._sample_letters = 0
 
     def rate(self) -> float | None:
-        """Smoothed generation rate in letters per second (BUILD_PLAN 5.12)."""
+        """Smoothed generation rate in letters per second."""
         if self._sample_s >= self.min_rate_sample_s and self._sample_letters > 0:
             return self._sample_letters / self._sample_s
         return self._estimate
@@ -328,7 +328,7 @@ class Pacer:
 
     def flush_within(self, seconds: float) -> None:
         """At death: the words still queued finish typing within `seconds` from now. Their
-        rhythm keeps its shape, only faster when it would not fit (BUILD_PLAN 5.7 step 8;
+        rhythm keeps its shape, only faster when it would not fit (
         verify's max_death_display_delay_s)."""
         by = self.clock.elapsed() + max(0.0, seconds)
         self._flush_by = by if self._flush_by is None else min(self._flush_by, by)
@@ -455,7 +455,7 @@ class Pacer:
     # -- cadence ---------------------------------------------------------------------------
 
     def letter_interval_ms(self, knobs: Knobs) -> float:
-        """interval = max(profile floor, 1 / (margin x rate)) (BUILD_PLAN 5.12)."""
+        """interval = max(profile floor, 1 / (margin x rate))."""
         floor = knobs.letter_ms
         r = self.rate() if self.adaptive else None
         if r is None or r <= 0:
@@ -1017,7 +1017,7 @@ async def speak(
     on_died: Callable[[CreatureStatus], None] | None = None,
     death_flush_s: float = 75.0,
 ) -> Spoken:
-    """Generate and show one thought (BUILD_PLAN 5.7).
+    """Generate and show one thought.
 
     Emits `gen_start` and `gen_end` per request and `word` per shown word. Regenerates on a
     banned opening, stops the request at a cut, and on `CreatureDied` calls `on_died` at

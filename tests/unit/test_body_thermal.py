@@ -1,4 +1,4 @@
-"""The thermal pause hook and the heat readings (BUILD_PLAN 9 C9)."""
+"""The thermal pause hook and the heat readings."""
 
 from __future__ import annotations
 

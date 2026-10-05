@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pick the SSH alias that reaches the Pi right now (BUILD_PLAN F12).
+# Pick the SSH alias that reaches the Pi right now.
 #
 #   tools/pi_host.sh              print the first alias that answers, exit 1 if none does
 #   . tools/pi_host.sh; pi_host   the same as a function, for the other tools

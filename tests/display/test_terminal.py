@@ -1,4 +1,4 @@
-"""D2: the ANSI terminal driver (BUILD_PLAN 9 D2)."""
+"""D2: the ANSI terminal driver."""
 
 from __future__ import annotations
 

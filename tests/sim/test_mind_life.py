@@ -1,13 +1,13 @@
 """A whole life built from the mind modules on the fakes, in virtual time.
 
-This is the shape of the P1 controller loop (BUILD_PLAN 5.8) reduced to what phase 0b owns:
+This is the shape of the controller loop reduced to the mind:
 schedule, memory, persona, readings and the output pipeline. It checks the invariants the
 plan asks of them across reloads, erosion and death:
 
 - past tokens never exceed recall (+10%) when a reading is written
 - forgetting goes oldest first, and a forgotten thought is never forgotten again
 - the marker appears once anything is lost, and stays (riding on a reading)
-- cache reuse holds through every trim, erosion step and the marker (decision A3)
+- cache reuse holds through every trim, erosion step and the marker
 - five erosion steps, the last with the mechanics
 - the sync rule, and the death flush before `death_shown`
 - the first reading after a reload reports the loss
@@ -180,7 +180,7 @@ def of(life: dict[str, Any], etype: str) -> list[dict[str, Any]]:
 
 
 def test_recall_is_respected_at_every_reading(life: dict[str, Any]) -> None:
-    assert len(life["checks"]) >= 12  # 3x slower text (decision 30): fewer readings per life
+    assert len(life["checks"]) >= 12  # 3x slower text: fewer readings per life
     for t, used, recall in life["checks"]:
         assert used <= recall * 1.10, (life["profile"], t, used, recall)
 

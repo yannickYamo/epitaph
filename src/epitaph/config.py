@@ -1,4 +1,4 @@
-"""Configuration: base file, hardware overlay, profile, models (BUILD_PLAN 3.2, 5.3, 6.2).
+"""Configuration: base file, hardware overlay, profile, models.
 
 Load order: config/default.toml, then config/hardware/<overlay>.toml, then the profile's
 own top-level settings (for example ctx), then command-line overrides.
@@ -20,7 +20,11 @@ from typing import Any, cast
 from epitaph.types import ModelSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_DIR = Path(os.environ.get("EPITAPH_CONFIG_DIR", REPO_ROOT / "config"))
+# Where the configuration, the measured costs and the fonts are: the top of a checkout, or
+# epitaph/_data in an installed package (pyproject.toml puts them there).
+IN_CHECKOUT = (REPO_ROOT / "config" / "default.toml").is_file()
+DATA_ROOT = REPO_ROOT if IN_CHECKOUT else Path(__file__).resolve().parent / "_data"
+CONFIG_DIR = Path(os.environ.get("EPITAPH_CONFIG_DIR", DATA_ROOT / "config"))
 
 STEPPED = ("phase", "health", "step", "threads", "persona_groups", "mechanics", "readings")
 INTERPOLATED = (
@@ -37,7 +41,7 @@ INTERPOLATED = (
 # Optional stepped knobs: a profile may omit them; the first keyframe gets the default.
 OPTIONAL_DEFAULTS: dict[str, float] = {"cpu_mhz": 1800.0}
 CPU_MHZ_RANGE = (600.0, 1800.0)  # the Pi 4's cpufreq range (spike S7)
-# Thought-count minimums (BUILD_PLAN 5.3), set for a one-hour life; a profile's [rules] table
+# Thought-count minimums, set for the one-hour reference life; a profile's [rules] table
 # may lower them (ADR-024).
 RULE_DEFAULTS: dict[str, int] = {
     "between_health": 3,
@@ -67,7 +71,7 @@ def profile_rules(settings: Mapping[str, Any]) -> dict[str, int]:
 KNOB_FIELDS = STEPPED + INTERPOLATED + tuple(OPTIONAL_DEFAULTS)
 READINGS_FORMS = ("full", "short", "minimal")
 # How the screen is paced ([reveal] mode): "letter" types each thought once it is generated
-# and requests the next only after it is shown (the sync rule, BUILD_PLAN 5.7); "word" is the
+# and requests the next only after it is shown (the sync rule); "word" is the
 # same rhythm shown word by word; "stream" types one constant stream while the model writes
 # ahead into a bounded buffer (ADR-030).
 REVEAL_MODES = ("letter", "word", "stream")
@@ -356,7 +360,7 @@ class Config:
 
     @property
     def state_dir(self) -> Path:
-        """Where lives and state files go (BUILD_PLAN 6.1).
+        """Where lives and state files go.
 
         "auto" means /var/lib/epitaph on a Pi where it exists, else ~/.local/share/epitaph.
         """
@@ -438,7 +442,7 @@ def load_config(
 
 
 def system_tokens(cfg: Config, groups: int, mechanics: bool) -> int:
-    """Estimated system prompt size in tokens for this many persona groups (BUILD_PLAN 5.3)."""
+    """Estimated system prompt size in tokens for this many persona groups."""
     est = cfg.section("estimate")
     return int(groups * int(est.get("system_tokens_per_group", 30))) + (
         int(est.get("mechanics_tokens", 70)) if mechanics else 0
@@ -461,7 +465,7 @@ CREATURE_NETWORK = ("blocked", "allowed")  # body.creature_network (ADR-005)
 
 
 def validate_config(cfg: Config) -> None:
-    """Fail fast on impossible settings (BUILD_PLAN 5.4). Thought counts are costmodel's job."""
+    """Fail fast on impossible settings. Thought counts are costmodel's job."""
     p = cfg.profile
     problems: list[str] = []
     times = [kf.at.resolve(p.nominal_s, p.lifespan_s) for kf in p.keyframes]

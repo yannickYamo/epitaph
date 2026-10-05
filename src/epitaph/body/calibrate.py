@@ -1,6 +1,5 @@
 # pyright: strict
-"""`epitaph calibrate`: the creature's working set and its death level, per model and step
-(BUILD_PLAN 5.5, 9 C7).
+"""`epitaph calibrate`: the creature's working set and its death level, per model and step.
 
 The RAM death takes `memory.max` below the creature's working set at `end-0:30`. Spike S3
 showed that a limit below its *anonymous* memory kills it in about a second when the weights
@@ -47,7 +46,7 @@ log = logging.getLogger(__name__)
 
 UNIT_PREFIX = "epitaph-calibrate"
 CALIBRATION_DIR = "calibration"
-KILL_WITHIN_S = 10.0  # BUILD_PLAN 5.5: the kill must come within 10 s, 5 times out of 5
+KILL_WITHIN_S = 10.0  # the kill must come within 10 s, 5 times out of 5
 GIVE_UP_S = 30.0  # how long a trial waits for the kill before calling it a failure
 KILL_WAIT_S = 10.0  # how long the cgroup may stay populated after the trial's own cgroup.kill
 FRACTION_STEP = 0.7  # after a bad trial, the fraction is multiplied by this
@@ -314,9 +313,9 @@ def load_calibration(dirs: Sequence[Path], hw_class: str) -> dict[tuple[str, str
 
 def calibration_dirs(cfg: Config) -> list[Path]:
     """Where the body looks for calibration files: the state dir, then bench/calibration."""
-    from epitaph.config import REPO_ROOT
+    from epitaph.config import DATA_ROOT
 
-    return [cfg.state_dir / CALIBRATION_DIR, REPO_ROOT / "bench" / CALIBRATION_DIR]
+    return [cfg.state_dir / CALIBRATION_DIR, DATA_ROOT / "bench" / CALIBRATION_DIR]
 
 
 # --- the command ----------------------------------------------------------------------------

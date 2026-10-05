@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The headless boot test (BUILD_PLAN 4, 10.4 "Headless boot", 9 E4; gate G1.3).
+# The headless boot test (9 E4; gate G1.3).
 #
 #   tools/headless_boot_check.sh [options]
 #     --reboot       reboot the Pi first and wait for it (without it: check the current boot)

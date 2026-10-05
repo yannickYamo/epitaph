@@ -1,4 +1,4 @@
-"""A fake body for tests, the simulator and machines without cgroups (BUILD_PLAN 9 C)."""
+"""A fake body for tests, the simulator and machines without cgroups."""
 
 from __future__ import annotations
 

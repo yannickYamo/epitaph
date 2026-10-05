@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install epitaph in a clean arm64 Debian 13 (trixie) container and prove the install is
-# idempotent (BUILD_PLAN 9 C10, 11 item 6). Runs on the laptop: podman plus qemu-user-static
+# idempotent (11 item 6). Runs on the laptop: podman plus qemu-user-static
 # emulate the Pi's aarch64; nothing touches the Pi.
 #
 #   tools/test_install_arm64.sh [--image IMAGE] [--keep]

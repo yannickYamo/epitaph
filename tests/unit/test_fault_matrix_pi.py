@@ -1,8 +1,8 @@
-"""tools/collect_lives.sh and tools/fault_matrix_pi.sh against a fake Pi (BUILD_PLAN 9 E6).
+"""tools/collect_lives.sh and tools/fault_matrix_pi.sh against a fake Pi.
 
 The fake Pi is tests/unit/test_pi_tools.py's: stand-in `ssh`, `sudo` and `systemctl` on PATH,
 a temporary lock dir, a fake state dir holding simulated lives. A fake `tools/fault_pi.sh`
-(its interface, BUILD_PLAN 10.4: one row per call, a PASS or FAIL line, exit 0 or 1)
+(its interface: one row per call, a PASS or FAIL line, exit 0 or 1)
 answers each row from a file. Also: the fault table in docs/GATES.md, the laptop rows in
 tests/faults and the driver's rows agree. No network, no Pi.
 """
@@ -274,7 +274,7 @@ def test_matrix_starts_the_controller_again(matrix: dict[str, str], tmp_path: Pa
     assert "start epitaph-controller" in (tmp_path / "systemctl.log").read_text()
 
 
-def test_matrix_two_agents_row_proves_the_lock_queues(
+def test_matrix_two_holders_row_proves_the_lock_queues(
     matrix: dict[str, str], tmp_path: Path
 ) -> None:
     out = tmp_path / "faults.md"
@@ -315,7 +315,7 @@ def test_matrix_usage_errors(args: list[str], message: str) -> None:
 
 def fault_table() -> list[list[str]]:
     text = GATES.read_text()
-    section = text[text.index("## Fault matrix (BUILD_PLAN 10.4)") :]
+    section = text[text.index("## Fault matrix") :]
     section = section[: section.index("\n---")]
     return [
         [c.strip() for c in line.strip().strip("|").split("|")]

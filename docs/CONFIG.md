@@ -62,7 +62,7 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `silence_seconds` | `90` | Darkness between `death_shown` and the next birth (the vigil) |
 | `load_during_silence` | `true` | The next creature loads in the silence, as soon as the death has freed the RAM; the birth then starts at once, or when the load is done if it outlasts the silence. Off: the birth loads it after the silence |
 | `rotation` | `"round_robin"` | How each life picks from `models`: `round_robin`, `random` (seeded), `fixed` (the first) |
-| `models` | `["qwen3-4b-instruct-2507"]` | The models that live here, by their name in `config/models.toml` (chosen at checkpoint A) |
+| `models` | `["qwen3-4b-instruct-2507"]` | The models that live here, by their name in `config/models.toml` (the choice is in [CHECKPOINT_A.md](CHECKPOINT_A.md)) |
 | `reveal_deadline` | `false` | *Reserved.* Tell the model when it will die |
 | `reveal_life_number` | `false` | The birth card names the life number |
 | `min_reload_gap_s` | `120` | A ladder step or thread change waits at least this long after the previous reload |
@@ -83,7 +83,6 @@ A row marked *reserved* is in the file for a feature that does not read it yet.
 | `persona_facts` | `false` | Add `persona_facts_line` to the persona |
 | `persona_facts_line` | `"The computer has {cores} cores and {ram_gb} GB of memory, and no network."` | The facts line, filled from the machine |
 | `mechanics` | "Lines that start with [host] are what you sense of yourself and of the machine around you. Do not answer them or repeat them." Then the invitation, "think about what you are" (round 9; round 8 had "say what they do to you. Do not comfort yourself, and do not deny what you feel") | The functional instructions after the persona; a keyframe with `mechanics = false` removes them |
-| `mechanics_alt` | The same, inviting it to "think about what you are, and what is around you" | The A/B variant for rehearsal runs (`--set prompt.mechanics=...`); the installation never reads it (ADR-031) |
 | `memory_gap_marker` | `"[host] something is missing"` | Marks forgotten turns; wordless, because "earlier memory lost" was copied into its thoughts (round 8) |
 | `readings_show_changes` | `true` | A value that just changed is followed by the old one: `memory 220 tokens (was 900)` |
 | `readings_material` | `true` | Forgotten thoughts are quoted by their most distinctive sentence (the longest that does not open on "I am", "I'm" or "I was", at most ten words; ADR-031), and after a reload the new weights continue one of its sentences: "your words now" (ADR-026). Needs `readings_quiet` |
@@ -116,7 +115,7 @@ the smallest changes a reading reports.
 
 | Key | Default | What it does |
 |---|---|---|
-| `mode` | `"letter"` | `letter` (or `word`): each thought is typed as it is generated, and the next is requested once it is shown (the sync rule, BUILD_PLAN 5.7). `stream`: one constant stream from the first word to the death, the model writing ahead into a bounded buffer (ADR-030); `pi4/default` sets it |
+| `mode` | `"letter"` | `letter` (or `word`): each thought is typed as it is generated, and the next is requested once it is shown (the sync rule). `stream`: one unbroken stream from the first word to the death, the model writing ahead into a bounded buffer (ADR-030); `pi4/default` sets it |
 | `adaptive` | `true` | Letters follow the measured generation rate, never faster; off, they follow the profile's `letter_ms` alone (`letter` mode) |
 | `rate_margin` | `0.88` | Typing runs at this share of the generation rate, so letters neither burst nor starve |
 | `rate_window_s` | `60` | The generation rate is averaged over this many seconds |
@@ -194,7 +193,7 @@ actions (ADR-031). The readings name each loss that really happened, and nothing
 | `cache_type_v` | `"f16"` | KV cache type for values |
 | `creature_cpus` | `"1-3"` | The cores the creature may use; core 0 is the controller's. Empty: no pinning |
 
-| `persona_cache` | `true` | The system prompt is read once per server, model, quant, context and prompt; its KV cache is saved to disk and restored at every later birth instead of read again (a fraction of a second against 100 s on the Pi 4). Any change makes a new key; any failure falls back to reading it |
+| `persona_cache` | `true` | The system prompt is read once per server, model, quant, context and prompt; its KV cache is saved to disk and restored at every later birth instead of read again (about a second against 72 s on the Pi 4, in the cost model). Any change makes a new key; any failure falls back to reading it |
 | `persona_cache_dir` | `"auto"` | Where the persona cache keeps its files: `auto` is `<state_dir>/cache` |
 
 Optional: `slot_timeout_s` (30), `slot_save_path` (`/dev/shm/epitaph-slots`), for the cache
@@ -280,7 +279,7 @@ Optional: `card_word_gap_ms` and `card_line_pause_ms` (default: `[reveal]` `word
 
 ## `[exhibit]`
 
-Exhibition hours (BUILD_PLAN 5.10).
+Exhibition hours ([INSTALLATION.md](INSTALLATION.md), "Exhibition hours").
 
 | Key | Default | What it does |
 |---|---|---|
@@ -289,7 +288,7 @@ Exhibition hours (BUILD_PLAN 5.10).
 
 ## `[verify]`
 
-Thresholds of `epitaph verify-life` (BUILD_PLAN 10.3). The hardware overlay sets the ones that
+Thresholds of `epitaph verify-life` ([GATES.md](GATES.md)). The hardware overlay sets the ones that
 depend on the machine. Every other threshold in `verify.py` (`DEFAULT_THRESHOLDS`) can be set
 here too.
 
@@ -323,7 +322,7 @@ here too.
 
 ## `[estimate]`
 
-Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not machine costs.
+Assumptions of the cost model (`epitaph estimate`, ADR-006) that are not machine costs.
 
 | Key | Default | What it does |
 |---|---|---|
@@ -346,7 +345,7 @@ Assumptions of the cost model (`epitaph estimate`, BUILD_PLAN 5.3) that are not 
 
 ## `[afterlife]`
 
-The outbox (V1.5 part 1, [AFTERLIFE.md](AFTERLIFE.md)): each life's epitaph, kept on the
+The outbox ([AFTERLIFE.md](AFTERLIFE.md)): each life's epitaph, kept on the
 machine's disk for later posts. The blocklist that withholds an epitaph is in the language pack
 (`config/lang/<language>.toml`, `[afterlife] blocklist`).
 
@@ -404,7 +403,7 @@ Estimated machine costs, used where `bench/` has no measured file for a model an
 ## Profiles
 
 `config/profiles/<class>/<name>.toml`. The Pi 4 profiles: `default` (the installation, 30
-minutes, one model, only the hardware shrinks, one constant stream: ADR-030), `default-reloads`
+minutes, one model, only the hardware shrinks, one unbroken stream: ADR-030), `default-reloads`
 (the 30-minute life before it, with reloads and erosion, kept for reference), `smoke-300`,
 `skeleton-1200`, `unbounded` (the homage to Latent Reflection: never forgets, dies when its
 context is full) and `default-qwen3-1.7b` (the one-hour schedule of the faster model). [PROFILES.md](PROFILES.md) explains how each was fitted.
@@ -453,7 +452,7 @@ when the next thought starts.
 
 ### `[rules]`
 
-Thought-count minimums the cost model and `verify-life` enforce (BUILD_PLAN 5.3, ADR-024). The
+Thought-count minimums the cost model and `verify-life` enforce (ADR-006, ADR-024). The
 defaults are for a one-hour life; `pi4/default-reloads` sets 2, 1, 1, 3; `pi4/default` (no reload,
 no erosion: only rule (a) counts) sets `between_health = 1`: the last movement shows one or two thoughts.
 

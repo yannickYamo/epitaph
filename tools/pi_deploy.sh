@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy this working tree to the Pi and install it (BUILD_PLAN 8.3, 9 C5).
+# Deploy this working tree to the Pi and install it (9 C5).
 #
 #   tools/pi_lock.sh run <name> 15 -- tools/pi_deploy.sh [install.sh options]
 #   make pi-deploy                     (the same)

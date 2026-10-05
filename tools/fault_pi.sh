@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The Pi rows of the fault matrix (BUILD_PLAN 10.4, docs/GATES.md), against the
+# The Pi rows of the fault matrix (docs/GATES.md), against the
 # installed controller service. Each row prints its evidence and ends with one line:
 # `PASS <row>: ...` or `FAIL <row>: ...`; the exit status is 0 only when every row passed.
 #
@@ -45,7 +45,7 @@ for a in "$@"; do
     --dry-run) DRY=1 ;;
     all) ROWS+=(netblock two-controllers crash controller-kill hang) ;;
     netblock|two-controllers|crash|hang|controller-kill) ROWS+=("$a") ;;
-    # the row names of tools/fault_matrix_pi.sh (BUILD_PLAN 10.4 wording)
+    # the row names of tools/fault_matrix_pi.sh
     creature-network) ROWS+=(netblock) ;;
     controller-killed) ROWS+=(controller-kill) ;;
     -h|--help) sed -n '2,/^set -euo/{/^#/p}' "$0"; exit 0 ;;

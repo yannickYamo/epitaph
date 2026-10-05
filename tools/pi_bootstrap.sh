@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepare a Raspberry Pi for epitaph: the Pi part of BUILD_PLAN 8.6 (step 0), idempotently.
+# Prepare a Raspberry Pi for epitaph: idempotently.
 #
 #   tools/pi_bootstrap.sh [--check | --apply | --state] [--no-reboot] [host]    (laptop)
 #   sudo tools/pi_bootstrap.sh --local [--check | --apply | --state]            (on the Pi)
@@ -12,7 +12,7 @@
 # It never handles secrets. The Wi-Fi connection and the Pi password need a person at a
 # real terminal; when they are missing it prints the command to run and carries on.
 # Run it under the Pi lock: tools/pi_lock.sh run <name> 15 -- tools/pi_bootstrap.sh --apply
-# Every change it makes is also a row in docs/PI_CHANGES.md. Without a host it uses `pi`
+# Without a host it uses `pi`
 # (Wi-Fi) and falls back to `pi-eth` (the cable) when `pi` does not answer (tools/pi_host.sh).
 set -euo pipefail
 
@@ -84,10 +84,11 @@ for a in "$@"; do case "$a" in --check) MODE=check ;; --apply) MODE=apply ;; --s
 
 USER_NAME=pi
 HOSTNAME_WANT=epitaph
-TZ_WANT=America/Los_Angeles
-COUNTRY=US
+# The timezone and the Wi-Fi country: EPITAPH_TZ and EPITAPH_WIFI_COUNTRY, else what the Pi has.
+TZ_WANT="${EPITAPH_TZ:-$(timedatectl show -p Timezone --value 2>/dev/null)}"
+COUNTRY="${EPITAPH_WIFI_COUNTRY:-$(raspi-config nonint get_wifi_country 2>/dev/null)}"
 CMDLINE=/boot/firmware/cmdline.txt
-CMDLINE_TOKENS="cgroup_enable=memory cgroup_memory=1 consoleblank=0 cfg80211.ieee80211_regdom=$COUNTRY"
+CMDLINE_TOKENS="cgroup_enable=memory cgroup_memory=1 consoleblank=0${COUNTRY:+ cfg80211.ieee80211_regdom=$COUNTRY}"
 SUDOERS=/etc/sudoers.d/010_pi-nopasswd
 SUDOERS_BODY="$USER_NAME ALL=(ALL) NOPASSWD: ALL"
 JOURNALD=/etc/systemd/journald.conf.d/90-epitaph.conf
@@ -97,7 +98,7 @@ JOURNALD_BODY='[Journal]
 Storage=persistent
 SystemMaxUse=200M'
 SSHD=/etc/ssh/sshd_config.d/10-epitaph.conf
-SSHD_BODY='# epitaph step 0 (BUILD_PLAN 8.6 step 10): keys everywhere; passwords only over the direct cable.
+SSHD_BODY='# epitaph step 0: keys everywhere; passwords only over the direct cable.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
@@ -105,20 +106,20 @@ PermitRootLogin no
 Match Address 10.42.0.0/24
     PasswordAuthentication yes'
 AVAHI=/etc/avahi/avahi-daemon.conf
-# Swap (BUILD_PLAN F11). Raspberry Pi OS defaults to zram with write-back to /var/swap on the
+# Swap. Raspberry Pi OS defaults to zram with write-back to /var/swap on the
 # SD card. Keep the compressed RAM swap for the system, drop the card file (rpi-swap removes
 # it at the next boot), and swap late. The creature's cgroup has memory.swap.max = 0 anyway.
 SWAP_CONF=/etc/rpi/swap.conf.d/90-epitaph.conf
-SWAP_CONF_BODY='# epitaph (BUILD_PLAN F11): compressed RAM swap only, no write-back file on the SD card.
+SWAP_CONF_BODY='# epitaph: compressed RAM swap only, no write-back file on the SD card.
 # rpi-swap removes the old /var/swap at the next boot.
 [Main]
 Mechanism=zram'
 SWAP_FILE=/var/swap
 SYSCTL=/etc/sysctl.d/90-epitaph.conf
 SWAPPINESS=10
-SYSCTL_BODY="# epitaph (BUILD_PLAN F11): swap only under real pressure (the OS default is 60).
+SYSCTL_BODY="# epitaph: swap only under real pressure (the OS default is 60).
 vm.swappiness = $SWAPPINESS"
-# The cable is a fallback route (BUILD_PLAN F12): Wi-Fi (metric 600) wins whenever it is up;
+# The cable is a fallback route: Wi-Fi (metric 600) wins whenever it is up;
 # when the Pi is off Wi-Fi, the laptop's shared connection still gives it NTP and apt.
 ETH_METRIC=800
 STATE_DIRS="/var/lib/epitaph /var/lib/epitaph/models"

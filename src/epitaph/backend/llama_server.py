@@ -1,4 +1,4 @@
-"""The real creature: a llama-server process (BUILD_PLAN 9 A5, A6, A7).
+"""The real creature: a llama-server process.
 
 - `start` spawns llama-server through `body.wrap_spawn` (its cgroup and cores), waits for
   /health, and starts a watcher that calls `on_death` when the process exits on its own,
@@ -47,7 +47,7 @@ _log = logging.getLogger(__name__)
 HANDOVERS = ("reread", "slot")
 
 # The first turn of a strict template after a trim that left a thought at the front: the
-# memory-gap reading the model would have seen before it (BUILD_PLAN 5.4).
+# memory-gap reading the model would have seen before it.
 GAP_TURN = Msg("user", "[host] earlier memory lost", kind="marker")
 
 
@@ -795,7 +795,7 @@ class LlamaServerBackend:
         return len(t.json()["tokens"])
 
     async def count_past_tokens(self, messages: list[Msg]) -> int:
-        """Tokens these messages add to the rendered chat (BUILD_PLAN 5.4; method from S6)."""
+        """Tokens these messages add to the rendered chat (method from S6)."""
         if not messages:
             return 0
         if not self._alive():

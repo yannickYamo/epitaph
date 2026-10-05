@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spike S2f / S2t: does cache reuse survive the controller's real edits? (BUILD_PLAN 8.5)
+"""Spike S2f / S2t: does cache reuse survive the controller's real edits?
 
 Runs a life-like chat against a llama-server and records `timings.prompt_n` (tokens actually
 processed) for each kind of edit the controller makes:

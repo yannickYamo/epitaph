@@ -1,5 +1,5 @@
 # pyright: strict
-"""The CPU clock cap, through a small privileged helper (ADR-025, BUILD_PLAN 9 C3).
+"""The CPU clock cap, through a small privileged helper (ADR-025).
 
 The controller runs unprivileged, but `scaling_max_freq` belongs to root. The helper
 `/usr/local/sbin/epitaph-clock` (deploy/sbin/epitaph-clock) accepts only a whole number of MHz

@@ -1,5 +1,5 @@
 """The pixel driver (pygame): a window on the laptop, a full screen on the Pi (KMSDRM),
-or offscreen for screenshots and tests (`SDL_VIDEODRIVER=offscreen`) (BUILD_PLAN 9 D4).
+or offscreen for screenshots and tests (`SDL_VIDEODRIVER=offscreen`).
 
 It draws the same `Frame` as the terminal: letters typed one by one with each word's
 cadence, a block cursor (solid while typing, blinking in pauses, dim in a reload, gone at
@@ -14,7 +14,7 @@ with the world's `screen:<N>` losses (never under the contrast floors the frame 
 and after death the vigil is drawn: the last words dim and centred, the small death card
 under them, fading.
 
-Only what changed is repainted (D7): each frame is reduced to the items of each text row
+Only what changed is repainted: each frame is reduced to the items of each text row
 and the status strip, and only rows whose items differ are cleared, redrawn and sent to
 the display. A letter typed costs one row, not the screen. `python -m
 epitaph.display.bench` measures the CPU this takes.
@@ -82,7 +82,7 @@ class ScreenDriver:
 
     `size=None` means the full screen on the console, or a 1280x720 window on a desktop
     session. `orientation="portrait"` on a landscape panel draws to a rotated surface.
-    `min_font_px` is the smallest letter height allowed (BUILD_PLAN 5.12); `line_chars`
+    `min_font_px` is the smallest letter height allowed; `line_chars`
     and `grid` bound the flow and grid layouts in characters.
     """
 

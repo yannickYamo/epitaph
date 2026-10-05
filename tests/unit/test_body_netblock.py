@@ -1,8 +1,9 @@
-"""The creature's network block: the helper, its sudoers rule and the body (BUILD_PLAN 9 C8)."""
+"""The creature's network block: the helper, its sudoers rule and the body."""
 
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -248,8 +249,9 @@ def test_helper_rejects_everything_else(args: list[str]) -> None:
     assert out.returncode == 2 and "usage" in out.stderr
 
 
+@pytest.mark.skipif(shutil.which("flock") is None, reason="no flock")
 def test_helper_serializes_calls(tmp_path: Path) -> None:
-    """Regression (finding 4): two calls at once must not interleave their list-then-delete.
+    """two calls at once must not interleave their list-then-delete.
 
     The helper runs here with its PATH, lock and cgroupfs pointed into tmp_path and a stub
     `nft` that logs when each listing starts and ends, slowly.
@@ -320,7 +322,7 @@ def test_install_manages_every_helper() -> None:
     assert "HELPERS=(epitaph-clock:020 epitaph-netblock:021 epitaph-world:022)" in text
 
 
-# --- the rule is checked before every spawn (gate review finding 1) -----------------------------
+# --- the rule is checked before every spawn -----------------------------
 
 
 def test_spawn_reloads_a_rule_that_vanished(cgroup_root: Path) -> None:

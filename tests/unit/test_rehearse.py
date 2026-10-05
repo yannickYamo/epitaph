@@ -498,7 +498,7 @@ def test_the_echo_skips_sentences_that_open_on_the_formula() -> None:
 
 
 def test_a_failed_slot_save_means_no_echo() -> None:
-    """Without a saved slot the echo would overwrite the carried memory (review fix)."""
+    """Without a saved slot the echo would overwrite the carried memory."""
     assert slot_saved({"id_slot": 0, "n_saved": 412})
     assert not slot_saved({"error": "slot save path not set", "status": 501})
     assert not slot_saved({"n_saved": 0}) and not slot_saved(None)

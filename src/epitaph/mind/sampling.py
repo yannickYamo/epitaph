@@ -1,4 +1,4 @@
-"""Sampling for one thought: the profile's curve plus the `[sampling]` settings (BUILD_PLAN 5.5).
+"""Sampling for one thought: the profile's curve plus the `[sampling]` settings.
 
 Temperature and `min_p` come from the schedule's knobs, so they follow the profile's curve.
 The rest comes from `[sampling]` in the config:
@@ -6,7 +6,7 @@ The rest comes from `[sampling]` in the config:
 - `top_p`, `repeat_penalty`, `dry_multiplier`: the same for the whole life.
 - `latin_only`: restrict generation to Latin letters, digits and plain punctuation for the
   whole life, or, with `latin_only_from_step = N`, only from ladder step N on. At the lowest
-  precision a small model can drift into other scripts (phase 0c, round 1: Qwen3 1.7B at
+  precision a small model can drift into other scripts (Qwen3 1.7B at
   Q2_K wrote "и" and "và" mid-sentence); the constraint is then worth its cost.
 
 The DRY window (`dry_penalty_last_n`) is a server setting and lives in the backend.

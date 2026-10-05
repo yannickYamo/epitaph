@@ -1,7 +1,7 @@
-"""epitaph: a small language model lives and dies on a Raspberry Pi.
+"""epitaph: a language model lives thirty minutes on a Raspberry Pi while the machine takes its
+hardware away, dies, and is born again.
 
-Command-line flags override the configuration in config/. Commands marked [planned] are on the
-roadmap and exit with status 3 until they land.
+Command-line flags override the configuration in config/.
 """
 
 from __future__ import annotations
@@ -12,21 +12,12 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from epitaph.config import ConfigError, load_config, parse_duration
 
 _log = logging.getLogger(__name__)
-
-# Commands on the roadmap: (help text, when it arrives). They exit with code 3 until then.
-PLANNED: dict[str, tuple[str, str]] = {
-    "download": ("download and verify models (today: tools/download_models.py)", "phase 1"),
-    "bench": ("measure model speeds into bench/", "phase 2"),
-    "post": ("publish each life's last line (V1.5)", "V1.5"),
-    "archive": ("render every life as a static page (V1.5)", "V1.5"),
-}
 
 
 def _common(p: argparse.ArgumentParser) -> None:
@@ -76,7 +67,7 @@ def cmd_sim(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    """`epitaph run`: the controller, life after life (BUILD_PLAN 5.8).
+    """`epitaph run`: the controller, life after life.
 
     Serves the event bus and the control channel on 127.0.0.1, writes transcripts under the
     state dir, and with `--display terminal` draws the lives in this terminal. Exits 1 when
@@ -351,16 +342,6 @@ def cmd_outbox(args: argparse.Namespace) -> int:
     return 0
 
 
-def _stub(name: str) -> Callable[[argparse.Namespace], int]:
-    _, arrives = PLANNED[name]
-
-    def run(_: argparse.Namespace) -> int:
-        print(f"`epitaph {name}` is not available yet (planned for {arrives}).", file=sys.stderr)
-        return 3
-
-    return run
-
-
 def build_parser() -> argparse.ArgumentParser:
     """The argument parser for every subcommand; each sets `fn`, the function that runs it."""
     parser = argparse.ArgumentParser(prog="epitaph", description=__doc__)
@@ -436,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
     rehearse.add_arguments(p)
     p.set_defaults(fn=rehearse.run)
 
-    p = sub.add_parser("verify-life", help="check a recorded life (BUILD_PLAN 10.3)")
+    p = sub.add_parser("verify-life", help="check a recorded life")
     verify.add_arguments(p)
     p.set_defaults(fn=verify.run)
 
@@ -463,15 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hardware", help="hardware overlay, for the default state dir")
     p.set_defaults(fn=cmd_outbox)
 
-    for name, (text, arrives) in PLANNED.items():
-        p = sub.add_parser(name, help=f"{text} [planned: {arrives}]")
-        _common(p)
-        p.add_argument("rest", nargs=argparse.REMAINDER)
-        p.set_defaults(fn=_stub(name))
     return parser
 
 
-# Subcommands with their own argument parsers (contract proposals D1, E1). `display` is
+# Subcommands with their own argument parsers. `display` is
 # also in `build_parser` (same flags, from `remote.add_arguments`); it is passed through so
 # that `epitaph display --screen-present`, the display unit's ExecCondition, does not import
 # the rehearsal and backend modules on every boot.

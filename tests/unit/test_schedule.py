@@ -28,7 +28,7 @@ def test_recall_and_cpu_share_are_cut_at_the_reload(v6_default: Config) -> None:
     assert s.at(27.9 * 60).cpu_share == 3.0
     k = s.at(28 * 60)
     # Rebased on measured Pi 4 costs (docs/PROFILES.md): the thread drop is at reload 2, and
-    # each reload lowers the CPU share so generation never speeds up (review 2, F2).
+    # each reload lowers the CPU share so generation never speeds up.
     assert (k.recall, k.step, k.threads, k.cpu_share) == (220, 1, 3, 2.0)
     k2 = s.at(42.5 * 60)
     assert (k2.recall, k2.step, k2.threads, k2.cpu_share) == (100, 2, 2, 1.5)

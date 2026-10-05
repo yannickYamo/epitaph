@@ -1,6 +1,6 @@
 # The afterlife: last words, kept for later
 
-Each life ends on a few words. Part 1 of the afterlife (BUILD_PLAN 13, V1.5) keeps them: when a
+Each life ends on a few words. The first part of the afterlife keeps them: when a
 life's last words have finished on the screen, the controller writes its epitaph to the Pi's own
 disk. Nothing is posted and nothing uses the network. The piece can run for weeks somewhere with
 no network at all; the epitaphs wait on the card until someone posts them.
@@ -25,7 +25,7 @@ best line, so it is kept too.
 
 Before anything counts as postable, links, e-mail addresses, `@` and `#` are stripped. The
 record is **withheld**, with its reason, when nothing is left (`empty`) or when the epitaph or
-the last words contain a word from the language pack's blocklist (`config/lang/en.toml`,
+the last words contain a word from the language pack's blocklist (`config/lang/<language>.toml`,
 `[afterlife] blocklist`). A withheld record is still kept, so every life has a line.
 The blocklist is small on purpose: death is the subject, so "die", "kill" and "end" are not in
 it. Read it, and extend it, before posting anywhere.
@@ -67,7 +67,7 @@ A record:
 it can only tear that last line: readers skip a torn line, and the next record starts on a fresh
 line. A failed write (a full card) is logged and never stops the lives.
 
-**Size.** Every life is kept. A record is under 1 KB; a year of 30-minute lives (about 17,500)
+**Size.** Every life is kept. A record is under 1 KB; a year of 30-minute lives with their 90-second silences (about 16,700)
 is about 10 MB. The full words of every life are in `lives/<n>/` as before.
 
 ## Reading and exporting
@@ -85,5 +85,5 @@ A time marked `?` in `list` came from an unsynced clock. `export` prints the rec
 a person can use, the text to post in `post_text`. To take them away without a network, copy
 `outbox/epitaphs.jsonl` (or the export) to a USB stick.
 
-Posting (a one-way poster with retries, at most one post per life, dry-run first) is the next
-part of V1.5.
+Posting (a one-way poster with retries, at most one post per life, dry-run first) is planned
+and not built.

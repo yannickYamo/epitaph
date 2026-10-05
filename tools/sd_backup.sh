@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Partition-aware backup of the Pi's SD card to the laptop (BUILD_PLAN 8.6 step 2).
+# Partition-aware backup of the Pi's SD card to the laptop.
 # Saves the partition table, the boot partition, and the used blocks of the rootfs.
 # The rootfs is mounted while imaged, so the result is crash-consistent.
 # Usage: tools/sd_backup.sh [host] [out_dir]

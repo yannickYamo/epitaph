@@ -1,10 +1,10 @@
-# CI on Ubuntu x86_64 (BUILD_PLAN 8.3, 8.7, 9 E2).
+# CI: `make check` on Ubuntu (three Pythons) and on macOS.
 #
-# The first steps are `make check` split into its parts (lint, type, test, sim, estimate), so
-# CI and the merge gate on the laptop run the same commands. Then the extras: coverage floors,
-# the Pi 5 and sim profiles, verify-life and the rehearsal tools on simulated lives, the cost
-# model on the measured Pi 4 costs, the headless display tests, and the Pi gate tools' dry runs
-# (smoke and lives, the boot check, collecting the service's lives, the fault matrix).
+# On Ubuntu the first steps are `make check` split into its parts (lint, type, test, sim,
+# sim-profiles, estimate, badge, package), so CI and the merge gate on a laptop run the same
+# commands. Then the extras: coverage floors, verify-life and the rehearsal tools on simulated
+# lives, the cost model on the measured Pi 4 costs, and the Pi gate tools' dry runs (smoke and
+# lives, the boot check, collecting the service's lives, the fault matrix).
 #
 # Nothing here needs a model file, llama.cpp or the Pi: `make test` runs every test under
 # tests/ except those marked `pi` (tests/pi) or `model` (tests/templates), which pyproject's
@@ -13,7 +13,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "ws/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -72,14 +72,20 @@ jobs:
       - name: Tests with coverage
         run: make test
 
-      - name: Simulated 60-minute lives (under 90 s)
+      - name: Simulated 30-minute lives (under 90 s)
         run: timeout 90 make sim
 
-      - name: Thought-count rule on every Pi 4 profile
+      - name: One simulated life of every other profile
+        run: make sim-profiles
+
+      - name: Thought-count rule on every profile
         run: make estimate
 
-      - name: Small chips (int8 ESP32 engine against the float model; a simulated ESP32 life)
+      - name: Small chips (both ports through whole simulated lives)
         run: make badge
+
+      - name: The wheel, installed and run outside the repository
+        run: make package
 
       # --- extras -------------------------------------------------------------------------
       - name: Coverage floors (80% overall; 90% on the strict modules and verify.py)
@@ -94,26 +100,6 @@ jobs:
 
       - name: Thought-count rule on the sim profile
         run: $PY -m epitaph estimate --profile sim --hardware pi4-4gb
-
-      - name: Thought-count rule on the Pi 5 profiles (simulated only; informational)
-        continue-on-error: true
-        run: |
-          rc=0
-          for hw in pi5-8gb pi5-16gb; do
-            for p in pi5/default pi5/skeleton-600 pi5/unbounded; do
-              $PY -m epitaph estimate --profile $p --hardware $hw || { rc=1; echo "::warning::estimate $p on $hw fails"; }
-            done
-          done
-          exit $rc
-
-      - name: Pi 5 and unbounded profiles pass simulation
-        run: |
-          for hw in pi5-8gb pi5-16gb; do
-            for p in pi5/default pi5/skeleton-600 pi5/unbounded; do
-              $PY -m epitaph sim --profile $p --hardware $hw --quiet
-            done
-          done
-          $PY -m epitaph sim --profile pi4/unbounded --hardware pi4-4gb --quiet
 
       - name: verify-life on simulated lives
         run: |
@@ -152,15 +138,6 @@ jobs:
           done
           exit $rc
 
-      - name: Headless display tests
-        run: |
-          set +e
-          $PY -m pytest -q -m display tests/display
-          rc=$?
-          # 5 = nothing collected: the display tests have not landed yet.
-          if [ $rc -eq 5 ]; then echo "::notice::no display tests yet"; exit 0; fi
-          exit $rc
-
       - name: Pi gate tools (shellcheck and dry runs; nothing reaches a Pi)
         run: |
           # make test already runs them against a fake Pi (tests/unit/test_pi_tools.py).
@@ -186,3 +163,23 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
+
+  # The same merge gate on macOS: the simulator, the cost model, the small-chip ports and the
+  # wheel need nothing of Linux. Tests of the Pi's own tools skip where a tool is missing.
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Virtual environment
+        run: make venv
+
+      - name: make check
+        run: make check

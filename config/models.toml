@@ -1,4 +1,4 @@
-# Candidate models (BUILD_PLAN Appendix A). Ladders are per hardware class; step 0 is the
+# Candidate models. Ladders are per hardware class; step 0 is the
 # healthiest precision. sha256 values are pinned in config/models.lock.toml by
 # tools/download_models.py. `sources` overrides the repo for one quant when the
 # default repo lacks it (bartowski ships no Q2_K for Llama 3.2).

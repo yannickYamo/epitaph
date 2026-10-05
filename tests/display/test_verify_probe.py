@@ -1,4 +1,4 @@
-"""The verify-life layout probe (E8) and fading at a reload (D5): BUILD_PLAN 10.3, 5.12."""
+"""The verify-life layout probe and fading at a reload."""
 
 from __future__ import annotations
 
@@ -209,7 +209,7 @@ def test_simulated_lives_split_no_words(profile: str) -> None:
 
 @pytest.mark.parametrize("profile", ["pi4/default-reloads"])
 def test_simulated_lives_end_with_few_bright_words_once_reloads_forget(profile: str) -> None:
-    """With a `forget` at each reload (D5) the end of a life is mostly grey.
+    """With a `forget` at each reload the end of a life is mostly grey.
 
     Without it, every thought kept through the reloads stays bright to the end."""
     cfg = load_config(profile, "pi4-4gb")

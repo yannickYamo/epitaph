@@ -1,6 +1,6 @@
-"""The quick Pi rows of the fault matrix, through tools/fault_pi.sh (BUILD_PLAN 10.4). Run:
+"""The quick Pi rows of the fault matrix, through tools/fault_pi.sh. Run:
 
-tools/pi_lock.sh run C 10 -- .venv/bin/python -m pytest -m pi tests/pi/test_faults_pi.py -q
+tools/pi_lock.sh run <name> 10 -- .venv/bin/python -m pytest -m pi tests/pi/test_faults_pi.py -q
 
 The controller service must be running. The slow rows (crash, hang, controller-kill: each ends a
 life and waits for the next birth) run from the script directly: `tools/fault_pi.sh all`.

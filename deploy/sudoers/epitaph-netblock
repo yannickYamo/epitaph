@@ -1,4 +1,4 @@
-# epitaph (ADR-005, BUILD_PLAN 9 C8): the controller runs unprivileged and may block the creature
+# epitaph (ADR-005): the controller runs unprivileged and may block the creature
 # cgroup's network, and nothing else, without a password. Installed by deploy/install.sh as
 # /etc/sudoers.d/021_epitaph-netblock (mode 0440, checked with visudo -cf); @USER@ is the service
 # user. The helper itself also rejects any other cgroup path.

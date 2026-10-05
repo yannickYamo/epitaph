@@ -1,4 +1,4 @@
-"""The mind's memory: past turns held as text by the controller (BUILD_PLAN 5.4).
+"""The mind's memory: past turns held as text by the controller.
 
 - **Recall** is the token budget for past turns only: every reading and thought already
   finished, plus the memory-gap marker once something is forgotten. It excludes the system
@@ -21,8 +21,8 @@ moves forward in the new prompt on a match, so any new text in front of turns it
 read makes everything after it a re-read: spike S2f measured 80% of the prompt for a marker
 inserted in front of the kept turns, about two minutes of silence on the Pi 4. So:
 
-- the marker never appears in front of kept turns: it rides on a new reading (contract
-  decision A3), which costs only its own tokens;
+- the marker never appears in front of kept turns: it rides on a new reading, which costs
+  only its own tokens;
 - a live trim (`fit`) cuts on turn boundaries: whole turns, or only the reading of the
   oldest kept turn. It cuts words only inside the last remaining turn, where the re-read is
   one short turn. The price is a trim that may go up to one turn below `recall x trim_to`.

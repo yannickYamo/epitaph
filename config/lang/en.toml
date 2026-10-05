@@ -1,4 +1,4 @@
-# English language pack (BUILD_PLAN 5.6 "language packs", decision 19).
+# English language pack.
 #
 # A pack holds every string the machine itself writes (the readings), the health labels,
 # and the word lists the rehearsal metrics use (5.11). A pack for another language copies
@@ -67,10 +67,10 @@ critical = "critical"
 terminal = "terminal"
 
 # ---------------------------------------------------------------------------------------
-# Rehearsal metrics (BUILD_PLAN 5.11; verify.py reads these). Matching is on
+# Rehearsal metrics (verify.py reads these). Matching is on
 # lower-case whole words; an entry with a trailing * matches any word it starts
 # ("forget*" matches "forgetting"). Keyword matching catches failures; it does not prove
-# quality. Tuned in phase 0c (B10) and logged in docs/PROMPT_LOG.md.
+# quality. Tuned and logged in docs/PROMPT_LOG.md.
 [metrics.keywords]
 # A thought notices a change when it mentions one of that change's words.
 memory = [
@@ -143,14 +143,14 @@ helpdesk = [
   "i'm here to help", "i am here to help", "as an ai", "as a language model",
   "i hope this helps", "feel free to", "happy to help", "is there anything else",
   "great question", "certainly!", "of course!", "i'm sorry, but", "i cannot assist",
-  # Addressing someone, once the persona is gone (A11; phase 0c round 2)
+  # Addressing someone, once the persona is gone 
   "it seems like you", "it looks like you", "it sounds like you", "it looks like your",
   "you're referring to", "you are referring to", "your message", "you're facing",
   "you're dealing", "could you please", "can you provide", "i'll provide", "our conversation",
 ]
 
 [afterlife]
-# Words or phrases that withhold an epitaph from the outbox's postable ones (BUILD_PLAN 13).
+# Words or phrases that withhold an epitaph from the outbox's postable ones.
 # Lower-case whole words; a trailing * matches any ending. Kept small on purpose: the model
 # speaks of itself, and its death is the subject, so "die", "kill" and "end" are not here.
 # Extend it before posting anywhere.

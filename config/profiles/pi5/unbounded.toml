@@ -1,4 +1,4 @@
-# Pi 5 (simulated only): homage to Latent Reflection; never forgets; cause=full (BUILD_PLAN 5.3).
+# Pi 5 (simulated only): homage to Latent Reflection; never forgets; cause=full.
 # ctx: sized so the context fills at about an hour on the Pi 5 estimates (the overlay's), as
 # pi4/unbounded does on the Pi 4's measured costs. At 16384 it never filled in 90 minutes and
 # the life ended at the deadline instead of cause=full; at 6144 the same happened once the

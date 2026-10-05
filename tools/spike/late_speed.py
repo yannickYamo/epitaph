@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Late-life generation speed from a bench file's two depths (review item F8).
+"""Late-life generation speed from a bench file's two depths.
 
 Generation slows as the context grows: every token attends over the KV cache's used cells,
 so the time per token grows about linearly with them (S1c round 2: tokens/s against the

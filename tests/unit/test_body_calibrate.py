@@ -1,4 +1,4 @@
-"""`epitaph calibrate` against a fake cgroupfs and a fake creature (BUILD_PLAN 9 C7)."""
+"""`epitaph calibrate` against a fake cgroupfs and a fake creature."""
 
 from __future__ import annotations
 

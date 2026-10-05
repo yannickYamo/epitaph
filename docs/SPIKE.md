@@ -1,18 +1,20 @@
 # Spike results
 
-Each spike gives its numbers, then a go or fallback decision (BUILD_PLAN 8.5). Raw results are committed next to the scripts.
+Each spike gives its numbers, then a go or fallback decision. Most spikes were run for the
+earlier reload design; the installed life has one model and no reload (ADR-030), and rests on
+S3, S3b, S3c, S7 and S8. Raw results are in `tools/spike/s3_results/` and `bench/spike/`.
 
-## Body: S3, S3b, S3c (phase 0b round 1, 2026-09-29)
+## Body: S3, S3b, S3c (2026-09-29)
 
 Setup: Raspberry Pi 4B 4 GB, kernel 6.18.50+rpt-rpi-v8, systemd 257, llama.cpp b11277
-(A's native build), **Llama 3.2 3B Instruct Q4_K_M** (bartowski, sha256 `6c1a2b41…c728ff`),
+(a native build), **Llama 3.2 3B Instruct Q4_K_M** (bartowski, sha256 `6c1a2b41…c728ff`),
 the target model class. Official 5.1 V / 3 A supply: `vcgencmd get_throttled` was `0x0`
 before and after every run below; CPU 41-56 °C.
 
 Every spike runs `tools/spike/s3_probe.py` inside a throwaway `Delegate=yes` unit
 (`epitaph-spike-<id>`, user `pi`) and drives the creature cgroup through the real body code
 (`epitaph.body.cgroup.CgroupBody`), so the spikes prove the code path the controller uses.
-Runner: `tools/pi_lock.sh run C <min> -- tools/spike/s3_run.sh <s3|s3b|s3c> [--model M]`.
+Runner: `tools/pi_lock.sh run <name> <min> -- tools/spike/s3_run.sh <s3|s3b|s3c> [--model M]`.
 Raw JSON: `tools/spike/s3_results/`.
 
 ### S3b: delegated cgroups and the network block — **GO**
@@ -33,11 +35,11 @@ Raw JSON: `tools/spike/s3_results/`.
 | nftables rule | `socket cgroupv2 level 3 "system.slice/epitaph-spike-s3b.service/creature" oifname != "lo" reject` (root, added by the runner) |
 | After the rule | creature → 1.1.1.1:80 **refused** (ECONNREFUSED); creature DNS **fails**; supervisor → 1.1.1.1:80 connected; creature ↔ 127.0.0.1 connected (the controller can still talk to llama-server) |
 
-Notes for C8 (`body/netblock.py`) and C5 (units):
+Notes for `body/netblock.py` and the units:
 
 - nft resolves the path to a **cgroup id at load time** (`socket cgroupv2 level 3 10657`).
   If the creature cgroup is removed and recreated, the rule silently stops matching. So the
-  creature cgroup is created once and kept (as 9 C8 says), and the rule is (re)loaded by a
+  creature cgroup is created once and kept, and the rule is (re)loaded by a
   root `ExecStartPre=+` step after the body creates the leaf, or the body keeps the leaf
   across controller restarts (`setup()` reuses an existing `creature/`).
 - The rule needs root; the controller does not. Fallback if nft is ever unusable:
@@ -131,9 +133,9 @@ the evicted pages are re-read every token. No gradual RAM squeeze on this card.
 0.5` of anon, applied at `end-0:30` (set in `config/hardware/pi4-4gb.toml`). The fallback
 `death_mode = "deadline"` is not needed. S1a must confirm that step 0 (Q6_K, about
 2.6 GB anon) plus KV still leaves 300 MB free with `dio`.
-Each spike records its numbers and a go or fallback decision (BUILD_PLAN 8.5). Raw results:
+Each spike records its numbers and a go or fallback decision. Raw results:
 `bench/spike/*.json` (per run), `bench/measured/pi4-*.json` (Pi costs in the `costmodel.load_costs`
-format, parked; see "Using the numbers"), `bench/dev-*.json` (laptop costs). Tables are printed by
+format; see "Using the numbers"), `bench/dev-*.json` (laptop costs). Tables are printed by
 `python3 tools/spike/summarize.py`.
 
 ## Backend: S6, S2f, S1a, S1b, S2t, S4, S1c
@@ -225,9 +227,9 @@ Findings:
    tokens (38-51%): the kept tail is below the 256-token reuse chunk. Cheap in absolute terms.
 6. `cache_reuse_works = true` for every candidate except Gemma without `--swa-full`.
 
-**Addendum (phase 0c, rehearsal): word-level trims break reuse.** The S2f trims dropped whole
-turns. `mind.memory.Memory` also trims inside the oldest kept turn (its reading, then its first
-words: BUILD_PLAN 5.4 "order of loss"). The first rehearsal life showed trims re-reading
+**Addendum (from the rehearsal): word-level trims break reuse.** The S2f trims dropped whole
+turns. `mind.memory.Memory` also trimmed inside the oldest kept turn (its reading, then its first
+words). The first rehearsal life showed trims re-reading
 everything after the system prompt, and a probe with `Memory` on the laptop (Qwen3 1.7B Q4_K_M,
 `--cache-reuse 32`, marker already present) confirmed it:
 
@@ -342,7 +344,7 @@ for Qwen3 1.7B, under 90 s for the 1B models.
 without tricks and is clean in S6; its reload re-read fits S4's budget). Llama 3.2 3B, Qwen3 4B
 and the other 3-4B stay candidates for the rehearsal, but on the Pi 4 they need the S4 fallback
 (post-reload recall about 200 at reload 1 and 100 at reload 2, or no reload with precision
-falling another way). Decided at checkpoint A.
+falling another way).
 
 ### S4: reload to the first token
 
@@ -415,7 +417,7 @@ throttling, the clock never left 1.8 GHz, 56 °C at most. Decision 22 (cooling) 
 **Drift: 21%, over the 10% bound, but not thermal.** The speed falls steadily
 (1.84 → 1.39 tokens/s) while the clock and temperature stay flat,
 and it keeps falling after the memory stops growing (about minute 9). **Corrected in round 2
-(F8, below): the memory never stopped growing, and the cause is the context's length.** The
+(below): the memory never stopped growing, and the cause is the context's length.** The
 guess at the time was the KV cache filling up with holes: cache reuse shifts kept turns, and attention runs
 over every used cell up to the highest one, so its cost grows toward the full 2,048 context. For the
 cost model this means **using late-life generation speed** (about 1.4 tokens/s for Qwen3 1.7B Q8_0,
@@ -425,16 +427,14 @@ soak with the server restarted every 10 minutes, or `/slots` n_past against spee
 ### Using the numbers
 
 `bench/measured/pi4-<model>-<step>-<threads>.json` are in the format `costmodel.load_costs` reads
-(`step`, `threads`, `tg_tok_s`, `pp_tok_s`, `load_s`, `cache_reuse_works`). They are parked
-outside `bench/` because `load_costs` applies every `bench/pi4-<model>-*.json` automatically,
-and with measured Pi 4 speeds `pi4/compressed-2700` (and later the others) fails the
-thought-count rule, which would break `make check` before the profiles are rebased (8.5: the
-profiles are updated first, then `epitaph estimate` re-runs). To adopt them:
-`git mv bench/measured/pi4-*.json bench/` together with the profile changes.
+(`step`, `threads`, `tg_tok_s`, `pp_tok_s`, `load_s`, `cache_reuse_works`), as the spikes wrote
+them. The cost model reads the files in `bench/` itself: `load_costs` applies every
+`bench/pi4-<model>-*.json` automatically, and `epitaph estimate` reports how many it used
+("costs from bench (6 files)" for the installed profile).
 
-## Round 2: 3-4B ladders and prefill (phase 0c round 2, 2026-09-30)
+## Round 2: 3-4B ladders and prefill (2026-09-30)
 
-Work packages A2/A9 and the owner's review items F5 (spike S4b) and F8 (the S1c slowdown). Setup as
+The ladders of the 3-4B models, the slot hand-over (spike S4b) and the S1c slowdown. Setup as
 above: llama.cpp b11277 on the Pi 4, `taskset -c 1-3`, `-np 1 --cache-ram 0 --jinja`,
 `--cache-reuse 32`, `-tb 3`, and now the Pi 4 overlay's `--load-mode dio` for every load.
 Every request sends `enable_thinking: false`: round 1's spike requests did not, so Qwen3 1.7B
@@ -447,7 +447,7 @@ One detached run per model: each step on a server with 3 generation threads (pag
 dropped first: the cold load), then one with 2 (the warm load); both `-tb 3`. On each: the
 system prompt prefilled as the backend does at birth, the birth thought (the first reading +
 70 tokens), then a re-read of about 800 prompt tokens and 70 tokens at that depth. "late" is
-the speed at the largest context of a life, written on step-0 files only (see F8 below;
+the speed at the largest context of a life, written on step-0 files only (see "Why S1c slowed down" below;
 `tools/spike/late_speed.py`).
 
 | Model | step | quant | thr | load s (cold / warm) | prefill s | birth s | pp tok/s | tg tok/s (birth / deep / late) | headroom MB | throttled |
@@ -480,7 +480,7 @@ the speed at the largest context of a life, written on step-0 files only (see F8
   3 threads rises with lower precision (Llama 1.14 → 1.40 → 1.63 at depth), but **at 2
   threads Q2_K and Q3_K_M are compute-bound**: Llama Q2_K generates 1.18 at 2 threads against
   1.63 at 3; Qwen3 4B Q3_K_M 0.81 against 1.06.
-- **F2 (speed must never rise across a reload):** Llama's step 1 at 3 threads generates 22%
+- **Speed must never rise across a reload:** Llama's step 1 at 3 threads generates 22%
   faster than step 0 (1.40 against 1.14 at depth; 1.61 against 1.27 at birth), and Qwen3 4B's
   step 1 at 3 threads about 2% faster. To keep the speed from rising, the CPU share at reload 1
   must be at most about 2.4 cores for Llama (3 x 1.14 / 1.40), or the thread drop must come at
@@ -505,7 +505,7 @@ and for a 3-4B that alone is 80-118 s. Load + system prompt is 127-173 s before 
 so **no post-reload recall makes a plain 3-4B reload fit 180 s** (Llama at recall 260/200:
 estimated silences 219 s and 288 s).
 
-### S4b: carry the KV cache across the reload (F5) — **GO**
+### S4b: carry the KV cache across the reload — **GO**
 
 `tools/spike/s4b_slot_handover.py`. A life before the reload (the system prompt, then 5-6 real
 thoughts), then: `POST /slots/0?action=save` to `/dev/shm`, stop, start the next quant with the
@@ -529,7 +529,7 @@ repeats that request on a fresh server: prefill + the full re-read (S4's method)
   reduced to simple on-off switches." and "It feels like I've taken two steps back, my
   precision has dropped to 4-bit again". Qwen3 1.7B: "I'm still alive, but my precision is
   lower than before." The old quant's cache read by the new weights is slightly off, which no
-  thought showed; it fits the piece (F5).
+  thought showed; it fits the piece.
 - The slot file lives in RAM for about a minute, while the old server is already gone; it is
   charged to the creature's cgroup and deleted right after the restore.
 - Implemented: `[backend] reload_handover = "slot" | "reread"` (default `"reread"` until it is
@@ -540,7 +540,7 @@ repeats that request on a fresh server: prefill + the full re-read (S4's method)
   in the rehearsal clock, and against a real llama-server across two quants
   (`tests/templates`, model mark).
 
-### F8: why S1c slowed down by 21%
+### Why S1c slowed down by 21%
 
 **It is the normal cost of a longer context, and round 1's context kept growing.** Round 1's
 soak kept a rolling memory by counting characters, but Qwen3 was thinking (the spike did not
@@ -575,10 +575,9 @@ a thought, padded to 256) with `late_after_s = 1200` (`tools/spike/late_speed.py
 is 77-89% of the deep rate. Only step 0 gets it because only step 0 runs at that context (after
 reload 1 the recall is 300 at most), while the cost model applies the lowest late ratio to every
 step. A time-based ease still overcharges the minutes after a reload, when the context is short
-again; a contract change proposes charging by context instead. The adopted
-`bench/pi4-qwen3-1.7b-*.json` keep round 1's late value (1.424, over 30 min) until the
-round-2 files are adopted from `bench/measured/` (F9); on those, `pi4/default` has 39 thoughts
-instead of 40 and still passes.
+again. At the time, `bench/pi4-qwen3-1.7b-*.json` kept round 1's late value (1.424, over 30
+min); on the round-2 files in `bench/measured/` the one-hour life of the time had 39 thoughts
+instead of 40 and still passed.
 
 ### What the numbers do to the profiles
 
@@ -612,9 +611,9 @@ instead of 40 and still passes.
 | gemma-3-4b-it | pi4/compressed-2700 | reread | 35 | PASS | 96s, 82s | 0.28 |  |
 | gemma-3-4b-it | pi4/compressed-2700 | slot | 37 | PASS | 55s, 39s | 0.26 |  |
 
-Rule letters as in BUILD_PLAN 5.3; "silence" is a reload over 180 s. Qwen3 1.7B uses the
-round-2 files in `bench/measured/` (the corrected late speed); `make check` still runs on the
-adopted `bench/` files (40 thoughts). **Phi-4-mini, SmolLM3 and Gemma 3 4B have only step 0 on
+Rule letters are those of the thought-count rule (ADR-006); "silence" is a reload over 180 s.
+The profiles are the one-hour schedules of the time. Qwen3 1.7B uses the
+round-2 files in `bench/measured/` (the corrected late speed). **Phi-4-mini, SmolLM3 and Gemma 3 4B have only step 0 on
 the Pi**, so their steps 1 and 2 fall back to the overlay's estimates (prompt 9-11 tokens/s,
 four times the real rate): their PASS rows are not evidence, and their silences are too short.
 
@@ -625,7 +624,7 @@ four times the real rate): their PASS rows are not evidence, and their silences 
   erosion window (55:00-57:00) without a finished thought; a late Q2_K thought at 0.6-0.9
   cores takes about 2 minutes (shorter `max_tokens` there did not fix it in a trial copy).
   The fix is in the profile's shape (2:30 erosion windows as in `compressed-2700`, or a CPU
-  share that falls later), to decide after checkpoint A. In `compressed-2700` it misses rule (a)
+  share that falls later). In `compressed-2700` it misses rule (a)
   twice (2 thoughts where 3 are needed).
 - **Qwen3 4B Instruct 2507 fails either way**: 20-23 thoughts in 60 minutes; its thoughts take
   2-3 minutes from reload 1 on (Q3_K_M reads prompts at 2.0 tokens/s and generates 0.8-1.1).
@@ -634,10 +633,10 @@ four times the real rate): their PASS rows are not evidence, and their silences 
   (Llama: 219/288 s instead of 229/289 s): the fresh server's system prompt is the cost, not
   the memory. No profile copy was kept.
 
-### Summary for checkpoint A
+### Summary of round 2
 
 - **Measured at every step and both thread counts:** Llama 3.2 3B, Qwen3 4B Instruct 2507
-  (this round), Qwen3 1.7B (round 1). **Step 0 only:** Phi-4-mini, SmolLM3 3B, Gemma 3 4B (their
+  (round 2), Qwen3 1.7B (round 1). **Step 0 only:** Phi-4-mini, SmolLM3 3B, Gemma 3 4B (their
   lower quants are not on the Pi; about 1.5-2 GB each to download if one of them is chosen).
 - **Birth:** with the prefill every 3-4B step 0 writes its first thought within 65-80 s (go: 90 s).
 - **Reload:** a plain reload of a 3-4B cannot fit 180 s (171-292 s); with the slot handover
@@ -713,7 +712,7 @@ again. At least 180 s per phase; every token's arrival time recorded. Raw result
 - **Go for "core gone" losses** (1-3 → 1-2 → 1, no restart, threads unchanged). It stacks with
   the CPU share and the clock: one core at 600 MHz (S7: 0.34) is about 0.15 tok/s, a 6.5 s gap
   per token, which the stream's write-ahead buffer must cover and the cost model must charge
-  (compute ∝ cores × share × clock). Not built in this round: the body has no cores knob yet.
+  (compute ∝ cores × share × clock). Not built: the body has no cores knob.
   `taskset -a -p` on the creature, as the service user that owns it, does it without root
   (as here); the creature cgroup's `cpuset.cpus` would too (cpuset is among the machine's
   controllers; the body enables only memory, cpu and io in its subtree, so that is untested).

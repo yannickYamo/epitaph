@@ -12,7 +12,7 @@ moves into the weights.**
 | How it gets its voice | the prompt | taught by Qwen3 4B under that prompt | the same weights |
 | What it loses | services, radio, light, screen, CPU, clock, memory, RAM | light, memory window, clock (250 to 48 MHz), screen, RAM | light, memory window, clock (240 to 80 MHz), heap; a screen if the board has one |
 | Speed | about 1 token a second | about 8 tokens a second at 250 MHz | not yet measured on hardware |
-| Status | v1.0, running | ran on the badge | runs in a simulated ESP32 on a laptop (below) |
+| Status | running | an earlier build ran on the badge; this one runs in simulation | runs in a simulated ESP32 on a laptop (below); compiles for an ESP32 and a Pico |
 
 ## The voice moves into the weights
 
@@ -61,8 +61,8 @@ subject, the losses and the death. The prompt became the training set.
   backlight skips those steps, and no reading is written for them.
 
 A life's losses are spread over ten minutes. The death follows its last answer: a few seconds
-later on an ESP32, up to two minutes later on the badge, whose clock is by then at a fifth of
-its speed.
+later on an ESP32, about two minutes later on the badge, whose clock is by then at a fifth of
+its speed (a deadline ends the life at three). A whole life is about twelve minutes.
 
 ## Run the ESP32 version
 
@@ -100,7 +100,7 @@ reading before it dies; it passes the simulated life and has not yet run on the 
 
 ## Port it to another board
 
-The life knows no board. On a microcontroller a port fills in three required hooks in C, or
+The life knows no board. On a microcontroller a port fills in four required hooks in C, or
 one small class in MicroPython, and says what its hardware can take; what it cannot is skipped.
 [`terminal.py`](tufty/epitaph/terminal.py) is the smallest port: it runs on any MicroPython
 board with `ulab`, and on a laptop with `python badge/tufty/epitaph/terminal.py 60 1`.

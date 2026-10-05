@@ -9,7 +9,7 @@ welcome directly as a pull request.
 
 ```sh
 make venv        # Python 3.11+ virtual environment with dev and display extras
-make check       # the merge gate: ruff, pyright, tests with coverage, a simulated life, the cost model
+make check       # the merge gate: ruff, pyright, tests with coverage, simulated lives, the cost model, the small chips
 ```
 
 No Raspberry Pi and no model are needed: `epitaph sim` runs lives on a fake model and a virtual
@@ -19,15 +19,18 @@ and `model` and are skipped by default.
 
 ## `make check`
 
-`make check` is the merge gate, and CI runs the same steps on Python 3.11, 3.12 and 3.13:
+`make check` is the merge gate. CI runs its steps, except `make sim-profiles`, on Python 3.11,
+3.12 and 3.13:
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `ruff check` and `ruff format --check` on `src`, `tests` and `tools` |
+| `make lint` | `ruff check` and `ruff format --check` on `src`, `tests`, `tools` and `badge` |
 | `make type` | pyright |
 | `make test` | pytest with coverage (the Pi and model tests are deselected) |
 | `make sim` | two simulated `pi4/default` lives |
-| `make estimate` | the cost model on every Pi 4 profile: each must pass the thought-count rule |
+| `make sim-profiles` | one simulated life of every other Pi 4 and Pi 5 profile |
+| `make estimate` | the cost model on every Pi 4 and Pi 5 profile: each must pass the thought-count rule |
+| `make badge` | the small-chip editions: the C engine against the float model, then whole simulated lives |
 
 `make faults` runs the fault-matrix rows that use the fakes on their own. The Makefile sets
 `PYTHONPATH` to the checkout's `src/`, so each checkout tests its own code even when the
@@ -36,39 +39,21 @@ virtual environment is shared.
 ## Standards
 
 - **`make check` must pass.**
-- **Types everywhere.** pyright runs in strict mode on the core (`mind/`, `clock.py`, `pacing.py`,
-  `state.py`, `events.py`, `controller.py`, `costmodel.py`, `verify.py`) and basic mode elsewhere.
+- **Types everywhere.** pyright runs in strict mode on the core (`mind/`, `afterlife/`, `clock.py`,
+  `pacing.py`, `state.py`, `events.py`, `controller.py`, `exhibit.py`, `costmodel.py`, `verify.py`)
+  and basic mode elsewhere.
 - **Coverage:** at least 90% on the strict modules, 80% overall.
 - **Every public module, class and function has a docstring** (ruff `D1`). Say what it does and any
-  non-obvious contract: units, invariants, when it raises. Reference the build plan section when
-  the behaviour comes from it, for example `(BUILD_PLAN 5.12)`.
+  non-obvious contract: units, invariants, when it raises.
 - **Unit tests never touch the network or real time.** Use `FakeClock` or the virtual event loop.
 - **Every bug fix comes with a regression test.**
 - **The art lives in config.** Timing, text and thresholds belong in `config/`, not in code. A
   new key gets a row in [docs/CONFIG.md](docs/CONFIG.md); a test fails until it has one.
 - Small commits with imperative subjects.
 
-## Working in parallel: worktrees and locks
-
-These conventions keep several people working at once out of each other's way.
-
-- **One worktree per line of work.** `tools/worktrees.sh create <name>...` makes
-  `../epitaph-wt/<name>` on its own branch `ws/<name>` off `main`, sharing the main checkout's
-  `.venv`. Each worktree edits only the files its task owns; files everyone touches (`cli.py`,
-  the Makefile, `config/default.toml`) only for what the task adds. Branches merge through a
-  pull request with `make check` green.
-- **One Pi, one lock.** Every command that touches the Pi, read-only probes included, runs
-  inside `tools/pi_lock.sh run <name> <minutes> -- <command>`; `tools/pi_lock.sh status` shows
-  who holds it. `<minutes>` is a hard limit. The exceptions are the read-only collectors that
-  leave the running service alone (`tools/collect_lives.sh`, `tools/soak_sample.sh`).
-- **One llama-server on the laptop.** Real-model runs on the laptop go through
-  `tools/laptop_lock.sh` the same way.
-- **Long Pi jobs run detached** (a transient systemd unit), so a dropped SSH session cannot kill
-  them; the lock holder polls. See [docs/PI_LOCK.md](docs/PI_LOCK.md).
-
 ## Proposing a contract change
 
-The interfaces between modules are contracts (BUILD_PLAN section 6): the event protocol, the
+The interfaces between modules are contracts: the event protocol, the
 control commands, the `Backend`, `Body`, `LifeClock` and `Pacer` interfaces, the configuration
 schema and the repository layout. Displays, the life checker and the tools depend on them, so
 they change deliberately:
@@ -83,17 +68,40 @@ they change deliberately:
 
 ## Where things are
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map,
-[docs/CONFIG.md](docs/CONFIG.md) for every setting and [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)
-for the design.
+[docs/DESIGN.md](docs/DESIGN.md) explains the piece, [docs/DECISIONS.md](docs/DECISIONS.md) why it
+is built this way, and [docs/CONFIG.md](docs/CONFIG.md) lists every setting. The code is in
+`src/epitaph/`:
+
+| Module | Role |
+|---|---|
+| `cli.py` | The `epitaph` command and its subcommands |
+| `config.py`, `types.py` | Loading and validating the configuration; shared dataclasses and enums |
+| `clock.py`, `costmodel.py` | Life clocks and the schedule; the cost model behind `epitaph estimate` |
+| `controller.py`, `pacing.py`, `exhibit.py` | The life loop, the pace of the text, exhibition hours |
+| `mind/` | Memory, the prompt and its readings, sampling, cleaning of the words |
+| `backend/` | The model: the contract, a fake, llama-server, the model files |
+| `body/` | The machine: cgroups, the CPU clock, the network block, the world, heat, watchdog, selftest, calibration, probe |
+| `events.py`, `state.py`, `transcript.py` | The event bus and control channel; counter, instance lock and status; the recorded life |
+| `display/` | Layout, drivers, the remote view, replay |
+| `afterlife/` | Each life's last words, kept in the outbox |
+| `sim.py`, `rehearse.py`, `verify.py` | Simulated lives, rehearsed lives with a real model, the life checker |
 
 Writing a new display (a hardware panel, a web view, a printer) needs no change to the core: see
 [docs/WRITING_A_DISPLAY.md](docs/WRITING_A_DISPLAY.md).
 
 ## Working on a real Pi
 
-- Serialise Pi work with `tools/pi_lock.sh` (above).
-- Read the "Lessons from step 0" in [docs/PI_FACTS.md](docs/PI_FACTS.md) first (drop-in naming,
-  detached units for long jobs, the power supply).
-- Log system changes in [docs/PI_CHANGES.md](docs/PI_CHANGES.md).
+- Read the "Lessons" in [docs/PI_FACTS.md](docs/PI_FACTS.md) first (drop-in naming, detached
+  units for long jobs, the power supply).
+- The tools reach the Pi over SSH; set `PI_HOST` to your SSH alias for it.
+- One Pi, one lock. Run every command that touches the Pi, read-only probes included, as
+  `tools/pi_lock.sh run <name> <minutes> -- <command>`; `tools/pi_lock.sh status` shows who
+  holds it.
+- `<minutes>` is a hard limit: a command that overruns is stopped and the lock released. A
+  waiter gives up after four hours (exit code 75).
+- Hold the lock per job, not per session. Start long jobs as a detached unit on the Pi
+  (`systemd-run`) and poll them inside one hold, so a dropped SSH session cannot kill them.
+- The read-only collectors (`tools/collect_lives.sh`, `tools/soak_sample.sh`) leave the running
+  service alone and do not take the lock. `tools/laptop_lock.sh` does the same for real-model
+  runs on a development machine.
 - Never put a password or Wi-Fi secret in a command argument, a log or a commit.

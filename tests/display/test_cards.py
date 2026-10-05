@@ -1,4 +1,4 @@
-"""D7: cards, the death fade, silence styles and redraw from a snapshot (BUILD_PLAN 5.12)."""
+"""D7: cards, the death fade, silence styles and redraw from a snapshot."""
 
 from __future__ import annotations
 

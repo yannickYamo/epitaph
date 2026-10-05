@@ -1,1 +1,1 @@
-"""epitaph: a small language model lives and dies on a Raspberry Pi (docs/BUILD_PLAN.md)."""
+"""epitaph: a language model lives thirty minutes on a Raspberry Pi and dies of its hardware."""

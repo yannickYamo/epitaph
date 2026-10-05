@@ -1,4 +1,4 @@
-"""The real body against a fake cgroupfs laid out in a temporary directory (BUILD_PLAN 9 C3)."""
+"""The real body against a fake cgroupfs laid out in a temporary directory."""
 
 from __future__ import annotations
 

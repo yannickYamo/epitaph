@@ -1,4 +1,4 @@
-"""D1: the display model and layout (BUILD_PLAN 9 D1, 5.12)."""
+"""D1: the display model and layout."""
 
 from __future__ import annotations
 
@@ -555,7 +555,7 @@ def test_only_visible_thoughts_are_laid_out_and_the_screen_is_the_same() -> None
         assert got in (want, [*want[1:], ""]), (cols, rows)
 
 
-# -- when to draw next (D7) ------------------------------------------------------------------
+# -- when to draw next ------------------------------------------------------------------
 
 
 def test_next_change_is_the_next_letter_then_the_cursor_blink() -> None:
@@ -578,7 +578,7 @@ def test_next_change_is_the_next_letter_then_the_cursor_blink() -> None:
 
 
 def test_closed_hours_outlive_a_new_life_and_a_reconnect() -> None:
-    """The screen stays dark across a birth and through a snapshot (BUILD_PLAN 5.10)."""
+    """The screen stays dark across a birth and through a snapshot."""
     v = LifeView()
     v.handle({"type": "exhibit", "life": 1, "open": False}, 0.0)
     v.handle({"type": "birth_loading", "life": 2}, 1.0)

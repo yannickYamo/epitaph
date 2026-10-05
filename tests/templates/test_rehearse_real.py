@@ -1,9 +1,9 @@
-"""The rehearsal against a real llama-server and model (BUILD_PLAN 5.11, 10.1 rehearsal row).
+"""The rehearsal against a real llama-server and model (10.1 rehearsal row).
 
 One screen moment (birth, one thought): the laptop server is started with the Pi's flags,
 the thought is charged at measured Pi costs, and the words come out clean. Run under the
 laptop lock:
-  tools/laptop_lock.sh run A 15 -- env PYTHONPATH=src .venv/bin/python \\
+  tools/laptop_lock.sh run <name> 15 -- env PYTHONPATH=src .venv/bin/python \\
       -m pytest -m model tests/templates/test_rehearse_real.py
 Model: EPITAPH_TEST_MODEL (default llama-3.2-1b-instruct:Q4_K_M; only the name is used, the
 quant follows the Pi ladder) in ~/epitaph-models.

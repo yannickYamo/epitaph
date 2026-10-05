@@ -2,14 +2,17 @@
 PY      := PYTHONPATH=$(CURDIR)/src $(CURDIR)/.venv/bin/python
 PROFILE ?= pi4/default
 PROFILES_PI4 := pi4/default pi4/default-reloads pi4/smoke-300 pi4/skeleton-1200 pi4/unbounded
-# Pi 5: simulated and estimated only, on both overlays (BUILD_PLAN 3.2, 11.8).
+# Pi 5: simulated and estimated only, on both overlays.
 PROFILES_PI5 := pi5/default pi5/skeleton-600 pi5/unbounded
 
-.PHONY: check lint type test sim sim-profiles estimate badge venv faults pi-deploy pi-smoke pi-life \
+.PHONY: check lint type test sim sim-profiles estimate badge package venv faults pi-deploy pi-smoke pi-life \
 	pi-boot-check pi-collect pi-faults install-test-arm64
 
+# Needs Python 3.11 or newer (PYTHON=python3.12 make venv picks one), make and a C compiler.
+PYTHON ?= python3
 venv:
-	python3 -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
+	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "epitaph needs Python 3.11 or newer; this is " + sys.version.split()[0] + " (try PYTHON=python3.12 make venv)")'
+	$(PYTHON) -m venv .venv && $(PY) -m pip install -q -e '.[dev,display]'
 
 lint:
 	$(PY) -m ruff check src tests tools badge
@@ -37,14 +40,19 @@ sim-profiles:
 	@for hw in pi5-8gb pi5-16gb; do for p in $(PROFILES_PI5); do \
 		$(PY) -m epitaph sim --profile $$p --hardware $$hw --quiet || exit 1; done; done
 
-# The merge gate (BUILD_PLAN 8.3).
-check: lint type test sim sim-profiles estimate badge
+# The merge gate.
+check: lint type test sim sim-profiles estimate badge package
+
+# The wheel, built, installed into a clean environment and run outside the repository.
+package:
+	$(PY) tools/check_package.py
 
 # The small-chip editions (badge/README.md): the int8 C engine against the float model, the
 # readings' tokens and words on both ports, then whole lives on simulated boards (an ESP32 with
 # a 300 KB heap, a board with nothing but a serial port, the Tufty badge), each checked: every
 # loss read once, the last reading answered, a death by memory. Last, the terminal port for real.
 badge:
+	@command -v $${CC:-cc} >/dev/null || { echo "make badge needs a C compiler (cc)" >&2; exit 1; }
 	$(MAKE) -s -C badge/esp32 host/test_host
 	$(PY) badge/tools/test_esp32.py
 	$(PY) badge/tools/test_ports.py
@@ -53,12 +61,12 @@ badge:
 	$(PY) badge/tools/sim_badge.py --check > /dev/null
 	$(PY) badge/tufty/epitaph/terminal.py 8 1 > /dev/null
 
-# The fault matrix rows the fakes inject (BUILD_PLAN 10.4; docs/GATES.md fault table). Part of
+# The fault matrix rows the fakes inject (docs/GATES.md fault table). Part of
 # `make test` too; this runs them alone.
 faults:
 	$(PY) -m pytest -q tests/faults
 
-# Pi targets (BUILD_PLAN 8.3; docs/GATES.md G1). All run under the Pi lock, as HOLDER (default L).
+# Pi targets (docs/GATES.md G1). All run under the Pi lock, as HOLDER (default: make).
 # The lives and the reports go to logs/pi/ (untracked).
 pi-deploy:
 	tools/pi_lock.sh run $${HOLDER:-make} 15 -- tools/pi_deploy.sh
@@ -91,7 +99,7 @@ pi-faults:
 	tools/fault_matrix_pi.sh --holder $${HOLDER:-make} $${ROWS:+--rows $$ROWS}
 
 # deploy/install.sh in a clean arm64 Debian trixie container under qemu (podman), run twice:
-# the second run must change nothing (BUILD_PLAN 9 C10, 11 item 6). Laptop only, not CI: the
+# the second run must change nothing (11 item 6). Laptop only, not CI: the
 # emulated apt and pip make it slow (see tools/test_install_arm64.sh for the time).
 install-test-arm64:
 	tools/test_install_arm64.sh

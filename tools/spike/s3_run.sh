@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Run spike S3, S3b or S3c on the Pi (BUILD_PLAN 8.5). Run it under the Pi lock:
-#   tools/pi_lock.sh run C 30 -- tools/spike/s3_run.sh s3b
-#   tools/pi_lock.sh run C 60 -- tools/spike/s3_run.sh s3  --model /var/lib/epitaph/models/.../Q4_K_M.gguf --eviction
-#   tools/pi_lock.sh run C 30 -- tools/spike/s3_run.sh s3c --model ...
+# Run spike S3, S3b or S3c on the Pi. Run it under the Pi lock:
+#   tools/pi_lock.sh run <name> 30 -- tools/spike/s3_run.sh s3b
+#   tools/pi_lock.sh run <name> 60 -- tools/spike/s3_run.sh s3  --model /var/lib/epitaph/models/.../Q4_K_M.gguf --eviction
+#   tools/pi_lock.sh run <name> 30 -- tools/spike/s3_run.sh s3c --model ...
 # The probe runs as a throwaway Delegate=yes unit (epitaph-spike-<id>) as user pi, through
 # the real body code. Results land in tools/spike/s3_results/<id>-<time>.json.
 set -euo pipefail
@@ -11,7 +11,7 @@ SPIKE="${1:?s3 | s3b | s3c}"; shift
 HERE="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=tools/pi_host.sh
 . "$HERE/tools/pi_host.sh"
-HOST="$(pi_host)"  # `pi`, or the cable when mDNS fails (BUILD_PLAN F12)
+HOST="$(pi_host)"  # `pi`, or the cable when mDNS fails
 REMOTE=/tmp/epitaph-spike
 UNIT="epitaph-spike-$SPIKE"
 STAMP="$(date +%Y%m%d-%H%M%S)"

@@ -1,4 +1,4 @@
-# Pi 5 (simulated only): v4's schedule with three reloads (BUILD_PLAN 3.2, 5.3).
+# Pi 5 (simulated only): v4's schedule with three reloads.
 lifespan = "60:00"
 death = "end-0:30"
 

@@ -1,4 +1,4 @@
-"""Transcripts: lives/<n>/{meta.json, events.jsonl, thoughts.txt, death.json} (BUILD_PLAN 6.1)."""
+"""Transcripts: lives/<n>/{meta.json, events.jsonl, thoughts.txt, death.json}."""
 
 from __future__ import annotations
 

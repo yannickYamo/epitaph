@@ -1,4 +1,4 @@
-"""verify-life's `speed_monotonic` (review 2, F2): generation never speeds up across a reload.
+"""verify-life's `speed_monotonic`: generation never speeds up across a reload.
 
 Crafted lives pin the rule (tolerance, the averaging window, the vitals fallback and its
 one-thought lag, the edge cases); simulated lives on the Pi 4 profiles check it against an

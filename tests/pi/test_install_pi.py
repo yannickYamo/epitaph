@@ -1,6 +1,6 @@
-"""Install, units and clock helper on the real Pi (BUILD_PLAN 9 C5, gate G1.3). Run under the lock:
+"""Install, units and clock helper on the real Pi (gate G1.3). Run under the lock:
 
-tools/pi_lock.sh run C 30 -- .venv/bin/python -m pytest -m pi tests/pi/test_install_pi.py -q
+tools/pi_lock.sh run <name> 30 -- .venv/bin/python -m pytest -m pi tests/pi/test_install_pi.py -q
 
 Deploys this tree (tools/pi_deploy.sh needs the lock, which the caller holds), then checks that a
 second install changes nothing, the clock helper round trip, the network helper, the units and

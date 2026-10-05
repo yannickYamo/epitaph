@@ -1,4 +1,4 @@
-"""How much CPU the pygame screen costs (BUILD_PLAN 9 D7: under 5% of one core).
+"""How much CPU the pygame screen costs (under 5% of one core).
 
 The bench drives a `ScreenDriver` on a virtual clock: a screen full of earlier thoughts,
 then a new thought typed letter by letter, rendered at the display's frame rate. The CPU

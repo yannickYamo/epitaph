@@ -1,4 +1,4 @@
-"""Whole-word segmentation of clean, streamed text (BUILD_PLAN 5.7 step 3).
+"""Whole-word segmentation of clean, streamed text.
 
 A word is a run of non-space characters. Punctuation stays attached to its word ("end." and
 "(maybe"). A token made only of punctuation ("—", "...") joins the word before it, with its

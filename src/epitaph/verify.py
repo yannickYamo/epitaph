@@ -1,5 +1,5 @@
 # pyright: strict
-"""`epitaph verify-life`: check a recorded life against the plan (BUILD_PLAN 5.11, 10.3).
+"""`epitaph verify-life`: check a recorded life against the plan.
 
 It replays a life's `events.jsonl`, rebuilds what the screen showed (the words, when each was
 typed), and runs the checks of the 10.3 table for the requested level plus the rehearsal
@@ -93,7 +93,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "max_bright_words_last_2min": 40,
     "max_bright_words_last_2min_stream": 120,  # ADR-030: thoughts keep their length
     "max_speed_ratio_end_vs_start": 0.40,
-    "speed_monotonic_tolerance": 0.05,  # review 2, F2: noise allowed before a rise fails
+    "speed_monotonic_tolerance": 0.05,  # noise allowed before a rise fails
     "speed_monotonic_thoughts": 2,  # thoughts averaged on each side of a reload
     "min_notice_rate": 0.6,
     "min_demise_rate_after_erosion": 0.4,
@@ -752,7 +752,7 @@ def markup_hits(text: str) -> list[str]:
 
 
 class LayoutProbe(Protocol):
-    """What verify-life needs from the display layout (BUILD_PLAN 9 D1)."""
+    """What verify-life needs from the display layout."""
 
     def split_words(self, events: list[Event]) -> int:
         """Words broken across lines when this life is laid out."""
@@ -986,7 +986,7 @@ class Verifier:
                 res.checks.extend(fn())
         if full:
             # Keyword proxies for the voice: on a real life they inform, the owner's reading
-            # decides (BUILD_PLAN 5.11; ADR-028). The rehearsal level keeps them failing.
+            # decides (ADR-028). The rehearsal level keeps them failing.
             advisory = {str(n) for n in self.cfg.get("verify.advisory_at_full", [])}
             for c in res.checks:
                 if c.status == "fail" and c.name in advisory:
@@ -1615,7 +1615,7 @@ class Verifier:
         key = "max_bright_words_last_2min_stream" if self.stream else "max_bright_words_last_2min"
         limit = int(self.th[key])
         if self.cfg.profile.unbounded:
-            # an unbounded life never forgets: nothing fades, by design (BUILD_PLAN 5.3)
+            # an unbounded life never forgets: nothing fades, by design
             return [Check("bright_words_last_2min", "skip", limit=limit, detail="unbounded")]
         if str(self.cfg.get("display.layout", "flow")) != "flow":
             return [Check("bright_words_last_2min", "skip", detail="grid layout")]
@@ -1685,7 +1685,7 @@ class Verifier:
         return out
 
     def check_speed_monotonic(self) -> list[Check]:
-        """Generation never speeds up across a reload (review 2, F2).
+        """Generation never speeds up across a reload.
 
         For each reload, the mean speed of up to `speed_monotonic_thoughts` thoughts just
         after it (before the next reload) may exceed the mean of as many thoughts just before
@@ -2185,7 +2185,7 @@ def format_compare(rows: Sequence[dict[str, Any]], require_models: int = 2) -> s
         "## Rehearsal lives, ranked",
         "",
         "Ranked by failed checks, then notice, reload noticing, demise, specific, clichés and "
-        "4-gram variety (BUILD_PLAN 5.11). **Bold** values miss their threshold; `-` was not "
+        "4-gram variety. **Bold** values miss their threshold; `-` was not "
         "measured. Keyword matching catches failures; it does not prove quality: read the "
         "transcripts.",
         "",

@@ -32,7 +32,7 @@ def test_each_profile_dies_the_right_way(name: str, cause: str) -> None:
     [("pi5/default", "oom"), ("pi5/skeleton-600", "deadline"), ("pi5/unbounded", "full")],
 )
 def test_each_pi5_profile_dies_the_right_way(name: str, cause: str, hardware: str) -> None:
-    """BUILD_PLAN 11.8: the Pi 5 profiles pass simulation; the unbounded life fills its context."""
+    """The Pi 5 profiles pass simulation; the unbounded life fills its context."""
     r = simulate(load_config(name, hardware), lives=1)
     assert r.causes == [cause]
 
@@ -42,7 +42,7 @@ def test_event_order_and_lifecycle() -> None:
     r = simulate(cfg, lives=2)
     first = [e["type"] for e in r.events if e["life"] == 1]
     assert first[:5] == ORDER_START
-    # The death flush (BUILD_PLAN 5.8): the words generated before the death are still
+    # The death flush: the words generated before the death are still
     # shown after it, then the death screen and the silence.
     assert first.count("death") == 1 and first.index("death") < first.index("death_shown")
     assert first[-2:] == ["death_shown", "silence"]
@@ -53,7 +53,7 @@ def test_event_order_and_lifecycle() -> None:
 
 
 def test_sync_rule_in_sim() -> None:
-    """No gen_start before the previous thought ended (BUILD_PLAN 5.7 step 7)."""
+    """No gen_start before the previous thought ended."""
     r = simulate(load_config("pi4/default-reloads", "pi4-4gb"))
     open_turn = None
     for e in r.events:
@@ -125,7 +125,7 @@ def test_readings_come_from_the_mind() -> None:
     readings = [e["reading"] for e in r.events if e["type"] == "vitals"]
     # The first reading comes after the system prompt was read at birth (ADR-013).
     # It says what is there, never what it means (ADR-031): no health label. Spare at birth
-    # (prompt.readings_spare_birth, panel 4): awake and what is around it, no inventory; the
+    # (prompt.readings_spare_birth): awake and what is around it, no inventory; the
     # sensing pack (en_sense, round 9) gives no time, only what is around it at birth.
     assert cfg.get("prompt.language") == "en_sense" and lang.r("time") == ""
     before, _, after = lang.form("full", "around_birth").partition("{n}")

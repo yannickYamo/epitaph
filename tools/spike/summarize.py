@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the spike results under bench/ as markdown tables for docs/SPIKE.md (BUILD_PLAN 8.5).
+"""Print the spike results under bench/ as markdown tables for docs/SPIKE.md.
 
 With no argument every table is printed; otherwise only the named ones.
 

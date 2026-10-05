@@ -1,4 +1,4 @@
-"""Vitals readers against fake /sys and /proc files (BUILD_PLAN 9 C4)."""
+"""Vitals readers against fake /sys and /proc files."""
 
 from __future__ import annotations
 

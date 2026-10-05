@@ -140,7 +140,7 @@ def test_facts_line_joins_g2() -> None:
     facts = "The computer has 4 cores and 4 GB of memory, and no network."
     assert p.groups[1] == f"{G2} {facts}"
     assert p.system_text(2, True) == f"{G1}\n\n{G2} {facts}\n\n{MECHANICS}"
-    # off by default (decision 15): the installation's own default
+    # off by default: the installation's own default
     off = Persona.from_config(load_config("pi4/default", "pi4-4gb"), MachineFacts("x", 4, 4.0))
     assert facts not in off.text
     p37 = Persona.from_config(cfg, MachineFacts("Pi", 4, 3.7))
@@ -162,7 +162,7 @@ def test_sentence_helpers() -> None:
 
 
 # ---------------------------------------------------------------------------------------
-# readings: the exact forms of BUILD_PLAN 5.4
+# readings: the exact forms
 
 
 def R(**kw: object) -> ReadingInput:

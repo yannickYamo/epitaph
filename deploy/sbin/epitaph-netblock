@@ -1,5 +1,5 @@
 #!/bin/sh
-# epitaph-netblock: the creature has no network (ADR-005, BUILD_PLAN 9 C8). Installed root-owned,
+# epitaph-netblock: the creature has no network (ADR-005). Installed root-owned,
 # mode 0755, as /usr/local/sbin/epitaph-netblock by deploy/install.sh. The service user may run
 # exactly this command through sudo without a password (deploy/sudoers/epitaph-netblock).
 #

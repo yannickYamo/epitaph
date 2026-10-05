@@ -1,4 +1,4 @@
-"""The afterlife, part 1 (BUILD_PLAN 13): epitaph extraction, the filter, the outbox on disk,
+"""The afterlife, part 1: epitaph extraction, the filter, the outbox on disk,
 the keeper the controller feeds, and the `epitaph outbox` command. No network, no real time.
 """
 

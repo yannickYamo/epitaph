@@ -1,4 +1,4 @@
-"""D13 on a recorded fake life (BUILD_PLAN 9 D5, gate A9).
+"""D13 on a recorded fake life (gate A9).
 
 The life in `data/skeleton-1200.jsonl` is replayed on its own clock and drawn offscreen at
 800x480, 1280x720, 1920x1080 and 1080x1920 on the plain theme, at two moments: a full

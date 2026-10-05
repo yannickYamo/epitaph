@@ -9,7 +9,7 @@ There are three ways in, by the size of the board.
 | Your board | Edition | What you write |
 |---|---|---|
 | Runs Linux, 4 GB of RAM or more (a Pi 5, another single-board computer, a small PC) | The installation: Qwen3 4B under a prompt | One hardware overlay file |
-| A microcontroller with a C compiler, 600 KB of flash and 100 KB of free RAM or more | The C port: a 260K-parameter model, int8 | Three required hooks, up to four optional ones |
+| A microcontroller with a C compiler, 600 KB of flash and 100 KB of free RAM or more | The C port: a 260K-parameter model, int8 | Four required hooks (clock, output, random, heap), up to four optional ones |
 | Runs MicroPython with `ulab` | The MicroPython port: the same model, float32 | One small class |
 
 The schedule, the readings, the model and the death are the same code on every board. You do
@@ -104,8 +104,9 @@ small to shrink again is left alone. Flash: 600 KB with the Arduino core.
 Two ports ship as examples:
 
 - [`epitaph_esp32.ino`](../badge/esp32/epitaph_esp32/epitaph_esp32.ino), an Arduino sketch. On
-  an ESP32 it takes the LED and the clock. On any other Arduino board it takes the LED and
-  leaves the clock alone until you write `set_clock` for the chip.
+  an ESP32 it takes the LED and the clock (compiled, not yet run on a board). On any other
+  Arduino board it takes the LED and leaves the clock alone until you write `set_clock` for the
+  chip.
 - [`host/test_host.c`](../badge/esp32/host/test_host.c), a laptop with a simulated heap and
   clock. `make -C badge/esp32 life` runs a whole life on it and checks it; `./host/test_host
   bare` runs one on a board with nothing but a serial port.

@@ -108,7 +108,7 @@ def test_parse_life_picks_lives_and_rebuilds_thoughts() -> None:
     with pytest.raises(ValueError):
         v.parse_life([])
     th = life.thoughts[0]
-    assert th.wpm == pytest.approx(40, rel=0.05)  # the baseline speed (decision 30)
+    assert th.wpm == pytest.approx(40, rel=0.05)  # the baseline speed
     assert th.first_word_t == pytest.approx(2.0)
 
 
@@ -137,7 +137,7 @@ def test_good_skeleton_life_passes() -> None:
     assert res.ok, v.format_result(res)
     assert status(res, "no_split_words") == "pending"
     assert status(res, "next_birth") == "pending"
-    assert res.metrics["thoughts"] > 25  # fewer, slower thoughts since decision 30
+    assert res.metrics["thoughts"] > 25  # fewer, slower thoughts since the slower reveal
 
 
 def test_banned_phrase_shown_fails() -> None:
@@ -307,7 +307,7 @@ def test_writing_speed_too_slow_fails() -> None:
 
 def test_speed_thresholds_come_from_the_overlay() -> None:
     dev = load_config("pi4/skeleton-1200", "pi5-8gb", validate=False)
-    # Same life; the Pi 5 overlay wants 40-60 wpm at birth (decision 30).
+    # Same life; the Pi 5 overlay wants 40-60 wpm at birth.
     res = v.verify_life(
         v.parse_life(good_skeleton(wpm=30).events), dev
     )  # fine on a Pi 4, too slow for a Pi 5

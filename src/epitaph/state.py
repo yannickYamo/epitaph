@@ -1,4 +1,4 @@
-"""Persistent state: atomic writes, the life counter, the single-instance lock (BUILD_PLAN 6.1).
+"""Persistent state: atomic writes, the life counter, the single-instance lock.
 
 Every state file is written to a temporary file, fsynced, then renamed over the target, so a
 power cut leaves either the old or the new content, never a torn file.

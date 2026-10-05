@@ -1,5 +1,5 @@
 # pyright: strict
-"""A life's epitaph, taken from the words it actually showed (BUILD_PLAN 13), and the filter
+"""A life's epitaph, taken from the words it actually showed, and the filter
 that runs before anything is stored as postable.
 
 Extraction works on the shown thoughts in order (each one the words of a thought joined by
