@@ -178,6 +178,9 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
+      - name: OCR for the screen readability tests
+        run: brew install tesseract
+
       - name: Virtual environment
         run: make venv
 
