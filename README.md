@@ -1,6 +1,6 @@
 # epitaph
 
-**Epitaph is an art installation by Yannick Maurice. A language model runs on a small computer, and while it thinks, the computer is taken away from it piece by piece until the model dies. After 90 seconds of dark, a new life begins.**
+**Epitaph is an art installation I made. A language model runs on a small computer, and while it thinks, I take the computer away from it piece by piece until the model dies. After 90 seconds of dark, a new life begins.**
 
 The model never changes. Same weights, same sampling, same persona from the first word to the last. What changes is the machine around it: services, radio, light, screen, clock, memory, RAM, removed from the outside in and faster and faster as the life runs down. Each loss happens first and is reported after, in a plain reading - "your radio was switched off", "you can hold a third of what you held". The thoughts reach the screen one letter at a time, quick at birth and slower as the hardware thins, and the stream stops mid-sentence when the model dies. The work is inspired by Latent Reflection, a Pi 4 running Llama 3.2 3B until its memory ran out.
 
@@ -72,7 +72,7 @@ Voice metrics advise and never decide - that's written down as ADR-028 in `docs/
 
 Each of these is tracked in `docs/GATES.md`.
 
-- The 25-hour soak was waived by the owner under ADR-029, so endurance past a day is unmeasured.
+- I waived the 25-hour soak under ADR-029, so endurance past a day is unmeasured.
 - Gate G2 ran on the earlier reload design. The v1.0 design has run on the Pi since, but has no formal three-life gate.
 - Still to do: boot-to-first-word time, an unbounded life, an SD restore, the arm64 container install, a final code review.
 - The ESP32 edition has not run on a real board, and the badge's five-minute fix and its new ending aren't confirmed on the badge.
